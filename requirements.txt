@@ -1,0 +1,8 @@
+openai-whisper
+pynput
+sounddevice
+numpy
+Pillow
+requests
+telethon
+openai

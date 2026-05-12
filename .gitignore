@@ -1,0 +1,38 @@
+# Конфиг с API-ключами (используй config.example.py как шаблон)
+config.py
+
+# Сессия Telegram
+tg_session*
+
+# Логи и временные файлы
+app.log
+temp_command.wav
+.voice_helper.lock
+
+# Python кэш
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Сгенерированные VBS с абсолютными путями
+run_background.vbs
+restart.vbs
+
+# Старые данные браузера Playwright
+tg_data/
+
+# Whisper / модели
+*.pt
+*.bin
+
+# Виртуальное окружение (если создашь)
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
