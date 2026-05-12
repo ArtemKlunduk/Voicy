@@ -123,3 +123,45 @@ API_HASH = "a1b2c3d4..."   # <-- твой api_hash (строка в кавычк
 - Вся работа идёт в фоне — ни браузер, ни консоль не нужны после первого запуска.
 - Для удаления из автозагрузки удали файл `VoiceTGHelper.vbs` из папки:  
   `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`
+
+---
+
+## 👥 Для разработчиков (совместная работа)
+
+### Настройка окружения
+
+1. Клонируй репозиторий:
+   ```bash
+   git clone https://github.com/ArtemKlunduk/voice-tg-helper.git
+   cd voice-tg-helper
+   ```
+
+2. Установи зависимости:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Создай свой `.env` из шаблона:
+   ```bash
+   copy .env.example .env
+   ```
+   Отредактируй `.env` — вставь свои `TELEGRAM_API_ID` и `TELEGRAM_API_HASH` с [my.telegram.org/apps](https://my.telegram.org/apps).
+
+4. Создай свой `contacts.txt` из шаблона:
+   ```bash
+   copy contacts.example.txt contacts.txt
+   ```
+   Добавь свои контакты.
+
+5. Запусти:
+   ```bash
+   python main.py
+   ```
+   При первом запуске появится окно входа в Telegram — войди со своего аккаунта.
+
+### Правила работы в команде
+
+- **`contacts.txt`** и **`.env`** в `.gitignore` — каждый разработчик хранит их локально, чтобы не мешать друг другу.
+- **`tg_session.session`** тоже в `.gitignore` — сессия Telegram привязана к конкретному аккаунту.
+- Перед началом работы делай `git pull origin main`.
+- Для крупных изменений создавай отдельную ветку: `git checkout -b feature/название`.

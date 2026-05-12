@@ -2,6 +2,9 @@
 config.py
 .env
 
+# Личные контакты (используй contacts.example.txt как шаблон)
+contacts.txt
+
 # Сессия Telegram
 tg_session*
 
