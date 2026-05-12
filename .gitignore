@@ -1,5 +1,6 @@
 # Конфиг с API-ключами (используй config.example.py как шаблон)
 config.py
+.env
 
 # Сессия Telegram
 tg_session*

@@ -51,23 +51,20 @@ class VoiceProcessor:
     # ── Локальная модель: загрузка / выгрузка ──
 
     def _load_model(self):
-        logger.info(f"Загрузка модели Whisper ({WHISPER_MODEL})…")
-        import whisper
+        from faster_whisper import WhisperModel
 
-        self._model = whisper.load_model(WHISPER_MODEL)
+        logger.info(f"Загрузка faster-whisper ({WHISPER_MODEL}, int8)…")
+        self._model = WhisperModel(
+            WHISPER_MODEL,
+            device="cpu",
+            compute_type="int8",
+        )
         logger.info("Модель загружена.")
 
     def _unload_model(self):
-        logger.info("Выгрузка модели Whisper для освобождения RAM…")
+        logger.info("Выгрузка модели для освобождения RAM…")
         self._model = None
         gc.collect()
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
         logger.info("Модель выгружена. RAM освобождена.")
 
     def _do_unload(self):
@@ -141,9 +138,11 @@ class VoiceProcessor:
         if self.provider == "local":
             self.ensure_model_loaded()
             try:
-                result = self._model.transcribe(audio_path, language="ru")
-                text = result.get("text", "").strip()
-                return text
+                segments, info = self._model.transcribe(
+                    audio_path, language="ru", beam_size=5
+                )
+                text = " ".join(segment.text.strip() for segment in segments)
+                return text.strip()
             finally:
                 self.release_model()
 

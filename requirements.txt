@@ -1,4 +1,4 @@
-openai-whisper
+faster-whisper
 pynput
 sounddevice
 numpy
@@ -6,3 +6,4 @@ Pillow
 requests
 telethon
 openai
+python-dotenv
