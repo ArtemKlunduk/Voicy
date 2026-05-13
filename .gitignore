@@ -40,3 +40,10 @@ venv/
 .idea/
 *.swp
 *.swo
+
+# Тестовые файлы
+*_test.txt
+tts_log.txt
+empty.mp3
+test_edge.mp3
+test_sapi.wav

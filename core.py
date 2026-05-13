@@ -14,6 +14,7 @@ from config import (
     RECOGNITION_PROVIDER,
     OPENAI_API_KEY,
     WHISPER_UNLOAD_TIMEOUT,
+    WHISPER_KEEP_LOADED,
     load_contacts,
 )
 
@@ -77,6 +78,8 @@ class VoiceProcessor:
                 self._unload_model()
 
     def _schedule_unload(self):
+        if WHISPER_KEEP_LOADED:
+            return
         if self._unload_timer is not None:
             self._unload_timer.cancel()
         if WHISPER_UNLOAD_TIMEOUT > 0:
@@ -95,7 +98,7 @@ class VoiceProcessor:
     def release_model(self):
         with self._model_lock:
             self._use_count -= 1
-            if self._use_count <= 0:
+            if self._use_count <= 0 and not WHISPER_KEEP_LOADED:
                 self._schedule_unload()
 
     # ── Запись и распознавание ──
@@ -157,18 +160,39 @@ class VoiceProcessor:
 
         return ""
 
+    @staticmethod
+    def _normalize_cyrillic(text):
+        """Заменяет похожие латинские буквы на кириллические.
+        Whisper иногда выдаёт латинские look-alike символы."""
+        table = str.maketrans({
+            'a': 'а', 'e': 'е', 'o': 'о', 'p': 'р', 'c': 'с',
+            'x': 'х', 'y': 'у', 'k': 'к', 'm': 'м', 'h': 'н',
+            't': 'т', 'b': 'в', 'r': 'г', 'u': 'у', 'i': 'и',
+            'j': 'й',
+        })
+        return text.translate(table)
+
     def parse_command(self, text):
-        """Парсит текст команды. Возвращает (user_id, message, error)."""
+        """Парсит текст команды. Возвращает (action, data, error)."""
         text = text.lower().strip()
         text = text.rstrip(".!?,:;")
+        text = self._normalize_cyrillic(text)
 
-        if not text.startswith("напиши"):
-            return None, None, "Команда не распознана (ожидалось 'напиши …')"
+        if text.startswith("напиши"):
+            return self._parse_send(text[len("напиши"):].strip())
+        elif text.startswith("открой"):
+            return self._parse_open(text[len("открой"):].strip())
+        elif text.startswith("дай ответ"):
+            return self._parse_ai_answer(text[len("дай ответ"):].strip())
+        elif text.startswith("стоп"):
+            return "stop", {}, None
+        else:
+            return None, None, "Команда не распознана (ожидалось 'напиши …', 'открой …', 'дай ответ …' или 'стоп')"
 
-        rest = text[len("напиши"):].strip()
+    def _parse_send(self, rest):
         if not rest:
             return None, None, "Имя получателя не указано"
-
+        rest = self._normalize_cyrillic(rest)
         parts = rest.split(None, 1)
         name = parts[0].strip()
         message = parts[1].strip() if len(parts) > 1 else ""
@@ -183,4 +207,43 @@ class VoiceProcessor:
         if not user_id:
             return None, None, f"Контакт '{name}' не найден"
 
-        return user_id, message, None
+        return "send_message", {"user_id": user_id, "message": message}, None
+
+    # Карта голосовых команд → URL. Легко расширять.
+    OPEN_COMMANDS = {
+        "браузер": "about:blank",
+        "ютуб": "https://www.youtube.com",
+        "youtube": "https://www.youtube.com",
+        "уoutube": "https://www.youtube.com",
+        "уоutube": "https://www.youtube.com",
+        "уоутуве": "https://www.youtube.com",
+        "гугл": "https://www.google.com",
+        "google": "https://www.google.com",
+        "gоoglе": "https://www.google.com",
+        "вк": "https://vk.com",
+        "вконтакте": "https://vk.com",
+        "vk": "https://vk.com",
+        "яндекс": "https://yandex.ru",
+        "yandex": "https://yandex.ru",
+        "mail": "https://mail.ru",
+        "мейл": "https://mail.ru",
+        "telegram": "https://web.telegram.org",
+        "телеграм": "https://web.telegram.org",
+        "github": "https://github.com",
+        "githuв": "https://github.com",
+        "гитхаб": "https://github.com",
+    }
+
+    def _parse_open(self, rest):
+        if not rest:
+            return None, None, "Что открыть? (например: 'открой ютуб')"
+        target = rest.strip()
+        url = self.OPEN_COMMANDS.get(target)
+        if url:
+            return "open_browser", {"url": url}, None
+        return None, None, f"Неизвестная команда: '{target}'"
+
+    def _parse_ai_answer(self, rest):
+        if not rest:
+            return None, None, "Вопрос не задан (скажи: 'дай отвер что такое дефибрилятор')"
+        return "ai_answer", {"question": rest}, None

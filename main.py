@@ -10,6 +10,7 @@ from config import AUDIO_FILE
 from overlay import Overlay
 from core import VoiceProcessor
 from telegram_sender import TelegramSender
+from ai_assistant import AIAssistant
 
 # ── Логирование в файл (важно для фонового режима pythonw) ──
 LOG_PATH = os.path.join(os.path.dirname(__file__), "app.log")
@@ -33,8 +34,10 @@ class VoiceHelper:
         self.overlay = None
         self.voice = VoiceProcessor()
         self.telegram = TelegramSender()
+        self.ai = AIAssistant()
         self.recording = False
         self.stop_event = threading.Event()
+        self._cancel_event = threading.Event()
         self.alt_pressed = False
         self._hotkey_pressed = False
         self._task_queue = queue.Queue()
@@ -151,21 +154,36 @@ class VoiceHelper:
                 self._cleanup(audio_path)
                 return
 
-            user_id, message, error = self.voice.parse_command(text)
+            action, data, error = self.voice.parse_command(text)
             if error:
                 logger.warning(f"[Ошибка парсинга] {error}")
                 self.overlay.show_error()
                 self._cleanup(audio_path)
                 return
 
-            if not message:
-                logger.warning("[Ошибка] Текст сообщения пустой")
-                self.overlay.show_error()
-                self._cleanup(audio_path)
-                return
-
-            logger.info(f"[Отправка] -> {user_id}: {message}")
-            self._send_worker(user_id, message, audio_path)
+            if action == "send_message":
+                user_id = data["user_id"]
+                message = data["message"]
+                if not message:
+                    logger.warning("[Ошибка] Текст сообщения пустой")
+                    self.overlay.show_error()
+                    self._cleanup(audio_path)
+                    return
+                logger.info(f"[Отправка] -> {user_id}: {message}")
+                self._send_worker(user_id, message, audio_path)
+            elif action == "open_browser":
+                url = data.get("url")
+                logger.info(f"[Команда] Открыть браузер: {url or 'about:blank'}")
+                self._open_browser(audio_path, url=url)
+            elif action == "ai_answer":
+                question = data["question"]
+                logger.info(f"[AI Вопрос] {question}")
+                threading.Thread(
+                    target=self._ai_answer_worker, args=(question, audio_path), daemon=True
+                ).start()
+            elif action == "stop":
+                logger.info("[Команда] Стоп")
+                self._stop_all(audio_path)
 
         self.overlay.schedule(on_parse)
 
@@ -184,6 +202,90 @@ class VoiceHelper:
             self._cleanup(audio_path)
 
         self.overlay.schedule(on_sent)
+
+    def _open_browser(self, audio_path, url=None):
+        try:
+            target_url = url or "about:blank"
+            browser_path = self._get_default_browser_path()
+            if browser_path:
+                subprocess.Popen([browser_path, target_url], shell=False)
+                logger.info(f"Браузер открыт: {browser_path} -> {target_url}")
+            else:
+                import webbrowser
+                webbrowser.open(target_url, new=2)
+                logger.info(f"Браузер открыт через fallback -> {target_url}")
+            self.overlay.show_success()
+        except Exception as e:
+            logger.error(f"[Ошибка] Не удалось открыть браузер: {e}")
+            self.overlay.show_error()
+        finally:
+            self._cleanup(audio_path)
+
+    def _ai_answer_worker(self, question, audio_path):
+        self._cancel_event.clear()
+        try:
+            self.overlay.schedule(lambda: self.overlay.animate_equalizer())
+            answer = self.ai.ask(question)
+            if self._cancel_event.is_set():
+                logger.info("[AI] Отменено пользователем до озвучки")
+                return
+            logger.info(f"[AI Ответ] {answer}")
+            self.overlay.schedule(self.overlay.clear)
+            mp3_path = self.ai.speak(answer)
+            if self._cancel_event.is_set():
+                logger.info("[AI] Отменено пользователем до воспроизведения")
+                return
+            logger.info(f"[AI TTS] Сохранено: {mp3_path}")
+            self.ai.play_audio(mp3_path)
+            if self._cancel_event.is_set():
+                logger.info("[AI] Отменено пользователем после воспроизведения")
+                return
+            self.overlay.schedule(self.overlay.show_success)
+        except Exception as e:
+            if self._cancel_event.is_set():
+                logger.info("[AI] Операция прервана")
+            else:
+                logger.error(f"[Ошибка AI] {e}")
+                self.overlay.schedule(self.overlay.show_error)
+        finally:
+            self._cleanup(audio_path)
+
+    @staticmethod
+    def _get_default_browser_path():
+        """Возвращает путь к браузеру по умолчанию из реестра Windows."""
+        try:
+            import winreg
+            import re
+            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"http\shell\open\command") as key:
+                command, _ = winreg.QueryValueEx(key, None)
+            # Команда вида: "C:\...\chrome.exe" --single-argument %1
+            match = re.search(r'"([^"]+)"', command)
+            if match:
+                path = match.group(1)
+                if os.path.exists(path):
+                    return path
+            # Fallback: первый токен до пробела
+            first = command.split()[0].strip('"')
+            if os.path.exists(first):
+                return first
+        except Exception:
+            pass
+        return None
+
+    def _stop_all(self, audio_path=None):
+        """Мгновенно останавливает текущий AI-ответ и воспроизведение."""
+        logger.info("[Стоп] Отмена текущей операции")
+        self._cancel_event.set()
+        try:
+            import pygame
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+        except Exception:
+            pass
+        self.overlay.schedule(self.overlay.clear)
+        self.overlay.schedule(self.overlay.hide)
+        if audio_path:
+            self._cleanup(audio_path)
 
     @staticmethod
     def _cleanup(audio_path):

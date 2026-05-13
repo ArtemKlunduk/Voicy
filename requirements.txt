@@ -6,4 +6,7 @@ Pillow
 requests
 telethon
 openai
+httpx
+pygame
+edge-tts
 python-dotenv
