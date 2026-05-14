@@ -4,23 +4,20 @@
 <meta charset="utf-8" />
 <style>
 :root {
+  --paper:       #F7F8F3;
   --sage:        #A8C8A0;
   --sage-soft:   #D6E6CF;
   --sage-deep:   #5E8B62;
   --moss:        #2F4A35;
   --danger:      #B6604D;
   --danger-soft: #F0D7CF;
+  --line:        #DDE3D6;
   --ease:        cubic-bezier(0.2, 0.6, 0.2, 1);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-/* Фон #FF00FF — chroma-key для WS_EX_LAYERED + LWA_COLORKEY.
-   Win32-compositor превращает каждый магента-пиксель в прозрачный.
-   В палитре проекта (sage/moss/danger) пурпурного нет — halo по краям
-   anti-aliasing'а orb'а будет ≤1 пикселя и почти невидим. */
 html, body {
   width:100%; height:100%;
-  background: #FF00FF !important;
-  background-color: #FF00FF !important;
+  background: var(--paper);
   overflow:hidden; user-select:none;
 }
 html { color-scheme: light; }

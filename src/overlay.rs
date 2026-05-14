@@ -50,7 +50,7 @@ where
     let pos_x = (screen_w - win_w) / 2;
     let pos_y = screen_h - win_h - 24;
 
-    // Прозрачность — через chroma-key (см. crate::chroma).
+    // Непрозрачное окно с фоном Paper — см. комментарий в ui.rs.
     let window = WindowBuilder::new()
         .with_title("voicy-overlay")
         .with_inner_size(LogicalSize::new(win_w as f64, win_h as f64))
@@ -61,7 +61,6 @@ where
         .with_focused(false)
         .with_visible(false)
         .build(&event_loop)?;
-    crate::chroma::apply_chroma_key(&window);
 
     let webview = WebViewBuilder::new(&window)
         .with_html(OVERLAY_HTML)

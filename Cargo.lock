@@ -4309,7 +4309,6 @@ dependencies = [
  "ort",
  "parking_lot",
  "qrcode",
- "raw-window-handle",
  "rdev",
  "serde",
  "serde_json",
@@ -4322,7 +4321,6 @@ dependencies = [
  "transcribe-rs",
  "ureq 2.12.1",
  "url",
- "windows-sys 0.52.0",
  "wry",
  "zip",
 ]
