@@ -43,6 +43,18 @@ transcribe-rs = { version = "0.3", default-features = false, features = ["onnx"]
 # но MSVC-target позволяет натвиную линковку без DLL-плясок.
 ort = { version = "=2.0.0-rc.12", features = ["ndarray"] }
 
+# Нативный overlay: WebView2 на ряде GPU не уважает alpha-канал — даёт белый
+# прямоугольник. Поэтому рендерим orb + halo rings векторно через tiny-skia
+# в RGBA-битмап и пушим в WS_EX_LAYERED-окно через UpdateLayeredWindow.
+tiny-skia = "0.11"
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 
 # Подключим следующим стейджем:
 # grammers-client = "0.6"  # telegram MTProto

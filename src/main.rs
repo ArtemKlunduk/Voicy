@@ -17,7 +17,8 @@ mod audio;
 mod config;
 mod contacts;
 mod hotkey;
-mod overlay;
+#[cfg(windows)]
+mod native_overlay;
 mod parakeet;
 mod telegram;
 mod ui;
@@ -117,12 +118,29 @@ fn cmd_record(secs: f32) -> Result<()> {
     Ok(())
 }
 
-/// Главный режим: tao event loop на main thread (для overlay-окна),
-/// hotkey listener + ASR/Telegram pipeline в фоновых тредах.
+/// Главный режим: hotkey-listener в foreground, overlay рендерится нативно
+/// в отдельном треде через Win32 layered window (native_overlay).
 fn cmd_run(cfg: config::Config) -> Result<()> {
-    use tao::event_loop::EventLoopBuilder;
-    let event_loop = EventLoopBuilder::<overlay::UiEvent>::with_user_event().build();
-    let proxy = event_loop.create_proxy();
+    #[cfg(windows)]
+    let _overlay_tx = native_overlay::start();
+
+    // helper-обёртки чтобы не таскать cfg!(windows) в каждой ветке.
+    fn show_recording() {
+        #[cfg(windows)]
+        native_overlay::send(native_overlay::State::Recording);
+    }
+    fn show_success() {
+        #[cfg(windows)]
+        native_overlay::send(native_overlay::State::Success);
+    }
+    fn show_error() {
+        #[cfg(windows)]
+        native_overlay::send(native_overlay::State::Error);
+    }
+    fn hide_overlay() {
+        #[cfg(windows)]
+        native_overlay::send(native_overlay::State::Hidden);
+    }
 
     // Один tokio-runtime на жизнь процесса; в нём — один Telegram-client.
     let rt = Arc::new(
@@ -157,123 +175,118 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
     );
 
     let session: Arc<Mutex<Option<RecordingSession>>> = Arc::new(Mutex::new(None));
-
-    // on_start запускается в фоне после того как event loop взлетел.
-    let cfg_clone = cfg.clone();
-    let on_start = move |proxy: tao::event_loop::EventLoopProxy<overlay::UiEvent>| {
-        let session_press = session.clone();
-        let proxy_press = proxy.clone();
-        let on_press = move || {
-            let mut slot = session_press.lock();
-            if slot.is_some() {
-                return;
-            }
-            let stop = Arc::new(AtomicBool::new(false));
-            let stop_thr = stop.clone();
-            let handle = std::thread::spawn(move || audio::record(stop_thr));
-            *slot = Some(RecordingSession { stop, handle });
-            info!("[hotkey] ▶ запись");
-            let _ = proxy_press.send_event(overlay::UiEvent::Recording);
-        };
-
-        let session_release = session.clone();
-        let capture_path = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("voicy_capture.wav")))
-            .unwrap_or_else(|| PathBuf::from("voicy_capture.wav"));
-        let cfg_thr = cfg_clone.clone();
-        let client_thr = client.clone();
-        let rt_thr = rt.clone();
-        let contacts_thr = contact_map.clone();
-        let proxy_release = proxy.clone();
-        let on_release = move || {
-            let s = session_release.lock().take();
-            let Some(s) = s else { return };
-            s.stop.store(true, Ordering::Release);
-            let res = s.handle.join();
-            let cap = capture_path.clone();
-            let cfg = cfg_thr.clone();
-            let client = client_thr.clone();
-            let rt = rt_thr.clone();
-            let contacts = contacts_thr.clone();
-            let proxy = proxy_release.clone();
-            std::thread::spawn(move || {
-                let samples = match res {
-                    Ok(Ok(s)) => s,
-                    Ok(Err(e)) => {
-                        warn!("[hotkey] record err: {}", e);
-                        let _ = proxy.send_event(overlay::UiEvent::Error);
-                        return;
-                    }
-                    Err(_) => {
-                        warn!("[hotkey] record panic");
-                        let _ = proxy.send_event(overlay::UiEvent::Error);
-                        return;
-                    }
-                };
-                if let Err(e) = audio::save_wav(&cap, &samples) {
-                    warn!("[hotkey] save_wav: {}", e);
-                    let _ = proxy.send_event(overlay::UiEvent::Error);
-                    return;
-                }
-                let dur = samples.len() as f32 / audio::TARGET_RATE as f32;
-                info!("[hotkey] ⏹ {:.2}s → ASR…", dur);
-
-                let text = match asr::transcribe_wav(&cap, &cfg.model, &cfg.recognition_language) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        warn!("[hotkey] transcribe: {}", e);
-                        let _ = proxy.send_event(overlay::UiEvent::Error);
-                        return;
-                    }
-                };
-                info!("[hotkey] 📝 «{}»", text);
-
-                let (uid, message) = match contacts::parse_command(&text, &contacts) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        warn!("[hotkey] {}", e);
-                        let _ = proxy.send_event(overlay::UiEvent::Error);
-                        return;
-                    }
-                };
-                if message.is_empty() {
-                    warn!("[hotkey] пустое сообщение");
-                    let _ = proxy.send_event(overlay::UiEvent::Error);
-                    return;
-                }
-                let res = rt.block_on(async { telegram::send_message(&client, uid, &message).await });
-                match res {
-                    Ok(()) => {
-                        info!("[hotkey] ✅ → {} «{}»", uid, message);
-                        let _ = proxy.send_event(overlay::UiEvent::Success);
-                        // Скрыть через 1.8с
-                        let p = proxy.clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(std::time::Duration::from_millis(1800));
-                            let _ = p.send_event(overlay::UiEvent::Hide);
-                        });
-                    }
-                    Err(e) => {
-                        warn!("[hotkey] send: {}", e);
-                        let _ = proxy.send_event(overlay::UiEvent::Error);
-                        let p = proxy.clone();
-                        std::thread::spawn(move || {
-                            std::thread::sleep(std::time::Duration::from_millis(1800));
-                            let _ = p.send_event(overlay::UiEvent::Hide);
-                        });
-                    }
-                }
-            });
-        };
-
-        // Запускаем hotkey-листенер в его собственном треде (он блокирует).
-        let hk = cfg_clone.hotkey.clone();
-        std::thread::spawn(move || hotkey::listen_blocking(hk, on_press, on_release));
+    let session_press = session.clone();
+    let on_press = move || {
+        let mut slot = session_press.lock();
+        if slot.is_some() {
+            return;
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_thr = stop.clone();
+        let handle = std::thread::spawn(move || audio::record(stop_thr));
+        *slot = Some(RecordingSession { stop, handle });
+        info!("[hotkey] ▶ запись");
+        show_recording();
     };
 
-    overlay::run(event_loop, on_start)?;
+    let session_release = session.clone();
+    let capture_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("voicy_capture.wav")))
+        .unwrap_or_else(|| PathBuf::from("voicy_capture.wav"));
+    let cfg_thr = cfg.clone();
+    let client_thr = client.clone();
+    let rt_thr = rt.clone();
+    let contacts_thr = contact_map.clone();
+    let on_release = move || {
+        let s = session_release.lock().take();
+        let Some(s) = s else { return };
+        s.stop.store(true, Ordering::Release);
+        let res = s.handle.join();
+        let cap = capture_path.clone();
+        let cfg = cfg_thr.clone();
+        let client = client_thr.clone();
+        let rt = rt_thr.clone();
+        let contacts = contacts_thr.clone();
+        std::thread::spawn(move || {
+            let samples = match res {
+                Ok(Ok(s)) => s,
+                Ok(Err(e)) => {
+                    warn!("[hotkey] record err: {}", e);
+                    show_error();
+                    schedule_hide();
+                    return;
+                }
+                Err(_) => {
+                    warn!("[hotkey] record panic");
+                    show_error();
+                    schedule_hide();
+                    return;
+                }
+            };
+            if let Err(e) = audio::save_wav(&cap, &samples) {
+                warn!("[hotkey] save_wav: {}", e);
+                show_error();
+                schedule_hide();
+                return;
+            }
+            let dur = samples.len() as f32 / audio::TARGET_RATE as f32;
+            info!("[hotkey] ⏹ {:.2}s → ASR…", dur);
+
+            let text = match asr::transcribe_wav(&cap, &cfg.model, &cfg.recognition_language) {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!("[hotkey] transcribe: {}", e);
+                    show_error();
+                    schedule_hide();
+                    return;
+                }
+            };
+            info!("[hotkey] 📝 «{}»", text);
+
+            let (uid, message) = match contacts::parse_command(&text, &contacts) {
+                Ok(x) => x,
+                Err(e) => {
+                    warn!("[hotkey] {}", e);
+                    show_error();
+                    schedule_hide();
+                    return;
+                }
+            };
+            if message.is_empty() {
+                warn!("[hotkey] пустое сообщение");
+                show_error();
+                schedule_hide();
+                return;
+            }
+            let res = rt.block_on(async { telegram::send_message(&client, uid, &message).await });
+            match res {
+                Ok(()) => {
+                    info!("[hotkey] ✅ → {} «{}»", uid, message);
+                    show_success();
+                    schedule_hide();
+                }
+                Err(e) => {
+                    warn!("[hotkey] send: {}", e);
+                    show_error();
+                    schedule_hide();
+                }
+            }
+        });
+    };
+
+    // hotkey-листенер блокирующий — выполняем на главном треде.
+    hotkey::listen_blocking(cfg.hotkey.clone(), on_press, on_release);
     Ok(())
+}
+
+/// Через 1.8 секунды скрыть overlay.
+fn schedule_hide() {
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_millis(1800));
+        #[cfg(windows)]
+        native_overlay::send(native_overlay::State::Hidden);
+    });
 }
 
 fn cmd_model(sub: &str, name: &str) -> Result<()> {

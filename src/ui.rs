@@ -150,35 +150,12 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
     }
     let window = wb.build(&event_loop)?;
 
-    // Overlay-окно — снизу по центру, поверх всех. Прозрачный фон —
-    // halo rings + orb «плывут» над десктопом, как PNG с alpha.
-    // Halo rings расходятся до scale(1.9) → 84*1.9 ≈ 160px. Берём 220×220,
-    // чтобы кольца не клипались краями окна.
-    let (screen_w, screen_h) = event_loop
-        .primary_monitor()
-        .map(|m| (m.size().width as i32, m.size().height as i32))
-        .unwrap_or((1920, 1080));
-    let ov_w = 220;
-    let ov_h = 220;
-    // Непрозрачное overlay-окно с фоном Paper. Прозрачность через WebView2
-    // была ненадёжной (белый артефакт на ряде GPU), chroma-key через
-    // WS_EX_LAYERED тоже не сработал (WebView2 рендерит через DirectComposition).
-    let overlay_window = WindowBuilder::new()
-        .with_title("voicy-overlay")
-        .with_inner_size(LogicalSize::new(ov_w as f64, ov_h as f64))
-        .with_position(tao::dpi::LogicalPosition::new(
-            ((screen_w - ov_w) / 2) as f64,
-            (screen_h - ov_h - 24) as f64,
-        ))
-        .with_decorations(false)
-        .with_always_on_top(true)
-        .with_resizable(false)
-        .with_focused(false)
-        .with_visible(false)
-        .build(&event_loop)?;
-    let overlay_webview = WebViewBuilder::new(&overlay_window)
-        .with_html(crate::overlay::OVERLAY_HTML)
-        .build()?;
+    // Overlay рендерится нативно через Win32 layered window (см. native_overlay.rs).
+    // WebView2 не уважает alpha-канал на ряде GPU — даёт белый прямоугольник.
+    #[cfg(windows)]
+    {
+        crate::native_overlay::start();
+    }
 
     let rt = Arc::new(
         tokio::runtime::Builder::new_multi_thread()
@@ -290,24 +267,20 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                     let _ = webview.evaluate_script(&js);
                 }
                 UiLoopEvent::OverlayRecording => {
-                    let _ = overlay_window.set_visible(true);
-                    let _ = overlay_webview
-                        .evaluate_script("window.voicySet && window.voicySet('recording')");
+                    #[cfg(windows)]
+                    crate::native_overlay::send(crate::native_overlay::State::Recording);
                 }
                 UiLoopEvent::OverlaySuccess => {
-                    let _ = overlay_window.set_visible(true);
-                    let _ = overlay_webview
-                        .evaluate_script("window.voicySet && window.voicySet('success')");
+                    #[cfg(windows)]
+                    crate::native_overlay::send(crate::native_overlay::State::Success);
                 }
                 UiLoopEvent::OverlayError => {
-                    let _ = overlay_window.set_visible(true);
-                    let _ = overlay_webview
-                        .evaluate_script("window.voicySet && window.voicySet('error')");
+                    #[cfg(windows)]
+                    crate::native_overlay::send(crate::native_overlay::State::Error);
                 }
                 UiLoopEvent::OverlayHide => {
-                    let _ = overlay_webview
-                        .evaluate_script("window.voicySet && window.voicySet('hide')");
-                    let _ = overlay_window.set_visible(false);
+                    #[cfg(windows)]
+                    crate::native_overlay::send(crate::native_overlay::State::Hidden);
                 }
                 UiLoopEvent::WindowMinimize => {
                     window.set_minimized(true);
