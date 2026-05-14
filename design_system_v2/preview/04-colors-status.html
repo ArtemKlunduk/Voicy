@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — status colors</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 24px; }
+  h2 { font-size: 13px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .chip { border: 1px solid var(--line); border-radius: var(--r-2); overflow: hidden; background: var(--paper); }
+  .swatch { height: 70px; display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+  .meta { padding: 7px 10px 9px; }
+  .name { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+  .note { color: var(--ink-3); font-size: 12px; margin-top: 12px; }
+</style></head><body>
+<h2>Status — muted, never neon</h2>
+<div class="grid">
+  <div class="chip"><div class="swatch" style="background:#5E8B62;color:#fff;">OK</div><div class="meta"><div class="name">Ok / primary</div><div class="hex">#5E8B62</div></div></div>
+  <div class="chip"><div class="swatch" style="background:#F1E3C8;color:#7a5a1f;">Warn</div><div class="meta"><div class="name">Warn soft</div><div class="hex">#F1E3C8 · #C28B3E</div></div></div>
+  <div class="chip"><div class="swatch" style="background:#C28B3E;color:#fff;">Warn</div><div class="meta"><div class="name">Warn</div><div class="hex">#C28B3E · --warn</div></div></div>
+  <div class="chip"><div class="swatch" style="background:#B6604D;color:#fff;">Danger</div><div class="meta"><div class="name">Danger</div><div class="hex">#B6604D · --danger</div></div></div>
+</div>
+<p class="note">Reds are terracotta-warm to live happily next to sage. No pure-red errors anywhere.</p>
+</body></html>

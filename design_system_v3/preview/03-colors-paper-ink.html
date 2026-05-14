@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — paper & ink</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 24px; }
+  h2 { font-size: 13px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .chip { border: 1px solid var(--line); border-radius: var(--r-2); overflow: hidden; background: var(--paper); }
+  .swatch { height: 84px; }
+  .meta { padding: 8px 10px 10px; }
+  .name { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .hex { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 2px; letter-spacing: -0.01em; }
+</style></head><body>
+<h2>Paper & ink</h2>
+<div class="grid">
+  <div class="chip"><div class="swatch" style="background:#F7F8F3"></div><div class="meta"><div class="name">Paper</div><div class="hex">#F7F8F3 · --paper</div></div></div>
+  <div class="chip"><div class="swatch" style="background:#EEF1E8"></div><div class="meta"><div class="name">Paper 2</div><div class="hex">#EEF1E8 · --paper-2</div></div></div>
+  <div class="chip"><div class="swatch" style="background:#4E5A55"></div><div class="meta"><div class="name">Ink 2</div><div class="hex">#4E5A55 · --ink-2</div></div></div>
+  <div class="chip"><div class="swatch" style="background:#1B2421"></div><div class="meta"><div class="name">Ink</div><div class="hex">#1B2421 · --ink</div></div></div>
+</div>
+</body></html>

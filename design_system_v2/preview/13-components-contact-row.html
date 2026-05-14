@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — contact row</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; display: grid; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: var(--r-2); cursor: pointer; transition: background var(--t-fast) var(--ease); }
+  .row.hover { background: var(--paper-2); }
+  .row.selected { background: var(--sage-soft); }
+  .row.selected .name { color: var(--moss); }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 999px;
+    display: grid; place-items: center;
+    font-size: 13px; font-weight: 600; color: var(--moss);
+    background: var(--sage-soft); flex: none;
+  }
+  .body { flex: 1; min-width: 0; }
+  .name { font-size: 14px; font-weight: 500; color: var(--ink); }
+  .handle { font-size: 12px; color: var(--ink-3); font-family: var(--font-mono); }
+  .check { color: var(--sage-deep); }
+  .check svg { width: 18px; height: 18px; }
+</style></head><body>
+<div class="row"><div class="avatar">М</div><div class="body"><div class="name">Мама</div><div class="handle">@mama_voicy</div></div></div>
+<div class="row hover"><div class="avatar">П</div><div class="body"><div class="name">Папа</div><div class="handle">@dad_pavel_72</div></div></div>
+<div class="row selected"><div class="avatar">С</div><div class="body"><div class="name">Серёжа</div><div class="handle">@seryozha</div></div><div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div></div>
+</body></html>

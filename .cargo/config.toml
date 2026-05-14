@@ -1,0 +1,19 @@
+# ───── По умолчанию билдим под MSVC ─────
+# Так же как Handy. ort линкуется нативно через download-binaries,
+# onnxruntime прибинживается без runtime DLL-плясок.
+[build]
+target = "x86_64-pc-windows-msvc"
+
+# Dynamic CRT — pyke ort prebuilt линкуется к msvcrt.dll, статика не работает.
+# Win10/11 имеют vcruntime140/msvcp140 в системе по умолчанию,
+# плюс мы их бандлим рядом с exe через build.rs как страховку.
+[target.x86_64-pc-windows-msvc]
+# rustflags = []
+
+# Сохраняем флаги для старого gnullvm на случай если понадобится откатиться.
+[target.x86_64-pc-windows-gnullvm]
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=-static",
+    "-C", "link-arg=-static-libgcc",
+]

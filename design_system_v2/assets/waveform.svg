@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" fill="none">
+  
+  <defs>
+    <linearGradient id="wave-iso" x1="0" y1="24" x2="200" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A8C8A0" stop-opacity="0"></stop>
+      <stop offset="0.15" stop-color="#A8C8A0"></stop>
+      <stop offset="0.85" stop-color="#A8C8A0"></stop>
+      <stop offset="1" stop-color="#A8C8A0" stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+  <path d="M0 24 C 12 24, 18 28, 24 28 C 32 28, 36 16, 44 16 C 52 16, 56 38, 64 38 C 72 38, 76 22, 84 22 C 92 22, 96 30, 104 30 C 112 30, 116 14, 124 14 C 132 14, 136 34, 144 34 C 152 34, 156 24, 164 24 C 172 24, 178 28, 184 28 C 192 28, 196 24, 200 24" stroke="url(#wave-iso)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>

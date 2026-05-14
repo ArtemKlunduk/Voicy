@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — toast / confirmation</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; display: grid; gap: 14px; }
+  .toast {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-radius: var(--r-3);
+    background: var(--paper); border: 1px solid var(--line);
+    box-shadow: 0 1px 0 rgba(27,36,33,.04), 0 8px 24px -16px rgba(27,36,33,.12);
+    font-size: 14px; color: var(--ink);
+    max-width: 100%;
+  }
+  .toast.ok .ico { background: var(--sage-soft); color: var(--moss); }
+  .toast.warn .ico { background: var(--warn-soft); color: var(--warn); }
+  .toast.err .ico { background: var(--danger-soft); color: var(--danger); }
+  .ico { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; flex: none; }
+  .ico svg { width: 18px; height: 18px; }
+  .body { flex: 1; }
+  .title { font-weight: 600; }
+  .sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+</style></head><body>
+<div class="toast ok">
+  <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+  <div class="body"><div class="title">Отправлено</div><div class="sub">Мама · 0:06 голоса</div></div>
+</div>
+<div class="toast warn">
+  <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+  <div class="body"><div class="title">Не услышал</div><div class="sub">Попробуй ещё раз — ближе к микрофону</div></div>
+</div>
+<div class="toast err">
+  <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+  <div class="body"><div class="title">Telegram не отвечает</div><div class="sub">Проверь интернет и попробуй снова</div></div>
+</div>
+</body></html>

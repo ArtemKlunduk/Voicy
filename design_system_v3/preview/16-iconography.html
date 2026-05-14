@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — iconography</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 14px;
+  }
+  .cell {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    color: var(--ink-2);
+  }
+  .cell img { width: 22px; height: 22px; filter: invert(15%) sepia(7%) saturate(545%) hue-rotate(118deg) brightness(95%) contrast(91%); /* ink-2 */ }
+  .cell span { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+  .note { margin-top: 14px; font-size: 12px; color: var(--ink-3); }
+</style></head><body>
+<div class="grid">
+  <div class="cell"><img src="../assets/icons/mic.svg"><span>mic</span></div>
+  <div class="cell"><img src="../assets/icons/mic-off.svg"><span>mic-off</span></div>
+  <div class="cell"><img src="../assets/icons/send.svg"><span>send</span></div>
+  <div class="cell"><img src="../assets/icons/telegram.svg"><span>telegram</span></div>
+  <div class="cell"><img src="../assets/icons/check.svg"><span>check</span></div>
+  <div class="cell"><img src="../assets/icons/x.svg"><span>x</span></div>
+  <div class="cell"><img src="../assets/icons/loader.svg"><span>loader</span></div>
+  <div class="cell"><img src="../assets/icons/settings.svg"><span>settings</span></div>
+  <div class="cell"><img src="../assets/icons/keyboard.svg"><span>keyboard</span></div>
+  <div class="cell"><img src="../assets/icons/globe.svg"><span>globe</span></div>
+  <div class="cell"><img src="../assets/icons/info.svg"><span>info</span></div>
+  <div class="cell"><img src="../assets/icons/external-link.svg"><span>ext-link</span></div>
+  <div class="cell"><img src="../assets/icons/github.svg"><span>github</span></div>
+  <div class="cell"><img src="../assets/icons/chevron-right.svg"><span>chev-r</span></div>
+  <div class="cell"><img src="../assets/icons/chevron-down.svg"><span>chev-d</span></div>
+  <div class="cell"><img src="../assets/icons/plus.svg"><span>plus</span></div>
+  <div class="cell"><img src="../assets/icons/search.svg"><span>search</span></div>
+  <div class="cell"><img src="../assets/icons/volume-2.svg"><span>volume</span></div>
+  <div class="cell"><img src="../assets/icons/arrow-right.svg"><span>arrow-r</span></div>
+  <div class="cell"><img src="../assets/icons/circle.svg"><span>circle</span></div>
+</div>
+<p class="note">Lucide, 1.5px stroke, round caps + joins. Inherits <code>currentColor</code>. Telegram custom (Lucide ships no paper-plane variant).</p>
+</body></html>

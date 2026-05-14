@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voicy · Paper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --paper: #ffffff;
+    --paper-sunk: #f4f4f2;
+    --ink: #0c0c0a;
+    --ink-2: #44443f;
+    --ink-3: #8a8a82;
+    --ink-4: #b8b8b0;
+    --rule: #e8e8e3;
+    --rule-2: #ededea;
+    --green: #14532d;
+    --green-soft: #ecfdf5;
+    --amber: #92400e;
+    --red: #991b1b;
+    --shadow: 0 1px 0 rgba(0,0,0,.02), 0 10px 30px -20px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: 'DM Sans', -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; }
+  body { min-height: 100vh; padding: 36px 28px;
+    background-image:
+      linear-gradient(180deg, #fafaf9 0%, #f6f6f4 100%);
+  }
+  .serif { font-family: 'Newsreader', Georgia, serif; }
+  .serif-italic { font-family: 'Newsreader', Georgia, serif; font-style: italic; font-weight: 400; }
+  .mono { font-family: 'DM Mono', ui-monospace, monospace; }
+
+  /* Window */
+  .window {
+    max-width: 920px; margin: 0 auto; background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 4px;
+    box-shadow: 0 40px 100px -50px rgba(0,0,0,.14);
+    overflow: hidden;
+  }
+  .topbar {
+    height: 44px; padding: 0 18px; display: flex; align-items: center; gap: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar-dots { display: flex; gap: 6px; }
+  .topbar-dots .d { width: 11px; height: 11px; border-radius: 50%;
+    background: var(--paper-sunk); border: 1px solid var(--rule); }
+  .topbar-title { font-size: 12px; color: var(--ink-3); letter-spacing: .04em; }
+  .topbar-title b { color: var(--ink); letter-spacing: -.01em; font-weight: 500; }
+  .topbar-right { margin-left: auto; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--ink-4); }
+
+  /* Hero */
+  .hero {
+    padding: 64px 56px 48px;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+  }
+  .hero-eyebrow {
+    font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .14em;
+    color: var(--ink-3); text-transform: uppercase; margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-family: 'Newsreader', serif;
+    font-weight: 300;
+    font-size: 64px;
+    line-height: 1.02;
+    letter-spacing: -.025em;
+    margin: 0 0 24px;
+    max-width: 720px;
+  }
+  .hero h1 em { font-style: italic; font-weight: 400; color: var(--ink-2); }
+  .hero-sub {
+    font-size: 16px; line-height: 1.55; color: var(--ink-2);
+    max-width: 540px; margin: 0 0 36px;
+  }
+
+  .hero-meta {
+    display: flex; align-items: center; gap: 28px;
+    padding-top: 24px; border-top: 1px solid var(--rule-2);
+  }
+  .meta-item {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .meta-label {
+    font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .12em;
+    color: var(--ink-3); text-transform: uppercase;
+  }
+  .meta-value { font-size: 15px; font-weight: 500; }
+
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .06em;
+    color: var(--green); font-weight: 500;
+  }
+  .status-chip .dotx {
+    width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+    box-shadow: 0 0 0 0 currentColor; animation: ripple 1.8s ease-out infinite;
+  }
+  @keyframes ripple {
+    0% { box-shadow: 0 0 0 0 rgba(20,83,45,.5); }
+    100% { box-shadow: 0 0 0 7px rgba(20,83,45,0); }
+  }
+
+  .hotkey-card {
+    position: absolute; top: 60px; right: 56px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 22px 26px; background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+  .kbd {
+    font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;
+    padding: 8px 12px; border: 1px solid var(--rule); border-radius: 4px;
+    box-shadow: 0 2px 0 var(--rule);
+    min-width: 28px; text-align: center; color: var(--ink);
+  }
+  .kbd-plus { color: var(--ink-4); font-family: 'DM Mono', monospace; }
+
+  /* Main */
+  .main {
+    padding: 48px 56px 56px;
+  }
+  .section + .section { margin-top: 56px; padding-top: 48px; border-top: 1px solid var(--rule); }
+  .section-head {
+    display: flex; align-items: baseline; gap: 16px; margin-bottom: 28px;
+  }
+  .section-num {
+    font-family: 'DM Mono', monospace; font-size: 11px; color: var(--ink-4);
+    letter-spacing: .12em; min-width: 24px;
+  }
+  .section h2 {
+    font-family: 'Newsreader', serif;
+    font-weight: 400; font-size: 26px; letter-spacing: -.02em;
+    margin: 0;
+  }
+  .section h2 em { font-style: italic; color: var(--ink-2); font-weight: 300; }
+  .section-tag {
+    margin-left: auto; font-family: 'DM Mono', monospace;
+    font-size: 10px; color: var(--ink-3); letter-spacing: .12em; text-transform: uppercase;
+  }
+
+  /* Buttons */
+  .btn {
+    font: inherit; font-size: 13.5px; font-weight: 500;
+    padding: 9px 15px; border-radius: 3px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    line-height: 1.2; border: 1px solid transparent;
+    transition: all .12s ease;
+  }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-primary:hover { background: #242421; }
+  .btn-outline { background: var(--paper); color: var(--ink); border-color: var(--rule); }
+  .btn-outline:hover { border-color: var(--ink-4); }
+  .btn-ghost { background: transparent; color: var(--ink-2); }
+  .btn-ghost:hover { color: var(--ink); }
+  .btn-link { padding: 0; border: 0; background: transparent; color: var(--ink);
+    border-bottom: 1px solid var(--ink); cursor: pointer; font: inherit; font-size: 13.5px; }
+  .btn svg { width: 13px; height: 13px; stroke-width: 1.5; }
+
+  /* Account */
+  .account {
+    display: flex; align-items: center; gap: 18px;
+    padding: 22px; background: var(--paper-sunk);
+    border-radius: 4px; margin-bottom: 12px;
+  }
+  .av {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-family: 'Newsreader', serif; font-weight: 400; font-size: 22px;
+    background: linear-gradient(135deg, #f3f3ed, #e8e6e0); color: var(--ink);
+    border: 1px solid var(--rule);
+  }
+  .account-info { flex: 1; }
+  .account-name {
+    font-family: 'Newsreader', serif; font-weight: 400; font-size: 22px;
+    letter-spacing: -.01em; line-height: 1.2;
+  }
+  .account-handle { font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--ink-3); margin-top: 2px; }
+  .account-status { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--ink-2); }
+  .account-actions { display: flex; gap: 8px; }
+
+  /* Two-col grid */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+
+  /* Model selector */
+  .model-grid { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--rule); }
+  .model-row {
+    display: grid; grid-template-columns: 110px 1fr auto auto;
+    gap: 22px; align-items: center; padding: 16px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .model-key {
+    font-family: 'Newsreader', serif; font-size: 22px; font-weight: 400;
+    letter-spacing: -.02em;
+  }
+  .model-row.selected { background: linear-gradient(90deg, rgba(20,83,45,.04), transparent 60%); }
+  .model-row.selected .model-key::after {
+    content: " ●"; color: var(--green); font-size: 10px; vertical-align: middle;
+  }
+  .model-desc { font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+  .model-stats { font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--ink-3); }
+  .model-cta { display: flex; gap: 4px; }
+  .pill {
+    font-family: 'DM Mono', monospace; font-size: 10.5px;
+    padding: 3px 8px; border-radius: 3px; letter-spacing: .04em;
+    border: 1px solid var(--rule); color: var(--ink-2); background: var(--paper);
+  }
+  .pill.live { background: var(--green-soft); color: var(--green); border-color: rgba(20,83,45,.15); }
+  .pill.dl { color: var(--ink); }
+  .pill.empty { color: var(--ink-3); }
+
+  /* Contacts as table */
+  .contacts-table {
+    width: 100%; border-collapse: collapse; font-size: 13.5px;
+  }
+  .contacts-table th {
+    text-align: left; font-family: 'DM Mono', monospace; font-size: 10.5px;
+    color: var(--ink-3); font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+    padding: 8px 0; border-bottom: 1px solid var(--rule);
+  }
+  .contacts-table td {
+    padding: 14px 0; border-bottom: 1px solid var(--rule-2);
+    vertical-align: top;
+  }
+  .contacts-table tr:last-child td { border-bottom: 0; }
+  .contacts-table .c-name { font-weight: 500; }
+  .contacts-table .c-aliases { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--ink-2); }
+  .contacts-table .c-uid { font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--ink-3); }
+  .contacts-table .c-actions { text-align: right; }
+  .contacts-table .c-actions a { color: var(--ink-3); font-size: 12px; text-decoration: none; }
+  .contacts-table .c-actions a:hover { color: var(--ink); }
+
+  /* Activity log */
+  .log {
+    list-style: none; padding: 0; margin: 0;
+  }
+  .log li {
+    display: grid; grid-template-columns: 70px 1fr;
+    gap: 20px; padding: 12px 0;
+    border-bottom: 1px solid var(--rule-2);
+    align-items: baseline;
+  }
+  .log li:last-child { border-bottom: 0; }
+  .log-time { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--ink-3);
+    letter-spacing: .04em; }
+  .log-body { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+  .log-body b { font-weight: 500; color: var(--ink); }
+  .log-body em { font-family: 'Newsreader', serif; font-style: italic;
+    color: var(--ink); font-size: 14.5px; }
+  .log-body .badge {
+    display: inline-block; font-family: 'DM Mono', monospace; font-size: 10.5px;
+    padding: 1px 6px; border-radius: 3px; margin-right: 8px; letter-spacing: .04em;
+    border: 1px solid var(--rule);
+  }
+  .log-body .badge.sent { background: var(--green-soft); color: var(--green); border-color: rgba(20,83,45,.15); }
+  .log-body .badge.warn { background: #fef3c7; color: var(--amber); border-color: #fcd34d; }
+  .log-body .badge.info { color: var(--ink-3); }
+  .log-body .badge.err { background: #fee2e2; color: var(--red); border-color: #fecaca; }
+
+  /* Footer */
+  .footer {
+    padding: 22px 56px 30px;
+    border-top: 1px solid var(--rule);
+    display: flex; align-items: center; gap: 22px;
+    font-family: 'DM Mono', monospace; font-size: 11px; color: var(--ink-3);
+  }
+  .footer .right { margin-left: auto; display: flex; gap: 22px; }
+  .footer-link { color: var(--ink-3); text-decoration: none; }
+  .footer-link:hover { color: var(--ink); }
+
+  /* helpers */
+  .stack > * + * { margin-top: 10px; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  .spacer { flex: 1; }
+
+  /* small waveform */
+  .wf { display: inline-flex; align-items: center; gap: 2px; margin-left: 14px; }
+  .wf span {
+    width: 2px; background: var(--ink); border-radius: 1px;
+    animation: w 1.4s ease-in-out infinite;
+  }
+  .wf span:nth-child(1){animation-delay:0s;}
+  .wf span:nth-child(2){animation-delay:.1s;}
+  .wf span:nth-child(3){animation-delay:.2s;}
+  .wf span:nth-child(4){animation-delay:.15s;}
+  .wf span:nth-child(5){animation-delay:.05s;}
+  .wf span:nth-child(6){animation-delay:.25s;}
+  .wf span:nth-child(7){animation-delay:.18s;}
+  .wf span:nth-child(8){animation-delay:.12s;}
+  @keyframes w { 0%,100% { height: 4px; opacity: .4 } 50% { height: 18px; opacity: 1 } }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <div class="topbar">
+    <div class="topbar-dots"><span class="d"></span><span class="d"></span><span class="d"></span></div>
+    <div class="topbar-title"><b>Voicy</b> · settings</div>
+    <div class="topbar-right">v0.4.2 · 3.62 MB</div>
+  </div>
+
+  <section class="hero">
+    <div class="hero-eyebrow">— A voice helper for Telegram —</div>
+    <h1>Думаешь вслух —<br/>отправляется <em>сообщение.</em></h1>
+    <p class="hero-sub">Зажми сочетание клавиш, продиктуй кому и что — Voicy распознает, найдёт получателя в твоих контактах и отправит в Telegram. Без облака, без миддлвара.</p>
+
+    <div class="hero-meta">
+      <div class="meta-item">
+        <span class="meta-label">Status</span>
+        <span class="status-chip"><span class="dotx"></span>LISTENING<span class="wf"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Uptime</span>
+        <span class="meta-value mono">04:21:08</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Sent today</span>
+        <span class="meta-value mono">17 messages</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Model</span>
+        <span class="meta-value">whisper / <em class="serif-italic">base</em></span>
+      </div>
+    </div>
+
+    <div class="hotkey-card">
+      <span class="kbd">Alt</span>
+      <span class="kbd-plus">+</span>
+      <span class="kbd">X</span>
+    </div>
+  </section>
+
+  <div class="main">
+
+    <!-- 01 Account -->
+    <section class="section" style="border-top: 0; padding-top: 0;">
+      <div class="section-head">
+        <span class="section-num">§ 01</span>
+        <h2>Telegram <em>account</em></h2>
+        <span class="section-tag">MTProto · grammers</span>
+      </div>
+
+      <div class="account">
+        <div class="av">EA</div>
+        <div class="account-info">
+          <div class="account-name">Eldar Akhmetzyanov</div>
+          <div class="account-handle">@eldar_ay · +7 917 ••• ••••</div>
+          <div class="account-status">
+            <span class="status-chip"><span class="dotx"></span>SESSION ACTIVE</span>
+            <span class="mono" style="color: var(--ink-3); font-size: 11.5px;">DC2 · last sync 2 min ago</span>
+          </div>
+        </div>
+        <div class="account-actions">
+          <button class="btn btn-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h7v7"/></svg>
+            QR sign-in
+          </button>
+          <button class="btn btn-ghost">Switch account</button>
+          <button class="btn btn-ghost" style="color: var(--red);">Log out</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 Hotkey -->
+    <section class="section">
+      <div class="section-head">
+        <span class="section-num">§ 02</span>
+        <h2>Global <em>hotkey</em></h2>
+        <span class="section-tag">rdev · low-level hook</span>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <p style="margin: 0 0 18px; font-size: 14px; color: var(--ink-2); line-height: 1.55;">
+            Текущее сочетание перехватывается до того, как событие дойдёт до активного окна — работает поверх любого приложения.
+          </p>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+              Записать новое сочетание
+            </button>
+            <button class="btn btn-ghost">Сбросить</button>
+          </div>
+        </div>
+        <div style="padding: 24px; background: var(--paper-sunk); border-radius: 4px;">
+          <div style="font-family: 'DM Mono', monospace; font-size: 10.5px; letter-spacing: .12em; color: var(--ink-3); text-transform: uppercase; margin-bottom: 14px;">Current binding</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="kbd">Alt</span>
+            <span class="kbd-plus">+</span>
+            <span class="kbd">X</span>
+          </div>
+          <div style="font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--ink-3); margin-top: 14px;">
+            HOLD to record · RELEASE to send
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 Models -->
+    <section class="section">
+      <div class="section-head">
+        <span class="section-num">§ 03</span>
+        <h2>Speech <em>recognition</em></h2>
+        <span class="section-tag">whisper.cpp v1.8.4</span>
+      </div>
+      <div class="model-grid">
+        <div class="model-row">
+          <div class="model-key">tiny</div>
+          <div class="model-desc">Самая лёгкая. Подходит для быстрых коротких реплик на одном языке.</div>
+          <div class="model-stats">75 MB · 1.2× RT</div>
+          <div class="model-cta"><span class="pill">installed</span></div>
+        </div>
+        <div class="model-row selected">
+          <div class="model-key serif-italic">base</div>
+          <div class="model-desc">Сбалансированная модель. Хороший русский, поддерживает базовый код-свитчинг.</div>
+          <div class="model-stats">142 MB · 0.8× RT</div>
+          <div class="model-cta"><span class="pill live">● ACTIVE</span></div>
+        </div>
+        <div class="model-row">
+          <div class="model-key">small</div>
+          <div class="model-desc">Заметно лучше с шумом и редкими словами. Рекомендуется на десктопе.</div>
+          <div class="model-stats">466 MB · 0.5× RT</div>
+          <div class="model-cta"><span class="pill dl">73% ↓</span></div>
+        </div>
+        <div class="model-row">
+          <div class="model-key">medium</div>
+          <div class="model-desc">Для длинных диктовок и сложного аудио. Заметно нагружает CPU.</div>
+          <div class="model-stats">1.5 GB · 0.3× RT</div>
+          <div class="model-cta"><span class="pill empty">install</span></div>
+        </div>
+        <div class="model-row">
+          <div class="model-key">large-v3</div>
+          <div class="model-desc">Максимальное качество. 99 языков. Имеет смысл при наличии GPU/CUDA.</div>
+          <div class="model-stats">2.9 GB · 0.15× RT</div>
+          <div class="model-cta"><span class="pill empty">install</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 Contacts -->
+    <section class="section">
+      <div class="section-head">
+        <span class="section-num">§ 04</span>
+        <h2>Address <em>book</em></h2>
+        <span class="section-tag">5 contacts</span>
+      </div>
+      <table class="contacts-table">
+        <thead>
+          <tr><th style="width:36%">Name</th><th>Aliases (что произнести)</th><th>UID</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="c-name">Маша Петрова</td>
+            <td class="c-aliases">маша, машка, машенька</td>
+            <td class="c-uid">294018473</td>
+            <td class="c-actions"><a href="#">edit</a></td>
+          </tr>
+          <tr>
+            <td class="c-name">Кирилл Иванов</td>
+            <td class="c-aliases">кирилл, киря, кир, кирюха</td>
+            <td class="c-uid">184302918</td>
+            <td class="c-actions"><a href="#">edit</a></td>
+          </tr>
+          <tr>
+            <td class="c-name">Анна <span class="serif-italic" style="color: var(--ink-3); font-size: 13px;">(мама)</span></td>
+            <td class="c-aliases">мама, мамуля, ма, мать</td>
+            <td class="c-uid">402918374</td>
+            <td class="c-actions"><a href="#">edit</a></td>
+          </tr>
+          <tr>
+            <td class="c-name">Паша Серов</td>
+            <td class="c-aliases">паша, пашка, пашок</td>
+            <td class="c-uid">391827463</td>
+            <td class="c-actions"><a href="#">edit</a></td>
+          </tr>
+          <tr>
+            <td class="c-name">Дима Громов</td>
+            <td class="c-aliases">дима, димка, гром</td>
+            <td class="c-uid">482917364</td>
+            <td class="c-actions"><a href="#">edit</a></td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top: 16px;">
+        <button class="btn btn-link">+ Добавить контакт</button>
+      </div>
+    </section>
+
+    <!-- 05 Activity -->
+    <section class="section">
+      <div class="section-head">
+        <span class="section-num">§ 05</span>
+        <h2>Recent <em>activity</em></h2>
+        <span class="section-tag">live · 17 today</span>
+      </div>
+      <ul class="log">
+        <li>
+          <span class="log-time">14:38:21</span>
+          <span class="log-body"><span class="badge sent">SENT</span>→ <b>Маше</b> · <em>«еду через десять минут»</em></span>
+        </li>
+        <li>
+          <span class="log-time">14:38:18</span>
+          <span class="log-body"><span class="badge info">ASR</span>1.7 s audio → 312 ms · model <b>base</b></span>
+        </li>
+        <li>
+          <span class="log-time">14:37:45</span>
+          <span class="log-body"><span class="badge sent">SENT</span>→ <b>Кириллу</b> · <em>«окей записал»</em></span>
+        </li>
+        <li>
+          <span class="log-time">14:31:02</span>
+          <span class="log-body"><span class="badge warn">WARN</span>Контакт «сашке» не найден в адресной книге — сообщение отброшено</span>
+        </li>
+        <li>
+          <span class="log-time">14:28:50</span>
+          <span class="log-body"><span class="badge sent">SENT</span>→ <b>Маме</b> · <em>«позвоню вечером»</em></span>
+        </li>
+        <li>
+          <span class="log-time">14:12:18</span>
+          <span class="log-body"><span class="badge info">BOOT</span>Hotkey listener запущен · <b>Alt+X</b></span>
+        </li>
+        <li>
+          <span class="log-time">14:12:17</span>
+          <span class="log-body"><span class="badge info">BOOT</span>Telegram session восстановлена · 0 pending</span>
+        </li>
+      </ul>
+    </section>
+
+  </div>
+
+  <footer class="footer">
+    <span>Voicy · v0.4.2</span>
+    <span>—</span>
+    <span>built with Rust + wry</span>
+    <div class="right">
+      <a class="footer-link" href="#">Documentation</a>
+      <a class="footer-link" href="#">Open log file</a>
+      <a class="footer-link" href="#">Quit</a>
+    </div>
+  </footer>
+</div>
+
+</body>
+</html>

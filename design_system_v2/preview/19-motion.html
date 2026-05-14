@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — motion</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+  .panel { display: flex; flex-direction: column; gap: 12px; }
+  h3 { font-size: 12px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 0; }
+  .wave {
+    display: flex; align-items: center; gap: 6px; height: 56px;
+    padding: 0 16px; border-radius: var(--r-3);
+    background: var(--sage-soft); width: 200px;
+  }
+  .bar {
+    width: 4px; background: var(--moss); border-radius: 999px;
+    animation: vy-wave 1.6s var(--ease) infinite;
+  }
+  .bar:nth-child(1) { animation-delay: 0s; height: 18px; }
+  .bar:nth-child(2) { animation-delay: 0.1s; height: 28px; }
+  .bar:nth-child(3) { animation-delay: 0.2s; height: 38px; }
+  .bar:nth-child(4) { animation-delay: 0.3s; height: 32px; }
+  .bar:nth-child(5) { animation-delay: 0.4s; height: 22px; }
+  .bar:nth-child(6) { animation-delay: 0.5s; height: 14px; }
+  @keyframes vy-wave {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+  ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; line-height: 22px; }
+  li b { color: var(--ink); font-weight: 600; }
+  .ease {
+    height: 72px; border: 1px dashed var(--line); border-radius: var(--r-2);
+    position: relative; overflow: hidden;
+  }
+  .ease::after {
+    content: ""; position: absolute; top: 50%; left: 0; width: 18px; height: 18px;
+    margin-top: -9px; border-radius: 999px; background: var(--sage-deep);
+    animation: vy-slide 2.4s var(--ease) infinite;
+  }
+  @keyframes vy-slide {
+    0% { left: 8px; } 45% { left: calc(100% - 26px); }
+    55% { left: calc(100% - 26px); } 100% { left: 8px; }
+  }
+</style></head><body>
+<div class="panel">
+  <h3>Recording wave · 1.6s loop</h3>
+  <div class="wave">
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+  </div>
+  <div class="ease"></div>
+</div>
+<div class="panel">
+  <h3>Easing & durations</h3>
+  <ul>
+    <li><b>cubic-bezier(.2,.6,.2,1)</b> — everything</li>
+    <li><b>120ms</b> · hover, press</li>
+    <li><b>240ms</b> · panels, sheets</li>
+    <li><b>400ms</b> · the wave cycle</li>
+    <li>No spring. No bounce. No overshoot.</li>
+  </ul>
+</div>
+</body></html>

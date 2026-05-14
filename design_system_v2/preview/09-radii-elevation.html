@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — radii & elevation</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  h2 { font-size: 13px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 14px; }
+  .grid { display: flex; gap: 12px; align-items: flex-end; }
+  .r { width: 56px; height: 56px; background: var(--paper-2); border: 1px solid var(--line); display: grid; place-items: end center; font-family: var(--font-mono); font-size: 10px; color: var(--ink-2); padding-bottom: 4px; }
+  .elev {
+    margin-top: 6px;
+    width: 100%; height: 92px;
+    background: var(--paper); border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    display: grid; place-items: center;
+    font-size: 13px; color: var(--ink-2);
+  }
+  .elev.lift {
+    box-shadow: 0 1px 0 rgba(27,36,33,.04), 0 8px 24px -16px rgba(27,36,33,.12);
+  }
+  .lbl { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+</style></head><body>
+<div>
+  <h2>Corner radii</h2>
+  <div class="grid">
+    <div class="r" style="border-radius:6px;">6</div>
+    <div class="r" style="border-radius:10px;">10</div>
+    <div class="r" style="border-radius:14px;">14</div>
+    <div class="r" style="border-radius:20px;">20</div>
+    <div class="r" style="border-radius:999px;">●</div>
+  </div>
+  <div class="lbl">--r-1 · --r-2 · --r-3 · --r-4 · --r-pill</div>
+</div>
+<div>
+  <h2>Elevation — only one</h2>
+  <div class="elev">at rest · no shadow</div>
+  <div class="elev lift" style="margin-top:14px;">--shadow-1</div>
+  <div class="lbl">Borders carry weight. Shadow only on floating recording panel + primary-btn hover.</div>
+</div>
+</body></html>

@@ -1,0 +1,1433 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>voicy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+<style>
+:root {
+  /* === Voicy Design System tokens === */
+  --paper:        #F7F8F3;
+  --paper-2:      #EEF1E8;
+  --paper-3:      #E4E9DA;
+  --ink:          #1B2421;
+  --ink-2:        #4E5A55;
+  --ink-3:        #8A9690;
+  --line:         #DDE3D6;
+  --line-strong:  #C7D0BD;
+  --sage:         #A8C8A0;
+  --sage-soft:    #D6E6CF;
+  --sage-deep:    #5E8B62;
+  --moss:         #2F4A35;
+  --warn:         #C28B3E;
+  --warn-soft:    #F1E3C8;
+  --danger:       #B6604D;
+  --danger-soft:  #F0D7CF;
+
+  /* Legacy aliases для совместимости со старым кодом */
+  --page:        var(--paper);
+  --window:      var(--paper);
+  --surface:     var(--paper);
+  --row-alt:     var(--paper-2);
+  --hover:       var(--paper-2);
+  --hair:        var(--line);
+  --hair-soft:   var(--line);
+  --hair-vsoft:  var(--paper-2);
+  --ink-4:       var(--ink-3);
+  --accent:      var(--sage-deep);
+  --accent-deep: var(--moss);
+  --accent-soft: var(--sage);
+  --accent-bg:   var(--sage-soft);
+  --accent-ring: rgba(94,139,98,.26);
+  --warn-bg:     var(--danger-soft);
+
+  --sans:'Onest','Manrope','Inter',-apple-system,system-ui,sans-serif;
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --shadow: 0 1px 0 rgba(27,36,33,.04), 0 8px 24px -16px rgba(27,36,33,.12);
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --atmos: none;
+}
+[data-theme="dark"] {
+  --paper:        #1B221F;
+  --paper-2:      #232A26;
+  --paper-3:      #2D352F;
+  --ink:          #E7EDE3;
+  --ink-2:        #ACB7AA;
+  --ink-3:        #77807A;
+  --line:         #2D332D;
+  --line-strong:  #3A4339;
+  --sage:         #7CB887;
+  --sage-soft:    #2D4A33;
+  --sage-deep:    #ADD7B3;
+  --moss:         #D6E6CF;
+  --warn:         #D9A45A;
+  --danger:       #D67D71;
+  --warn-soft:    #3A2E1C;
+  --danger-soft:  #3A2622;
+  --shadow: 0 1px 0 rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.5);
+}
+*,*::before,*::after { box-sizing:border-box; }
+html,body { margin:0; padding:0; height:100%; background:var(--window); }
+body {
+  background:var(--window); color:var(--ink);
+  font-family:var(--sans); font-weight:400; font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased; height:100vh;
+  font-feature-settings:"ss01","cv11";
+  user-select:none; overflow:hidden;
+}
+
+/* ── theme toggle (внутри .top, рядом с tabs) ── */
+.ttoggle {
+  display:inline-flex; align-items:center; gap:2px;
+  padding:3px; background:var(--surface);
+  border:1px solid var(--hair-soft); border-radius:999px;
+  margin: 0 8px;
+  align-self:center;
+}
+.ttoggle button {
+  height:20px; width:24px; padding:0;
+  background:transparent; border:0; border-radius:999px;
+  color:var(--ink-3); display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer;
+}
+.ttoggle button.is-active {
+  background:var(--surface); color:var(--ink);
+  box-shadow:0 1px 2px rgba(0,0,0,.08);
+}
+.ttoggle button.is-active svg { color:var(--accent); }
+
+/* ── window ── */
+main { padding:0; height:100vh; display:flex; }
+.win {
+  background:var(--window); flex:1; min-width:0;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+.top {
+  display:grid; grid-template-columns:auto 1fr auto auto;
+  align-items:stretch; height:44px;
+  border-bottom:1px solid var(--hair-soft);
+  padding:0 4px 0 14px;
+  cursor:grab;
+}
+.top:active { cursor:grabbing; }
+.top .tab, .top .ctrls button, .top .ttoggle button { cursor:pointer; }
+.drag-area {
+  display:contents; cursor:grab;
+}
+.drag-pad {
+  grid-column:2; flex:1; align-self:stretch; cursor:grab;
+}
+.drag-pad:active { cursor:grabbing; }
+.brand {
+  display:inline-flex; align-items:center; gap:8px;
+  padding-right:14px; margin-right:4px;
+  border-right:1px solid var(--hair-soft);
+  cursor:grab;
+}
+.brand:active { cursor:grabbing; }
+.brand .nm { font-size:13px; font-weight:600; letter-spacing:-.01em; color:var(--ink); }
+.brand-mark { display:inline-flex; align-items:flex-end; gap:2px; height:11px; }
+.brand-mark i { width:2.5px; background:var(--accent); border-radius:1.5px; }
+.tabs {
+  display:flex; align-items:stretch; gap:2px; overflow:hidden;
+}
+.tab {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:0 11px; font-size:12.5px; font-weight:500;
+  color:var(--ink-3); border-bottom:2px solid transparent;
+  margin-bottom:-1px; cursor:pointer; letter-spacing:-.005em;
+  white-space:nowrap;
+}
+.tab:hover { color:var(--ink-2); }
+.tab.is-active { color:var(--ink); border-bottom-color:var(--accent); }
+.tab .num {
+  font-family:var(--mono); font-size:9.5px; color:var(--ink-3);
+  background:var(--hair-vsoft); border-radius:3px; padding:1px 4px;
+  font-variant-numeric:tabular-nums; font-weight:500;
+}
+.tab.is-active .num { background:var(--accent-bg); color:var(--accent-deep); }
+.ctrls { display:flex; align-items:center; gap:1px; }
+.ctrls button {
+  width:28px; height:28px; padding:0;
+  background:transparent; border:0; border-radius:5px;
+  color:var(--ink-3); cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center;
+}
+.ctrls button:hover { background:var(--hover); color:var(--ink); }
+.ctrls button.close:hover { background:var(--warn-bg); color:var(--warn); }
+
+/* ── pane ── */
+.pane { padding:4px 24px 22px; flex:1; overflow-y:auto; }
+.pane[hidden] { display:none; }
+.pane::-webkit-scrollbar { width:8px; }
+.pane::-webkit-scrollbar-thumb { background:var(--hair); border-radius:4px; }
+.pane::-webkit-scrollbar-thumb:hover { background:var(--ink-4); }
+.pane::-webkit-scrollbar-track { background:transparent; }
+.meta {
+  display:flex; align-items:baseline; justify-content:space-between;
+  padding:14px 0 6px; font-size:11.5px; color:var(--ink-3); gap:16px;
+}
+.meta b { color:var(--ink-2); font-weight:500; }
+.meta .right { display:inline-flex; align-items:center; gap:14px; }
+
+/* ── settings item ── */
+.list { display:flex; flex-direction:column; }
+.item, .model, .action-row {
+  display:grid; gap:14px;
+  border-bottom:1px solid var(--hair-soft);
+}
+.list .item:last-child, .list .model:last-child, .list .action-row:last-child {
+  border-bottom:0;
+}
+.item {
+  grid-template-columns:1fr auto;
+  align-items:center; min-height:52px; padding:12px 0;
+}
+.k { font-size:13.5px; font-weight:500; color:var(--ink); letter-spacing:-.005em; }
+.k .d {
+  display:block; font-size:12.5px; color:var(--ink-3);
+  font-weight:400; margin-top:2px; line-height:1.4; max-width:380px;
+}
+.v {
+  display:inline-flex; align-items:center; gap:12px;
+  font-size:13px; color:var(--ink-2);
+}
+.kbd {
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:22px; height:22px; padding:0 7px;
+  border-radius:5px; background:var(--surface);
+  border:1px solid var(--hair); color:var(--ink);
+  font-family:var(--mono); font-weight:500; font-size:11.5px;
+  box-shadow:0 1px 0 var(--hair-soft);
+}
+.kbd-plus { color:var(--ink-4); font-size:11px; margin:0 -2px; }
+.link {
+  color:var(--accent); font-size:12.5px; font-weight:500;
+  cursor:pointer; text-decoration:none;
+  border-bottom:1px solid transparent; padding-bottom:1px;
+  background:transparent; border-top:0; border-left:0; border-right:0;
+}
+.link:hover { border-bottom-color:var(--accent-soft); }
+.link-muted {
+  color:var(--ink-3); font-size:12.5px; cursor:pointer;
+  background:transparent; border:0; padding:0;
+}
+.link-muted:hover { color:var(--ink); }
+.val-mono {
+  font-family:var(--mono); font-size:12px; color:var(--ink-2);
+  font-variant-numeric:tabular-nums;
+}
+.toggle {
+  width:30px; height:18px; border-radius:999px;
+  background:var(--accent); position:relative;
+  transition:background .2s; cursor:pointer; display:inline-block;
+}
+.toggle::after {
+  content:""; position:absolute; top:2px; left:14px;
+  width:14px; height:14px; background:#fff; border-radius:50%;
+  box-shadow:0 1px 2px rgba(0,0,0,.18); transition:left .2s;
+}
+.toggle.off { background:var(--hair); }
+.toggle.off::after { left:2px; }
+
+.select {
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:13px; color:var(--ink); font-weight:500; cursor:pointer;
+}
+.select svg { color:var(--ink-3); }
+.nat-select {
+  appearance:none; -webkit-appearance:none;
+  background:transparent; border:0;
+  font-family:var(--sans); font-size:13px; font-weight:500;
+  color:var(--ink); padding:0 22px 0 0; cursor:pointer; outline:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9' fill='none' stroke='%237C857A' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M2 3.5L4.5 6 7 3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 2px center; background-size:9px;
+}
+.nat-select option { background:var(--window); color:var(--ink); }
+
+/* ── perf card (memory usage) ── */
+.perf {
+  display:grid; grid-template-columns:34px 1fr auto;
+  gap:14px; align-items:center;
+  padding:12px 14px; background:var(--surface);
+  border:1px solid var(--hair-soft); border-radius:10px; margin:6px 0 4px;
+}
+.perf-icon {
+  width:34px; height:34px; border-radius:9px;
+  background:var(--accent-bg); color:var(--accent);
+  display:flex; align-items:center; justify-content:center;
+}
+.perf-stat { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.perf-num {
+  font-family:var(--mono); font-size:15px; font-weight:600;
+  color:var(--ink); letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+}
+.perf-meta { font-size:11.5px; color:var(--ink-3); }
+.perf-bar { height:4px; background:var(--hair-vsoft); border-radius:2px; overflow:hidden; margin-top:6px; }
+.perf-bar-fill { height:100%; background:var(--accent); border-radius:2px; transition:width .35s ease; }
+
+/* ── section label ── */
+.section-label {
+  font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600;
+  padding:18px 0 8px; display:flex; align-items:center; gap:10px;
+}
+.section-label::after { content:""; flex:1; height:1px; background:var(--hair-soft); }
+.section-label .count {
+  color:var(--ink-4); font-variant-numeric:tabular-nums; font-weight:500;
+}
+
+/* ── model row ── */
+.model {
+  grid-template-columns:14px 1fr auto;
+  align-items:center; padding:13px 0;
+}
+.model .mk {
+  width:8px; height:8px; border-radius:50%;
+  background:transparent; border:1px solid var(--hair); margin-left:3px;
+}
+.model.is-active .mk {
+  background:var(--accent); border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-ring);
+}
+.model .info { min-width:0; }
+.model .row1 { display:flex; align-items:baseline; gap:10px; margin-bottom:3px; flex-wrap:wrap; }
+.model .nm { font-size:14px; font-weight:600; color:var(--ink); letter-spacing:-.01em; }
+.model .desc { font-size:12px; color:var(--ink-2); line-height:1.4; }
+.model .tags { display:flex; gap:12px; margin-top:5px; flex-wrap:wrap; }
+.model .tag { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--ink-3); font-weight:500; }
+.model .tag svg { color:var(--ink-4); }
+.model .action { text-align:right; white-space:nowrap; display:inline-flex; align-items:center; gap:10px; }
+.tiny-tag {
+  font-family:var(--mono); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent-deep); background:var(--accent-bg);
+  padding:3px 7px 2px; border-radius:3px; font-weight:600;
+}
+.tiny-tag.muted { background:var(--hair-vsoft); color:var(--ink-3); border:1px solid var(--hair-soft); }
+.ghost-action { color:var(--ink-3); font-size:12.5px; cursor:pointer; background:transparent; border:0; padding:0; }
+.ghost-action:hover { color:var(--warn); }
+.sz-action {
+  font-family:var(--mono); font-size:12px; color:var(--accent);
+  font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:5px;
+  cursor:pointer; font-weight:500; background:transparent; border:0; padding:0;
+}
+.sz-action:hover { color:var(--accent-deep); }
+
+/* ── action rows ── */
+.action-row {
+  grid-template-columns:30px 1fr auto;
+  align-items:center; padding:13px 0;
+}
+.action-row .ico {
+  width:30px; height:30px; border-radius:8px;
+  background:var(--hair-vsoft); color:var(--ink-3);
+  display:inline-flex; align-items:center; justify-content:center;
+}
+.action-row.is-on .ico { background:var(--accent-bg); color:var(--accent); }
+.action-row .row1 { display:flex; align-items:baseline; gap:10px; margin-bottom:3px; flex-wrap:wrap; }
+.action-row .nm { font-size:13.5px; font-weight:600; color:var(--ink); }
+.action-row .trigger { font-family:var(--mono); font-size:10.5px; color:var(--ink-3); }
+.action-row .trigger em { font-style:normal; color:var(--accent-deep); font-weight:500; }
+.action-row .desc { font-size:12px; color:var(--ink-2); }
+.action-row .action-ctl { display:inline-flex; align-items:center; gap:14px; }
+
+/* ── account block (Telegram tab) ── */
+.account-card {
+  display:grid; grid-template-columns:38px 1fr auto;
+  gap:14px; align-items:center;
+  padding:14px; background:var(--surface);
+  border:1px solid var(--hair-soft); border-radius:10px; margin:6px 0 0;
+}
+.account-avatar {
+  width:38px; height:38px; border-radius:50%;
+  background:linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color:#fff; display:grid; place-items:center;
+  font-weight:600; font-size:13px;
+}
+.account-info .name { font-size:14px; font-weight:600; color:var(--ink); }
+.account-info .handle { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:2px; }
+.account-actions { display:flex; gap:6px; }
+.btn {
+  font-family:var(--sans); font-size:12.5px; font-weight:500;
+  padding:7px 12px; border-radius:6px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:6px;
+  border:1px solid transparent; line-height:1.2;
+  transition:all .12s;
+}
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent-deep); }
+.btn-ghost { background:transparent; color:var(--ink-2); border-color:var(--hair); }
+.btn-ghost:hover { background:var(--hair-vsoft); color:var(--ink); }
+.btn-danger { background:transparent; color:var(--warn); border-color:var(--warn-bg); }
+.btn-danger:hover { background:var(--warn-bg); }
+
+/* ── contacts editor ── */
+.contact-row {
+  display:grid; grid-template-columns: minmax(0,140px) minmax(0,1fr) auto auto;
+  gap:8px; align-items:center; padding:8px 0;
+  border-bottom:1px solid var(--hair-soft);
+}
+.contact-row:last-child { border-bottom:0; }
+.contact-name-inp {
+  padding:6px 9px; height:30px; font-size:12.5px;
+  background:var(--surface); border:1px solid transparent;
+  font-family:var(--sans); color:var(--ink); border-radius:6px; outline:none;
+  user-select:text;
+}
+.contact-name-inp:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-ring); }
+.contact-uid {
+  font-family:var(--mono); font-size:10.5px; color:var(--ink-3); padding:0 6px;
+}
+.contact-del {
+  width:26px; height:26px; padding:0; border-radius:5px;
+  background:transparent; color:var(--ink-3); border:1px solid var(--hair);
+  font-size:13px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center;
+}
+.contact-del:hover { background:var(--warn-bg); color:var(--warn); border-color:var(--warn); }
+.contact-empty {
+  text-align:center; padding:18px 12px;
+  color:var(--ink-3); font-size:12.5px;
+  background:var(--surface); border:1px dashed var(--hair); border-radius:9px;
+}
+
+/* tag-input (YouTube-style chips) */
+.tag-input {
+  display:flex; flex-wrap:wrap; gap:5px; align-items:center;
+  background:var(--surface); border:1px solid transparent; border-radius:6px;
+  padding:4px 6px; min-height:30px; cursor:text;
+  transition:border-color .12s, box-shadow .12s;
+}
+.tag-input:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-ring); }
+.tag {
+  display:inline-flex; align-items:center; gap:2px;
+  background:var(--accent-bg); color:var(--accent-deep);
+  padding:2px 3px 2px 9px; border-radius:999px;
+  font-family:var(--sans); font-size:11.5px; font-weight:500;
+  animation:tag-pop .2s cubic-bezier(.34,1.56,.64,1);
+}
+.tag-x {
+  width:15px; height:15px; min-width:15px;
+  border-radius:50%; border:0; background:transparent;
+  color:var(--accent-deep); cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:12px; line-height:1; padding:0; margin:0 0 0 1px;
+}
+.tag-x:hover { background:var(--accent-soft); color:var(--ink); }
+.tag-bare {
+  flex:1; min-width:80px;
+  border:0; outline:0; background:transparent;
+  font-family:var(--mono); font-size:11.5px; padding:2px 3px;
+  color:var(--ink); user-select:text;
+}
+@keyframes tag-pop { from { opacity:0; transform:scale(.6);} to { opacity:1; transform:scale(1);} }
+
+/* ── model dropdown (in models tab) ── */
+.model-dd { position:relative; margin-top:8px; }
+.model-dd-trigger {
+  width:100%; display:flex; align-items:center; gap:12px;
+  padding:12px 14px; border-radius:10px;
+  background:linear-gradient(180deg, var(--accent-bg) 0%, var(--surface) 100%);
+  border:1px solid var(--accent-soft);
+  color:var(--ink); cursor:pointer;
+  font-family:var(--sans); font-weight:500;
+  text-align:left;
+}
+.model-dd.open .model-dd-trigger { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+.m-info { flex:1; min-width:0; }
+.m-name { display:block; font-size:14px; font-weight:600; color:var(--ink); }
+.m-sub { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-3); margin-top:3px; }
+.m-caret { font-size:13px; color:var(--ink-3); transition:transform .2s; }
+.model-dd.open .m-caret { transform:rotate(180deg); color:var(--accent); }
+.model-dd-panel {
+  position:absolute; top:100%; left:0; right:0; z-index:50;
+  background:var(--surface); border:1px solid var(--accent); border-top:0;
+  border-radius:0 0 10px 10px;
+  max-height:380px; overflow:auto;
+  box-shadow:0 18px 40px rgba(0,0,0,.12); padding:6px;
+}
+.model-dd-panel.hidden { display:none; }
+.dd-group-head {
+  font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-3); font-weight:700;
+  padding:10px 10px 4px; display:flex; justify-content:space-between;
+}
+.dd-group-head small { font-family:var(--mono); font-size:9.5px; color:var(--ink-4); }
+.dd-item {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px; border-radius:6px; cursor:pointer;
+  transition:background .1s;
+}
+.dd-item:hover { background:var(--hover); }
+.dd-item .dot { width:6px; height:6px; border-radius:50%; }
+.dd-item .dot.have { background:var(--accent); }
+.dd-item .dot.missing { background:var(--hair); }
+.dd-item .v { font-weight:500; font-size:13px; min-width:90px; }
+.dd-item .meta { font-family:var(--mono); font-size:11px; color:var(--ink-3); flex:1; min-width:0; }
+.dd-item .right { font-family:var(--mono); font-size:11px; color:var(--ink-2); white-space:nowrap; }
+
+/* ── activity log ── */
+.log-block {
+  font-family:var(--mono); font-size:11.5px; color:var(--ink-3);
+  background:var(--surface); border:1px solid var(--hair-soft);
+  padding:10px 12px; border-radius:8px;
+  white-space:pre-wrap; max-height:280px; overflow:auto;
+  user-select:text;
+}
+.activity-line { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2); min-height:18px; }
+
+/* ── badge (login state) ── */
+.badge {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 9px; border-radius:999px;
+  font-size:11.5px; font-weight:500;
+  background:var(--hair-vsoft); color:var(--ink-2);
+}
+.badge.active { background:var(--accent); color:#fff; }
+.badge.warn { background:var(--warn-bg); color:var(--warn); }
+.badge .dot { width:6px; height:6px; border-radius:50%; background:currentColor; animation:pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+/* ── dialogs ── */
+dialog {
+  border:0; border-radius:14px; background:var(--surface); color:var(--ink);
+  padding:24px 26px; max-width:420px;
+  box-shadow:0 24px 60px rgba(0,0,0,.25);
+  font-family:var(--sans);
+}
+dialog::backdrop { background:rgba(0,0,0,.4); }
+dialog h2 { font-size:17px; margin:0 0 4px; }
+dialog .step { font-size:12px; color:var(--ink-3); margin-bottom:14px; }
+dialog .msg { font-size:13px; color:var(--ink-2); margin-top:12px; min-height:18px; }
+dialog .msg.err { color:var(--warn); }
+dialog input {
+  width:100%; background:var(--window);
+  border:1px solid var(--hair); border-radius:7px;
+  padding:9px 11px; font-family:var(--mono); font-size:13px; color:var(--ink);
+  outline:none; user-select:text;
+}
+dialog input:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-ring); }
+dialog label {
+  display:block; font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3);
+  font-weight:600; margin:8px 0 4px;
+}
+.row-actions { display:flex; gap:8px; margin-top:14px; }
+
+/* dialog item list (TG dialogs) */
+.dlg-list {
+  max-height:340px; overflow:auto; margin-top:8px;
+  border:1px solid var(--hair-soft); border-radius:8px;
+  background:var(--window);
+}
+.dlg-list-item {
+  display:flex; align-items:center; gap:10px;
+  padding:9px 11px; border-bottom:1px solid var(--hair-vsoft);
+  cursor:pointer;
+}
+.dlg-list-item:last-child { border-bottom:0; }
+.dlg-list-item:hover { background:var(--accent-bg); }
+.dlg-list-item.added { opacity:.55; pointer-events:none; }
+.dlg-list-avatar {
+  width:28px; height:28px; border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+  color:#fff; display:grid; place-items:center; font-weight:600; font-size:11px;
+}
+.dlg-list-name { flex:1; min-width:0; }
+.dlg-list-name b { font-size:13px; font-weight:500; }
+.dlg-list-name small { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-3); }
+.dlg-list-add {
+  font-family:var(--mono); font-size:11px; color:var(--accent);
+  padding:3px 8px; border:1px solid var(--accent-bg); border-radius:5px;
+  background:var(--surface);
+}
+
+/* toast */
+.flash {
+  position:fixed; right:24px; bottom:24px;
+  background:var(--accent); color:#fff;
+  padding:8px 14px; border-radius:7px; font-size:12.5px;
+  box-shadow:0 8px 22px rgba(0,0,0,.18); z-index:200;
+  opacity:0; transform:translateY(8px); transition:opacity .2s, transform .2s;
+}
+.flash.show { opacity:1; transform:translateY(0); }
+
+.spin {
+  display:inline-block; width:11px; height:11px;
+  border:2px solid currentColor; border-top-color:transparent;
+  border-radius:50%; animation:spin 1s linear infinite; vertical-align:-2px;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.hidden { display:none !important; }
+
+/* ── модальная плашка «идёт загрузка модели» ── */
+.dl-banner {
+  position:fixed; inset:0; z-index:999;
+  background:rgba(22,33,21,.55);
+  display:flex; align-items:center; justify-content:center;
+}
+.dl-banner-card {
+  background:var(--surface); border:1px solid var(--accent-soft);
+  border-radius:14px; padding:24px 28px;
+  min-width:340px; max-width:480px;
+  box-shadow:0 24px 60px rgba(0,0,0,.35);
+  text-align:center;
+}
+.dl-banner-card .dl-spin {
+  width:36px; height:36px; margin:6px auto 14px;
+  border:3px solid var(--hair); border-top-color:var(--accent);
+  border-radius:50%; animation:spin 0.8s linear infinite;
+}
+.dl-banner-card h3 { font-size:15px; font-weight:600; margin-bottom:6px; color:var(--ink); }
+.dl-banner-card p { font-size:12.5px; color:var(--ink-3); margin-bottom:10px; line-height:1.5; }
+.dl-banner-card .progress-bar {
+  height:4px; background:var(--hair-vsoft); border-radius:2px; overflow:hidden;
+  margin-top:14px; position:relative;
+}
+.dl-banner-card .progress-bar::after {
+  content:""; position:absolute; left:-30%; top:0; bottom:0; width:30%;
+  background:linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation:progress-slide 1.4s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  0% { left:-30%; }
+  100% { left:100%; }
+}
+</style>
+</head>
+<body>
+
+<main>
+  <div class="win">
+    <div class="top">
+      <div class="brand" id="drag-brand">
+        <span class="brand-mark"><i style="height:45%"></i><i style="height:80%"></i><i style="height:60%"></i><i style="height:95%"></i></span>
+        <span class="nm">voicy</span>
+      </div>
+      <nav class="tabs" id="tabs">
+        <span class="tab is-active" data-tab="general">General</span>
+        <span class="tab" data-tab="models">Models</span>
+        <span class="tab" data-tab="telegram">Telegram <span class="num" id="tg-count">0</span></span>
+        <span class="tab" data-tab="history">History</span>
+      </nav>
+      <div class="ttoggle" role="tablist" aria-label="Theme">
+        <button data-theme-value="light" class="is-active" title="light">
+          <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <circle cx="6.5" cy="6.5" r="2.4"/>
+            <path d="M6.5 1.2v1.4M6.5 10.4v1.4M1.2 6.5h1.4M10.4 6.5h1.4M2.7 2.7l1 1M9.3 9.3l1 1M2.7 10.3l1-1M9.3 3.7l1-1"/>
+          </svg>
+        </button>
+        <button data-theme-value="dark" title="dark">
+          <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
+            <path d="M10.7 7.6A4.2 4.2 0 015.4 2.3a4.3 4.3 0 105.3 5.3z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="ctrls">
+        <button id="win-min" title="свернуть">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 6h7"/></svg>
+        </button>
+        <button class="close" id="win-close" title="закрыть">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ──────────── GENERAL ──────────── -->
+    <section class="pane" data-pane="general">
+      <div class="meta">
+        <span>Settings · basics</span>
+        <span class="right"><span id="brand-meta">v0.1.0 · — MB</span></span>
+      </div>
+
+      <div class="list">
+        <div class="item">
+          <div class="k">Listener
+            <span class="d" id="listener-hint">…</span>
+          </div>
+          <div class="v" id="listener-meta-wrap">
+            <span id="listener-meta"><span class="badge">проверяю…</span></span>
+            <button class="link" id="btn-listen-start">Start</button>
+            <button class="ghost-action hidden" id="btn-listen-stop">Stop</button>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k">Hotkey
+            <span class="d">Hold to record, release to send.</span>
+          </div>
+          <div class="v">
+            <span id="hotkey-display"><span class="kbd">Alt</span><span class="kbd-plus">+</span><span class="kbd">X</span></span>
+            <button class="link" id="btn-record-hotkey">change</button>
+            <button class="link-muted" id="btn-reset-hotkey">reset</button>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k">Recognition language
+            <span class="d">Язык для whisper. Авто-определение пока не поддерживается.</span>
+          </div>
+          <div class="v">
+            <select class="nat-select" id="rec-lang">
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+              <option value="auto">Auto</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k">Activity
+            <span class="d">Последнее событие пайплайна.</span>
+          </div>
+          <div class="v"><span id="activity" class="val-mono">—</span></div>
+        </div>
+
+        <div class="item">
+          <div class="k">App data
+            <span class="d">Конфиг, session, кэш диалогов и whisper-веса.</span>
+          </div>
+          <div class="v">
+            <span class="val-mono" id="appdir">…</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────────── MODELS ──────────── -->
+    <section class="pane" data-pane="models" hidden>
+      <div class="meta">
+        <span>Local · 16 models · no network calls</span>
+        <span class="right"><b id="active-model">…</b></span>
+      </div>
+
+      <div id="model-quality-hint" style="display:none; background:var(--warn-bg); color:var(--warn); padding:10px 12px; border-radius:8px; margin:8px 0 4px; font-size:12px; line-height:1.5;"></div>
+
+      <!-- Quick switcher dropdown -->
+      <div class="model-dd" id="model-dd">
+        <button class="model-dd-trigger" id="model-dd-trigger" type="button">
+          <div class="m-info">
+            <span class="m-name" id="m-current-name">…</span>
+            <span class="m-sub" id="m-current-sub">…</span>
+          </div>
+          <span class="m-caret">▾</span>
+        </button>
+        <div class="model-dd-panel hidden" id="model-dd-panel"></div>
+      </div>
+
+      <div class="section-label"><span>Loaded</span> <span class="count" id="cnt-loaded">0</span></div>
+      <div class="list" id="models-loaded"></div>
+
+      <div class="section-label"><span>Available for download</span> <span class="count" id="cnt-avail">0</span></div>
+      <div class="list" id="models-avail"></div>
+    </section>
+
+    <!-- ──────────── TELEGRAM ──────────── -->
+    <section class="pane" data-pane="telegram" hidden>
+      <div class="meta">
+        <span>Account &amp; contacts</span>
+        <span class="right" id="tg-meta-right">offline</span>
+      </div>
+
+      <div class="account-card">
+        <div class="account-avatar" id="account-avatar">?</div>
+        <div class="account-info">
+          <div class="name" id="account-name">Не залогинен</div>
+          <div class="handle" id="account-handle">войди для отправки сообщений</div>
+        </div>
+        <div class="account-actions">
+          <button class="btn btn-primary" id="btn-login-qr">QR</button>
+          <button class="btn btn-ghost" id="btn-login">Phone</button>
+          <button class="btn btn-danger hidden" id="btn-logout">Sign out</button>
+        </div>
+      </div>
+
+      <div class="section-label">
+        <span>Contacts</span>
+        <span class="count" id="contact-count">0</span>
+        <button class="link" id="btn-contact-import" style="margin-left:auto;border-bottom:0;">↓ из Telegram</button>
+        <button class="link" id="btn-contact-add" style="border-bottom:0;">+ добавить</button>
+      </div>
+      <div id="contacts-list" style="display:flex; flex-direction:column;"></div>
+      <p class="val-mono" style="margin:8px 0 0; font-size:10.5px; color:var(--ink-4);">
+        <span id="contacts-path">contacts.txt</span>
+      </p>
+    </section>
+
+    <!-- ──────────── HISTORY ──────────── -->
+    <section class="pane" data-pane="history" hidden>
+      <div class="meta">
+        <span>Activity log</span>
+        <span class="right" id="status-tail"></span>
+      </div>
+      <div class="log-block" id="log">—</div>
+    </section>
+
+  </div>
+</main>
+
+<!-- Login dialog -->
+<dialog id="dlg-login">
+  <h2>Telegram login</h2>
+  <div class="step" id="dlg-step">шаг 1/3 — номер телефона</div>
+  <div id="dlg-body">
+    <label>Номер телефона</label>
+    <input id="dlg-input" placeholder="+12345678901" />
+  </div>
+  <div class="row-actions">
+    <button class="btn btn-primary" id="dlg-action">Send code</button>
+    <button class="btn btn-ghost" id="dlg-cancel">Cancel</button>
+  </div>
+  <div class="msg" id="dlg-msg"></div>
+</dialog>
+
+<!-- QR dialog -->
+<dialog id="dlg-qr">
+  <h2>Telegram QR login</h2>
+  <div class="step">Открой Telegram → Settings → Devices → Link Desktop Device.</div>
+  <div id="dlg-qr-img" style="display:flex; justify-content:center; padding:14px; background:#fff; border-radius:8px; margin-top:10px;">
+    <span class="val-mono">генерирую…</span>
+  </div>
+  <div class="msg" id="dlg-qr-msg" style="margin-top:14px;"></div>
+  <div class="row-actions">
+    <button class="btn btn-ghost" id="dlg-qr-cancel">Cancel</button>
+  </div>
+</dialog>
+
+<!-- Import dialog -->
+<dialog id="dlg-import" style="max-width:480px;">
+  <h2>Импорт из Telegram</h2>
+  <div class="step">Выбери из недавних диалогов. Уже добавленные — серым.</div>
+  <input id="dlg-import-search" placeholder="фильтр по имени…" />
+  <div class="dlg-list" id="dlg-import-list">
+    <div class="contact-empty" style="border:0; background:transparent;">загружаю…</div>
+  </div>
+  <div class="row-actions">
+    <button class="btn btn-ghost" id="dlg-import-close">Готово</button>
+  </div>
+</dialog>
+
+<div class="flash" id="flash">✓ сохранено</div>
+
+<!-- Модальная плашка «идёт загрузка модели» -->
+<div class="dl-banner hidden" id="dl-banner">
+  <div class="dl-banner-card">
+    <div class="dl-spin"></div>
+    <h3 id="dl-banner-title">Загрузка модели…</h3>
+    <p id="dl-banner-sub">Качаю с HuggingFace. Может занять 1-3 минуты в зависимости от размера и скорости интернета.</p>
+    <div class="progress-bar"></div>
+  </div>
+</div>
+
+<script>
+// ── IPC core ──
+var _cb = {};
+// Долгие команды (download/диалоги) получают свой увеличенный таймаут.
+var LONG_TIMEOUT_CMDS = { model_download: 1800000, telegram_dialogs: 180000 };
+function callIpc(cmd, payload) {
+  return new Promise(function (resolve) {
+    var id = Math.random().toString(36).slice(2);
+    _cb[id] = resolve;
+    var t = LONG_TIMEOUT_CMDS[cmd] || 30000;
+    setTimeout(function () { if (_cb[id]) { _cb[id]({ok:false,error:"IPC timeout"}); delete _cb[id]; } }, t);
+    window.ipc.postMessage(JSON.stringify({id:id, cmd:cmd, payload:payload||{}}));
+  });
+}
+window.voicyReply = function (id, data) {
+  var cb = _cb[id]; if (cb) { cb(data); delete _cb[id]; }
+};
+window.voicyEvent = function (kind, data) {
+  if (kind === "log") appendLog(data);
+  if (kind === "activity") setActivity(data);
+};
+window.addEventListener("error", function (e) {
+  try { window.ipc.postMessage(JSON.stringify({id:"__err",cmd:"_jserror",payload:{msg:e.message,src:e.filename,line:e.lineno}})); } catch (_) {}
+});
+
+function appendLog(line) {
+  var el = document.getElementById("log");
+  var cur = el.textContent === "—" ? "" : el.textContent;
+  var next = (cur + (cur ? "\n" : "") + line).split("\n").slice(-50).join("\n");
+  el.textContent = next; el.scrollTop = el.scrollHeight;
+  var tail = document.getElementById("status-tail");
+  if (tail) tail.textContent = line;
+}
+function setActivity(text) {
+  var el = document.getElementById("activity");
+  if (el) el.textContent = text || "—";
+}
+function escapeAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
+function flashOK(text) {
+  var el = document.getElementById("flash");
+  el.textContent = text || "✓ сохранено";
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(function(){ el.classList.remove("show"); }, 1200);
+}
+
+function showDownloadBanner(modelName) {
+  var mod = _modelsCache.find(function(x){return x.name === modelName;});
+  var title = mod ? mod.display : modelName;
+  var size = mod ? mod.size : "?";
+  document.getElementById("dl-banner-title").textContent = "Загрузка " + title + "…";
+  document.getElementById("dl-banner-sub").textContent =
+    "Качаю с HuggingFace (~" + size + "). Может занять 1-3 минуты. " +
+    "После завершения модель автоматически активируется.";
+  document.getElementById("dl-banner").classList.remove("hidden");
+}
+function hideDownloadBanner() {
+  document.getElementById("dl-banner").classList.add("hidden");
+}
+
+// ── theme toggle + persistence ──
+function applyTheme(theme) {
+  if (theme !== "light" && theme !== "dark") theme = "light";
+  document.documentElement.setAttribute("data-theme", theme);
+  document.querySelectorAll(".ttoggle button").forEach(function (x) {
+    x.classList.toggle("is-active", x.getAttribute("data-theme-value") === theme);
+  });
+}
+document.querySelectorAll(".ttoggle button").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var v = b.getAttribute("data-theme-value");
+    applyTheme(v);
+    callIpc("theme_set", { theme: v });   // persist в voicy.toml
+  });
+});
+
+// ── tabs ──
+function activateTab(name) {
+  document.querySelectorAll(".tab").forEach(function(t){ t.classList.toggle("is-active", t.getAttribute("data-tab") === name); });
+  document.querySelectorAll(".pane").forEach(function(p){
+    if (p.getAttribute("data-pane") === name) p.removeAttribute("hidden");
+    else p.setAttribute("hidden", "");
+  });
+}
+document.getElementById("tabs").addEventListener("click", function (e) {
+  var t = e.target.closest(".tab"); if (!t) return;
+  var name = t.getAttribute("data-tab"); if (name) activateTab(name);
+});
+
+// ── window drag / min / close ──
+// Драг работает по ВСЕМУ хедеру кроме интерактивных элементов
+// (табы, кнопки управления окном, theme-toggle).
+document.addEventListener("mousedown", function (e) {
+  if (e.button !== 0 || !e.target || !e.target.closest) return;
+  if (e.target.closest(".tab, .ctrls button, .ttoggle button, input, button")) return;
+  if (e.target.closest(".top")) callIpc("_window_drag");
+});
+document.getElementById("win-min").addEventListener("click", function(){ callIpc("_window_minimize"); });
+document.getElementById("win-close").addEventListener("click", function(){ callIpc("_window_close"); });
+
+// ── state ──
+var _contacts = [];
+var _modelsCache = [];
+var _autoStartShownError = false;
+var _saveTimer = null;
+
+// ── refresh loop ──
+async function refresh() {
+  var info = await callIpc("info");
+  if (info.ui_theme) applyTheme(info.ui_theme);
+  document.getElementById("brand-meta").textContent = "v" + info.version + " · " + (info.exe_size_kb/1024).toFixed(2) + " MB";
+  document.getElementById("hotkey-display").innerHTML = renderHotkey(info.hotkey);
+  document.getElementById("appdir").textContent = (info.contacts_path || "").replace(/[\\\/]contacts\.txt$/, "");
+
+  var name = document.getElementById("account-name");
+  var handle = document.getElementById("account-handle");
+  var avatar = document.getElementById("account-avatar");
+  var logoutBtn = document.getElementById("btn-logout");
+  var tgMeta = document.getElementById("tg-meta-right");
+  if (info.signed_in) {
+    var label = info.username ? "@" + info.username : "id:" + info.user_id;
+    name.textContent = info.username ? info.username : ("Telegram " + info.user_id);
+    handle.textContent = label;
+    avatar.textContent = (info.username || "U").substring(0,2).toUpperCase();
+    logoutBtn.classList.remove("hidden");
+    tgMeta.innerHTML = '<span class="badge active">✓ online</span>';
+  } else {
+    name.textContent = "Не залогинен";
+    handle.textContent = "войди для отправки сообщений";
+    avatar.textContent = "?";
+    logoutBtn.classList.add("hidden");
+    tgMeta.innerHTML = '<span class="badge warn">offline</span>';
+  }
+
+  await refreshContacts();
+
+  var lst = await callIpc("listener_status");
+  // авто-старт пытается каждый refresh — listener_start идемпотентный
+  if (!lst.running) {
+    var ar = await callIpc("listener_start");
+    if (ar.ok) lst = await callIpc("listener_status");
+    else if (ar.error && !_autoStartShownError) {
+      _autoStartShownError = true;
+      appendLog("⚠ auto-start: " + ar.error);
+    }
+  }
+  var listenerMeta = document.getElementById("listener-meta");
+  var hint = document.getElementById("listener-hint");
+  var startBtn = document.getElementById("btn-listen-start");
+  var stopBtn = document.getElementById("btn-listen-stop");
+  if (lst.running) {
+    listenerMeta.innerHTML = '<span class="badge active"><span class="dot"></span>слушаю</span>';
+    hint.innerHTML = 'Зажми <span class="kbd">' + info.hotkey + '</span> и говори «напиши имя текст».';
+    startBtn.classList.add("hidden"); stopBtn.classList.remove("hidden");
+  } else {
+    listenerMeta.innerHTML = '<span class="badge">остановлен</span>';
+    hint.textContent = info.signed_in ? 'Авто-старт упал — попробуй Start вручную.' : 'Сначала войди в Telegram.';
+    startBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
+  }
+
+  _modelsCache = (await callIpc("models_list")).models || [];
+  renderModelDropdown();
+  renderModelLists();
+  document.getElementById("active-model").textContent = info.model;
+
+  // Подсказка про качество модели: если активна tiny — это плохо для русского.
+  var qualityHint = document.getElementById("model-quality-hint");
+  if (qualityHint) {
+    var m = _modelsCache.find(function(x){return x.name === info.model;});
+    if (m && m.name === "tiny") {
+      qualityHint.innerHTML = '⚠ <b>Whisper Tiny</b> — нижний предел качества. На тихом микрофоне путает имена и слова. Скачай <b>Base</b> (142 MB) или <b>Small</b> (466 MB) в Models — качество качественно выше.';
+      qualityHint.style.display = "block";
+    } else if (m && !m.runnable) {
+      // Active model не whisper — listener будет использовать fallback whisper.
+      var hasWhisper = _modelsCache.some(function(x){return x.engine === "whisper" && x.downloaded;});
+      if (!hasWhisper) {
+        qualityHint.innerHTML = '⚠ Активна модель <b>' + m.display + '</b>, но её inference в Rust не работает. Скачай <b>Whisper Base</b> для фактического распознавания.';
+      } else {
+        qualityHint.innerHTML = 'ℹ Активна <b>' + m.display + '</b> (только веса). Inference идёт через скачанный Whisper.';
+      }
+      qualityHint.style.display = "block";
+    } else {
+      qualityHint.style.display = "none";
+    }
+  }
+}
+
+function renderHotkey(s) {
+  if (!s) return '<span class="kbd">Alt</span><span class="kbd-plus">+</span><span class="kbd">X</span>';
+  var parts = s.split(" + ");
+  return parts.map(function(p,i){ return (i>0?'<span class="kbd-plus">+</span>':'') + '<span class="kbd">' + escapeAttr(p) + '</span>'; }).join('');
+}
+
+// ── contacts ──
+async function refreshContacts() {
+  // Если юзер сейчас печатает в поле — НЕ ре-рендерим. Иначе innerHTML
+  // ребилдится и недопечатанный текст теряется.
+  var active = document.activeElement;
+  if (active && active.classList && (
+        active.classList.contains("tag-bare") ||
+        active.classList.contains("name-input") ||
+        active.classList.contains("contact-name-inp"))) {
+    return;
+  }
+  var r = await callIpc("contacts_get");
+  if (!r.ok) return;
+  _contacts = r.contacts || [];
+  document.getElementById("contact-count").textContent = _contacts.length;
+  document.getElementById("tg-count").textContent = _contacts.length;
+  document.getElementById("contacts-path").textContent = r.path || "contacts.txt";
+  renderContacts();
+}
+function renderContacts() {
+  var box = document.getElementById("contacts-list");
+  if (!_contacts.length) {
+    box.innerHTML = '<div class="contact-empty">Контактов нет. Жми «+ добавить» или импортируй из Telegram.</div>';
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < _contacts.length; i++) {
+    var c = _contacts[i];
+    var aliases = c.aliases || [];
+    var tags = "";
+    for (var k = 0; k < aliases.length; k++) {
+      tags += '<span class="tag" data-idx="' + i + '" data-pos="' + k + '">' +
+        '<span>' + escapeAttr(aliases[k]) + '</span>' +
+        '<button class="tag-x" data-idx="' + i + '" data-pos="' + k + '">×</button></span>';
+    }
+    html +=
+      '<div class="contact-row" data-idx="' + i + '">' +
+        '<input class="contact-name-inp name-input" data-idx="' + i + '" value="' + escapeAttr(c.name) + '" placeholder="Имя" />' +
+        '<div class="tag-input" data-idx="' + i + '">' + tags +
+          '<input class="tag-bare" data-idx="' + i + '" placeholder="алиас + Enter…" /></div>' +
+        '<span class="contact-uid">·' + c.uid + '</span>' +
+        '<button class="contact-del" data-idx="' + i + '" title="удалить">×</button>' +
+      '</div>';
+  }
+  box.innerHTML = html;
+}
+function scheduleSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveContactsNow, 400);
+}
+async function saveContactsNow() {
+  var r = await callIpc("contacts_save", { contacts: _contacts });
+  if (r.ok) flashOK();
+  else appendLog("contacts_save: " + (r.error || "?"));
+}
+document.addEventListener("input", function (e) {
+  var t = e.target;
+  if (!t || !t.classList) return;
+  if (t.classList.contains("name-input")) {
+    var i = +t.getAttribute("data-idx");
+    if (_contacts[i]) { _contacts[i].name = t.value; scheduleSave(); }
+  }
+  if (t.id === "dlg-import-search") renderDialogList(t.value);
+});
+document.addEventListener("keydown", function (e) {
+  var t = e.target;
+  if (!t || !t.classList || !t.classList.contains("tag-bare")) return;
+  var i = +t.getAttribute("data-idx");
+  if (isNaN(i) || !_contacts[i]) return;
+  if (e.key === "Enter" || e.key === ",") {
+    e.preventDefault();
+    var v = t.value.trim().replace(/,+$/, "");
+    if (!v) return;
+    var lower = v.toLowerCase();
+    var existing = (_contacts[i].aliases || []).map(function(a){return a.toLowerCase();});
+    if (existing.indexOf(lower) >= 0) { t.value = ""; return; }
+    _contacts[i].aliases = (_contacts[i].aliases || []).concat([v]);
+    renderContacts();
+    var inp = document.querySelector('.tag-bare[data-idx="' + i + '"]');
+    if (inp) inp.focus();
+    saveContactsNow();
+  } else if (e.key === "Backspace" && t.value === "") {
+    if (_contacts[i].aliases && _contacts[i].aliases.length) {
+      _contacts[i].aliases.pop();
+      renderContacts();
+      var inp2 = document.querySelector('.tag-bare[data-idx="' + i + '"]');
+      if (inp2) inp2.focus();
+      saveContactsNow();
+    }
+  }
+});
+
+// ── model dropdown ──
+var _selectedVariant = {};
+function activeOrDefault() {
+  for (var i = 0; i < _modelsCache.length; i++) if (_modelsCache[i].active) return _modelsCache[i];
+  return _modelsCache[0];
+}
+function renderModelDropdown() {
+  if (!_modelsCache.length) return;
+  var cur = activeOrDefault();
+  document.getElementById("m-current-name").textContent = cur.display;
+  var lbl = cur.runnable ? "inference" : "weights only";
+  document.getElementById("m-current-sub").textContent = cur.engine + " · " + lbl + " · " + cur.size + " · " + cur.lang;
+
+  var groups = []; var seen = {};
+  for (var i = 0; i < _modelsCache.length; i++) {
+    var m = _modelsCache[i];
+    if (!seen[m.family]) { seen[m.family] = []; groups.push(m.family); }
+    seen[m.family].push(m);
+  }
+  var html = "";
+  for (var g = 0; g < groups.length; g++) {
+    var fam = groups[g]; var variants = seen[fam];
+    var runs = variants[0].engine === "whisper";
+    html += '<div class="dd-group-head">' + escapeAttr(fam) + '<small>' + (runs ? "inference works" : variants[0].engine + " · weights only") + '</small></div>';
+    for (var k = 0; k < variants.length; k++) {
+      var v = variants[k];
+      var right = v.active ? '<span class="right" style="color:var(--accent);">✓ active</span>' :
+        (v.downloaded ? '<span class="right">✓ ready</span>' : '<span class="right">download</span>');
+      html += '<div class="dd-item" data-name="' + v.name + '">' +
+        '<span class="dot ' + (v.downloaded?"have":"missing") + '"></span>' +
+        '<span class="v">' + escapeAttr(v.variant) + '</span>' +
+        '<span class="meta">' + v.size + ' · ' + v.lang + ' — ' + escapeAttr(v.desc) + '</span>' +
+        right + '</div>';
+    }
+  }
+  document.getElementById("model-dd-panel").innerHTML = html;
+}
+function toggleModelDropdown(force) {
+  var dd = document.getElementById("model-dd");
+  var panel = document.getElementById("model-dd-panel");
+  var open = force === undefined ? !dd.classList.contains("open") : force;
+  if (open) { dd.classList.add("open"); panel.classList.remove("hidden"); }
+  else { dd.classList.remove("open"); panel.classList.add("hidden"); }
+}
+document.addEventListener("click", function (e) {
+  if (!e.target.closest || !e.target.closest("#model-dd")) toggleModelDropdown(false);
+});
+
+// ── model lists (loaded / available) ──
+function renderModelLists() {
+  var loaded = []; var avail = [];
+  for (var i = 0; i < _modelsCache.length; i++) {
+    var m = _modelsCache[i];
+    (m.downloaded ? loaded : avail).push(m);
+  }
+  document.getElementById("cnt-loaded").textContent = loaded.length;
+  document.getElementById("cnt-avail").textContent = avail.length;
+  document.getElementById("models-loaded").innerHTML = loaded.map(renderModelRow).join("");
+  document.getElementById("models-avail").innerHTML = avail.map(renderModelRow).join("");
+}
+function renderModelRow(m) {
+  var tagMulti = '<span class="tag"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5.5" cy="5.5" r="4"/><path d="M1.5 5.5h8"/><path d="M5.5 1.5C7 3 7.5 4.5 7.5 5.5S7 8 5.5 9.5"/><path d="M5.5 1.5C4 3 3.5 4.5 3.5 5.5S4 8 5.5 9.5"/></svg><span>' + (m.lang === "multi" ? "Multilingual" : m.lang === "ru" ? "Russian only" : "English only") + '</span></span>';
+  var action;
+  if (m.active) action = '<span class="tiny-tag">active</span>';
+  else if (m.downloaded) action = '<button class="link" data-act="activate" data-name="' + m.name + '">choose</button>';
+  else action = '<button class="sz-action" data-act="download" data-name="' + m.name + '"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 1.5v6M3 5l2.5 2.5L8 5M2 9.5h7"/></svg>' + m.size + '</button>';
+  return '<div class="model' + (m.active?" is-active":"") + '">' +
+    '<span class="mk"></span>' +
+    '<div class="info">' +
+      '<div class="row1"><span class="nm">' + escapeAttr(m.display) + '</span></div>' +
+      '<div class="desc">' + escapeAttr(m.desc) + '</div>' +
+      '<div class="tags">' + tagMulti + '</div>' +
+    '</div>' +
+    '<div class="action">' + action + '</div>' +
+  '</div>';
+}
+
+// ── main click handler ──
+document.addEventListener("click", async function (e) {
+  var t = e.target; if (!t) return;
+  // model dropdown trigger / item
+  if (t.id === "model-dd-trigger" || (t.closest && t.closest("#model-dd-trigger"))) {
+    e.stopPropagation(); toggleModelDropdown(); return;
+  }
+  if (t.closest && t.closest(".dd-item")) {
+    var item = t.closest(".dd-item");
+    var nm = item.getAttribute("data-name");
+    e.stopPropagation();
+    item.querySelector(".right").innerHTML = '<span class="spin"></span>';
+    var mod = _modelsCache.find(function(x){return x.name === nm;});
+    if (mod && !mod.downloaded) {
+      showDownloadBanner(nm);
+      var dr = await callIpc("model_download", { name: nm });
+      hideDownloadBanner();
+      if (!dr.ok) { alert("download fail: " + dr.error); refresh(); return; }
+    }
+    var ar = await callIpc("model_activate", { name: nm });
+    if (!ar.ok) { alert(ar.error || "activate fail"); refresh(); return; }
+    toggleModelDropdown(false); refresh(); return;
+  }
+  // action buttons in model lists
+  // Поднимаемся до ближайшего элемента с data-act (клик может попасть на <svg> внутри кнопки)
+  var actBtn = t.closest && t.closest("[data-act]");
+  if (actBtn) {
+    var act = actBtn.getAttribute("data-act");
+    var nm = actBtn.getAttribute("data-name");
+    if (act === "download") {
+      showDownloadBanner(nm);
+      actBtn.disabled = true; actBtn.innerHTML = '<span class="spin"></span>';
+      var r = await callIpc("model_download", { name: nm });
+      hideDownloadBanner();
+      if (!r.ok) alert("download fail: " + r.error);
+      refresh(); return;
+    }
+    if (act === "activate") {
+      actBtn.disabled = true; actBtn.textContent = "…";
+      await callIpc("model_activate", { name: nm });
+      refresh(); return;
+    }
+  }
+  // listener
+  if (t.id === "btn-listen-start") {
+    t.disabled = true; var rs = await callIpc("listener_start");
+    if (!rs.ok) alert(rs.error || "fail"); refresh(); return;
+  }
+  if (t.id === "btn-listen-stop") { await callIpc("listener_stop"); refresh(); return; }
+  // hotkey
+  if (t.id === "btn-record-hotkey") { startHotkeyCapture(); return; }
+  if (t.id === "btn-reset-hotkey") { await callIpc("hotkey_set", { modifiers:["alt"], key:"x" }); refresh(); return; }
+  // login
+  if (t.id === "btn-login-qr") { openQrDialog(); return; }
+  if (t.id === "btn-login")    { openLoginDialog(); return; }
+  if (t.id === "btn-logout")   { if (confirm("Выйти из Telegram?")) { await callIpc("logout"); refresh(); } return; }
+  // dialog buttons
+  if (t.id === "dlg-action")    { await onDialogAction(); return; }
+  if (t.id === "dlg-cancel")    { document.getElementById("dlg-login").close(); return; }
+  if (t.id === "dlg-qr-cancel") { qrCancelled = true; document.getElementById("dlg-qr").close(); return; }
+  // contacts add / import / delete / tag-x
+  if (t.id === "btn-contact-add") {
+    var uidStr = prompt("Telegram user id (число):");
+    var uid = parseInt(uidStr, 10);
+    if (!uid || isNaN(uid)) return;
+    _contacts.push({uid:uid, name:"Новый", aliases:[]});
+    renderContacts(); saveContactsNow(); return;
+  }
+  if (t.id === "btn-contact-import") { openImportDialog(); return; }
+  if (t.id === "dlg-import-close")   { document.getElementById("dlg-import").close(); return; }
+  if (t.classList && t.classList.contains("contact-del")) {
+    var idx = +t.getAttribute("data-idx");
+    var c = _contacts[idx];
+    if (c && confirm('Удалить «' + (c.name || c.uid) + '»?')) {
+      _contacts.splice(idx, 1); renderContacts(); saveContactsNow();
+    }
+    return;
+  }
+  if (t.classList && t.classList.contains("tag-x")) {
+    var ci = +t.getAttribute("data-idx");
+    var cp = +t.getAttribute("data-pos");
+    if (!isNaN(ci) && !isNaN(cp) && _contacts[ci] && _contacts[ci].aliases) {
+      _contacts[ci].aliases.splice(cp, 1);
+      renderContacts(); saveContactsNow();
+    }
+    return;
+  }
+  // dialog list item (import)
+  var di = t.closest && t.closest(".dlg-list-item");
+  if (di && !di.classList.contains("added")) {
+    var uid2 = parseInt(di.getAttribute("data-uid"), 10);
+    var nm2 = di.getAttribute("data-name") || ("id" + uid2);
+    if (_contacts.some(function(c){return c.uid===uid2;})) return;
+    _contacts.push({uid:uid2, name:nm2, aliases:[nm2.toLowerCase()]});
+    di.classList.add("added");
+    var addEl = di.querySelector(".dlg-list-add"); if (addEl) addEl.textContent = "added";
+    renderContacts(); saveContactsNow();
+  }
+});
+
+// ── login dialog (phone+code+2fa) ──
+var loginStep = "phone";
+function openLoginDialog() {
+  loginStep = "phone";
+  document.getElementById("dlg-step").textContent = "шаг 1/3 — номер телефона";
+  document.getElementById("dlg-body").innerHTML = '<label>Номер телефона</label><input id="dlg-input" placeholder="+12345678901" />';
+  var ac = document.getElementById("dlg-action"); ac.textContent = "Send code"; ac.disabled = false;
+  var msg = document.getElementById("dlg-msg"); msg.textContent = ""; msg.className = "msg";
+  document.getElementById("dlg-login").showModal();
+  setTimeout(function(){ var i = document.getElementById("dlg-input"); if (i) i.focus(); }, 50);
+}
+async function onDialogAction() {
+  var inp = document.getElementById("dlg-input");
+  var msg = document.getElementById("dlg-msg");
+  var ac = document.getElementById("dlg-action");
+  ac.disabled = true; msg.className = "msg"; msg.textContent = "жди…";
+  if (loginStep === "phone") {
+    var r = await callIpc("login_phone", {phone:inp.value.trim()});
+    ac.disabled = false;
+    if (r.ok) {
+      loginStep = "code";
+      document.getElementById("dlg-step").textContent = "шаг 2/3 — код из Telegram";
+      document.getElementById("dlg-body").innerHTML = '<label>Код</label><input id="dlg-input" placeholder="12345" inputmode="numeric" />';
+      ac.textContent = "Sign in"; msg.textContent = "";
+      setTimeout(function(){ var i = document.getElementById("dlg-input"); if (i) i.focus(); }, 50);
+    } else { msg.className = "msg err"; msg.textContent = "✗ " + r.error; }
+    return;
+  }
+  if (loginStep === "code") {
+    var rc = await callIpc("login_code", {code:inp.value.trim()});
+    ac.disabled = false;
+    if (rc.ok) { document.getElementById("dlg-login").close(); refresh(); }
+    else if (rc.need_2fa) {
+      loginStep = "pwd";
+      document.getElementById("dlg-step").textContent = "шаг 3/3 — 2FA пароль";
+      document.getElementById("dlg-body").innerHTML = '<label>Cloud password</label><input id="dlg-input" type="password" />';
+      ac.textContent = "Unlock"; msg.textContent = "";
+      setTimeout(function(){ var i = document.getElementById("dlg-input"); if (i) i.focus(); }, 50);
+    } else { msg.className = "msg err"; msg.textContent = "✗ " + rc.error; }
+    return;
+  }
+  if (loginStep === "pwd") {
+    var rp = await callIpc("login_password", {password:inp.value});
+    ac.disabled = false;
+    if (rp.ok) { document.getElementById("dlg-login").close(); refresh(); }
+    else { msg.className = "msg err"; msg.textContent = "✗ " + rp.error; }
+  }
+}
+
+// ── QR login ──
+var qrCancelled = false;
+async function openQrDialog() {
+  qrCancelled = false;
+  var img = document.getElementById("dlg-qr-img"); var msg = document.getElementById("dlg-qr-msg");
+  img.innerHTML = '<span class="val-mono">генерирую QR…</span>'; msg.textContent = ""; msg.className = "msg";
+  document.getElementById("dlg-qr").showModal();
+  var r = await callIpc("login_qr_start");
+  if (!r.ok) { msg.className = "msg err"; msg.textContent = "✗ " + (r.error || "qr error"); return; }
+  img.innerHTML = '<img src="' + r.qr_data_url + '" width="220" height="220" alt="QR">';
+  msg.textContent = "Жду сканирования…";
+  for (var i = 0; i < 600; i++) {
+    if (qrCancelled) return;
+    await new Promise(function(res){ setTimeout(res, 1000); });
+    if (qrCancelled) return;
+    var s = await callIpc("login_qr_status");
+    if (s.status === "authorized") {
+      msg.textContent = "✓ залогинен";
+      setTimeout(function(){ document.getElementById("dlg-qr").close(); refresh(); }, 800);
+      return;
+    }
+    if (s.status === "2fa") {
+      msg.textContent = "2FA — переключаюсь на phone+code…";
+      setTimeout(function(){ document.getElementById("dlg-qr").close(); openLoginDialog(); }, 1500);
+      return;
+    }
+    if (s.status && s.status.indexOf("error:") === 0) {
+      msg.className = "msg err"; msg.textContent = "✗ " + s.status; return;
+    }
+  }
+  msg.className = "msg err"; msg.textContent = "Таймаут. Попробуй снова.";
+}
+
+// ── hotkey capture ──
+function startHotkeyCapture() {
+  var el = document.getElementById("hotkey-display");
+  el.innerHTML = '<span class="val-mono" style="color:var(--accent);">нажми сочетание…</span>';
+  function onKey(e) {
+    e.preventDefault();
+    var mods = [];
+    if (e.ctrlKey)  mods.push("ctrl");
+    if (e.altKey)   mods.push("alt");
+    if (e.shiftKey) mods.push("shift");
+    if (e.metaKey)  mods.push("win");
+    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (["Control","Alt","Shift","Meta","OS"].indexOf(e.key) !== -1) return;
+    if (!mods.length) { el.innerHTML = '<span class="val-mono" style="color:var(--warn);">нужен модификатор</span>'; return; }
+    callIpc("hotkey_set", {modifiers:mods, key:k}).then(function(){
+      window.removeEventListener("keydown", onKey, true);
+      refresh();
+    });
+  }
+  window.addEventListener("keydown", onKey, true);
+}
+
+// ── import dialog (TG dialogs) ──
+var _dialogs = [];
+async function openImportDialog() {
+  document.getElementById("dlg-import").showModal();
+  document.getElementById("dlg-import-search").value = "";
+  var list = document.getElementById("dlg-import-list");
+  list.innerHTML = '<div class="contact-empty" style="border:0;background:transparent;">загружаю диалоги…</div>';
+  var r = await callIpc("telegram_dialogs");
+  if (!r.ok) { list.innerHTML = '<div class="contact-empty" style="border:0;color:var(--warn);">✗ ' + (r.error||"ошибка") + '</div>'; return; }
+  _dialogs = r.dialogs || [];
+  renderDialogList("");
+}
+function renderDialogList(filter) {
+  var list = document.getElementById("dlg-import-list"); list.innerHTML = "";
+  var f = (filter||"").toLowerCase();
+  var existing = {}; for (var k = 0; k < _contacts.length; k++) existing[_contacts[k].uid] = true;
+  var any = false;
+  for (var i = 0; i < _dialogs.length; i++) {
+    var d = _dialogs[i];
+    if (f && d.name.toLowerCase().indexOf(f) < 0 && (!d.username || d.username.toLowerCase().indexOf(f) < 0)) continue;
+    any = true;
+    var ini = (d.name || "?").trim().split(/\s+/).map(function(w){return w[0]||"";}).join("").slice(0,2).toUpperCase();
+    var added = !!existing[d.uid];
+    var item = document.createElement("div");
+    item.className = "dlg-list-item" + (added ? " added" : "");
+    item.setAttribute("data-uid", String(d.uid));
+    item.setAttribute("data-name", d.name);
+    item.innerHTML =
+      '<div class="dlg-list-avatar">' + ini + '</div>' +
+      '<div class="dlg-list-name"><b>' + escapeAttr(d.name) + '</b><small>' + (d.username ? "@"+d.username+" · " : "") + d.uid + '</small></div>' +
+      '<span class="dlg-list-add">' + (added ? "added" : "add") + '</span>';
+    list.appendChild(item);
+  }
+  if (!any) list.innerHTML = '<div class="contact-empty" style="border:0;background:transparent;">ничего не найдено</div>';
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,61 @@
+[package]
+name = "voicy"
+version = "0.1.0"
+edition = "2021"
+default-run = "voicy"
+build = "build.rs"
+
+[[bin]]
+name = "voicy"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+dirs = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+cpal = "0.15"
+hound = "3.5"
+parking_lot = "0.12"
+rdev = "0.5"
+ureq = { version = "2.10", features = ["tls"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "fs"] }
+grammers-client = "0.7"
+grammers-session = "0.7"
+tao = "0.30"
+wry = { version = "0.45", features = ["devtools"] }
+axum = "0.7"
+tower = "0.5"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+base64 = "0.22"
+url = "2"
+image = { version = "0.25", default-features = false, features = ["ico"] }
+arboard = { version = "3", default-features = false }
+# Parakeet inference — Handy использует тот же стек.
+# Feature `onnx` тянет ort + ndarray + rustfft.
+transcribe-rs = { version = "0.3", default-features = false, features = ["onnx"] }
+# ort с дефолтным `download-binaries` — pyke качает MSVC-prebuilt onnxruntime
+# на compile-time и линкует. Как у Handy. Раньше был load-dynamic для gnullvm,
+# но MSVC-target позволяет натвиную линковку без DLL-плясок.
+ort = { version = "=2.0.0-rc.12", features = ["ndarray"] }
+
+# Подключим следующим стейджем:
+# grammers-client = "0.6"  # telegram MTProto
+# tao = "0.30"             # window/overlay
+# wry = "0.42"             # webview
+
+[profile.release]
+opt-level = "z"     # минимизация размера
+lto = true          # link-time optimization
+codegen-units = 1   # больше шансов на оптимизацию
+strip = true        # выкинуть debug info
+# panic = "abort" убирал unwinding и убивал процесс на любой панике в фоновом
+# таске. Например: grammers 0.7 паникует «self_id before it's known» в
+# hash_cache, если update от сервера приходит до set_self_user — это
+# роняло всё приложение. С unwind tokio::spawn ловит панику и нить-task
+# просто завершится с ошибкой, не убив главный поток.
+panic = "unwind"

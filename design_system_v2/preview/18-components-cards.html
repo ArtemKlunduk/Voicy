@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — cards & surfaces</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--r-3);
+    padding: 14px 16px 16px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .card.recessed { background: var(--paper-2); }
+  .card.lift { box-shadow: var(--shadow-1); }
+  .label { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+  .title { font-size: 14px; font-weight: 600; color: var(--ink); }
+  .body { font-size: 12px; color: var(--ink-2); line-height: 18px; }
+  .badge {
+    display: inline-flex; align-items: center; padding: 2px 8px;
+    border-radius: 999px; background: var(--sage-soft); color: var(--moss);
+    font-size: 11px; font-weight: 500; align-self: flex-start;
+  }
+</style></head><body>
+<div class="card">
+  <span class="label">card · default</span>
+  <div class="title">Мама</div>
+  <div class="body">Последнее: 2 ч назад</div>
+</div>
+<div class="card recessed">
+  <span class="label">card · recessed</span>
+  <div class="title">Совет</div>
+  <div class="body">Зажми клавишу, не нажимай коротко.</div>
+</div>
+<div class="card lift">
+  <span class="badge">offline</span>
+  <span class="label">card · floating</span>
+  <div class="title">Распознано локально</div>
+  <div class="body">В облако ничего не уходит.</div>
+</div>
+</body></html>

@@ -1,0 +1,22 @@
+/target
+
+# Runtime data (создаётся рядом с exe)
+*.session
+*.session-journal
+voicy_dialogs.cache
+voicy_capture.wav
+voicy.toml
+hotkey.json
+contacts.txt
+
+# Build artifacts
+/dist
+/build
+*.spec
+
+# IDE/OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store

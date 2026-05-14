@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — kbd hint & status bar</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; display: grid; gap: 16px; }
+  .hint {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: var(--r-pill);
+    background: var(--paper-2); border: 1px solid var(--line);
+    font-size: 13px; color: var(--ink-2);
+  }
+  kbd {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--paper); color: var(--ink); box-shadow: 0 1px 0 var(--line);
+  }
+  .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; border: 1px solid var(--line); border-radius: var(--r-2);
+    background: var(--paper); font-size: 12px; color: var(--ink-3);
+  }
+  .bar .left { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--sage-deep); }
+  .dot.warn { background: var(--warn); }
+  .dot.busy { background: var(--sage); animation: pulse 1.4s var(--ease) infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+</style></head><body>
+<div><div class="hint"><kbd>Alt</kbd> <span style="color:var(--ink-3);">+</span> <kbd>X</kbd> &nbsp;и говори</div></div>
+
+<div class="bar">
+  <div class="left"><span class="dot"></span>Готов · Alt + X</div>
+  <div>parakeet-v3 · ru</div>
+</div>
+
+<div class="bar">
+  <div class="left"><span class="dot busy"></span>Слушаю…</div>
+  <div>0:04</div>
+</div>
+
+<div class="bar">
+  <div class="left"><span class="dot warn"></span>Нет связи с Telegram</div>
+  <div style="color:var(--sage-deep);">Подключить</div>
+</div>
+</body></html>

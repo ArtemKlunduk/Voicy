@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — record button states</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: center; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .orb {
+    width: 84px; height: 84px; border-radius: 999px;
+    display: grid; place-items: center;
+    transition: all var(--t-base) var(--ease);
+  }
+  .orb svg { width: 32px; height: 32px; stroke-width: 1.5; }
+  .idle { background: var(--paper); border: 1px solid var(--line); color: var(--ink-2); }
+  .hover { background: var(--paper-2); border: 1px solid var(--line-strong); color: var(--ink); }
+  .recording { background: var(--sage-soft); color: var(--moss); position: relative; }
+  .recording::before {
+    content: ""; position: absolute; inset: -10px;
+    border-radius: 999px; background: var(--sage-soft);
+    opacity: 0.45; z-index: -1; filter: blur(8px);
+  }
+  .done { background: var(--sage-deep); color: #fff; }
+  .label { font-size: 12px; color: var(--ink-2); font-family: var(--font-mono); }
+</style></head><body>
+<div class="cell"><div class="orb idle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v3"/></svg></div><div class="label">idle</div></div>
+
+<div class="cell"><div class="orb hover"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v3"/></svg></div><div class="label">hover</div></div>
+
+<div class="cell"><div class="orb recording"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg></div><div class="label">recording</div></div>
+
+<div class="cell"><div class="orb done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div><div class="label">sent</div></div>
+</body></html>

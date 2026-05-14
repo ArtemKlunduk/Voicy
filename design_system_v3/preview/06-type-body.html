@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Voicy — body & mono</title>
+<link rel="stylesheet" href="_card.css">
+<style>
+  body { padding: 22px 28px; }
+  .row { display: grid; grid-template-columns: 56px 1fr 64px; align-items: baseline; gap: 18px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .tag { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+  .specimen { color: var(--ink); }
+  .spec { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); text-align: right; }
+  .mono { font-family: var(--font-mono); }
+  kbd {
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--paper); box-shadow: 0 1px 0 var(--line);
+  }
+</style></head><body>
+<div class="row"><div class="tag">body</div><div class="specimen" style="font-size:15px;line-height:22px;">Зажми <kbd>Alt</kbd> + <kbd>X</kbd> и говори. Когда отпустишь — Voicy расшифрует и отправит сообщение в выбранный чат.</div><div class="spec">15/22 · 400</div></div>
+<div class="row"><div class="tag">small</div><div class="specimen" style="font-size:13px;line-height:18px;color:var(--ink-2);">Распознавание идёт на твоём компьютере. В облако ничего не уходит.</div><div class="spec">13/18 · 400</div></div>
+<div class="row"><div class="tag">mono</div><div class="specimen mono" style="font-size:14px;line-height:20px;font-weight:500;">model = "parakeet-v3"<br>recognition_language = "ru"</div><div class="spec">14/20 · 500</div></div>
+<div class="row"><div class="tag">kbd</div><div class="specimen"><kbd>Alt</kbd> <kbd>X</kbd> &nbsp; <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Space</kbd></div><div class="spec">12 · 600</div></div>
+</body></html>

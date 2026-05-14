@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Voicy — recording animation variants</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body {
+    font-family: var(--font-sans);
+    padding: 36px 32px 48px;
+  }
+  .head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .head h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; margin: 0; }
+  .head .sub { font-size: 13px; color: var(--ink-3); }
+
+  .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+
+  .card {
+    border: 1px solid var(--line); border-radius: 16px;
+    background: var(--paper);
+    padding: 18px 16px 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .card .label {
+    font-family: var(--font-mono); font-size: 11px;
+    letter-spacing: 0.04em; color: var(--ink-3);
+  }
+  .card .title { font-size: 15px; font-weight: 600; }
+  .stage {
+    height: 180px;
+    border-radius: 14px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    display: grid; place-items: center;
+    overflow: hidden;
+    position: relative;
+  }
+  .card .note { font-size: 12px; color: var(--ink-3); line-height: 18px; }
+
+  /* ───────── 01 · Sine bars (current) ───────── */
+  .v1 { display: flex; align-items: center; gap: 5px; height: 60px; }
+  .v1 span {
+    width: 4px; border-radius: 999px; background: var(--sage-deep);
+    animation: v1-bar 1.6s cubic-bezier(.2,.6,.2,1) infinite;
+  }
+  .v1 span:nth-child(1) { animation-delay: 0.00s; height: 18px; }
+  .v1 span:nth-child(2) { animation-delay: 0.08s; height: 26px; }
+  .v1 span:nth-child(3) { animation-delay: 0.16s; height: 36px; }
+  .v1 span:nth-child(4) { animation-delay: 0.24s; height: 30px; }
+  .v1 span:nth-child(5) { animation-delay: 0.32s; height: 40px; }
+  .v1 span:nth-child(6) { animation-delay: 0.40s; height: 24px; }
+  .v1 span:nth-child(7) { animation-delay: 0.48s; height: 32px; }
+  .v1 span:nth-child(8) { animation-delay: 0.56s; height: 16px; }
+  @keyframes v1-bar { 0%, 100% { transform: scaleY(0.32); } 50% { transform: scaleY(1); } }
+
+  /* ───────── 02 · Mirror bars (from center) ───────── */
+  .v2 { display: flex; align-items: center; gap: 6px; height: 80px; }
+  .v2 span {
+    width: 4px; border-radius: 999px; background: var(--sage-deep);
+    transform-origin: center;
+    animation: v2-bar 1.4s cubic-bezier(.4,0,.6,1) infinite;
+  }
+  .v2 span:nth-child(1) { animation-delay: 0.40s; height: 12px; }
+  .v2 span:nth-child(2) { animation-delay: 0.30s; height: 18px; }
+  .v2 span:nth-child(3) { animation-delay: 0.20s; height: 28px; }
+  .v2 span:nth-child(4) { animation-delay: 0.10s; height: 44px; }
+  .v2 span:nth-child(5) { animation-delay: 0.00s; height: 60px; }
+  .v2 span:nth-child(6) { animation-delay: 0.10s; height: 44px; }
+  .v2 span:nth-child(7) { animation-delay: 0.20s; height: 28px; }
+  .v2 span:nth-child(8) { animation-delay: 0.30s; height: 18px; }
+  .v2 span:nth-child(9) { animation-delay: 0.40s; height: 12px; }
+  @keyframes v2-bar {
+    0%, 100% { transform: scaleY(0.25); opacity: 0.6; }
+    50%      { transform: scaleY(1);    opacity: 1; }
+  }
+
+  /* ───────── 03 · Pulse dots ───────── */
+  .v3 { display: flex; align-items: center; gap: 10px; height: 60px; }
+  .v3 span {
+    width: 10px; height: 10px; border-radius: 999px;
+    background: var(--sage-deep);
+    animation: v3-dot 1.2s cubic-bezier(.2,.6,.2,1) infinite;
+  }
+  .v3 span:nth-child(1) { animation-delay: 0.0s; }
+  .v3 span:nth-child(2) { animation-delay: 0.12s; }
+  .v3 span:nth-child(3) { animation-delay: 0.24s; }
+  .v3 span:nth-child(4) { animation-delay: 0.36s; }
+  .v3 span:nth-child(5) { animation-delay: 0.48s; }
+  @keyframes v3-dot {
+    0%, 100% { transform: scale(0.55); background: var(--sage); }
+    50%      { transform: scale(1.4); background: var(--moss); }
+  }
+
+  /* ───────── 04 · Travelling sine wave ───────── */
+  .v4 {
+    width: 90%; height: 60px; position: relative; overflow: hidden;
+  }
+  .v4 svg {
+    position: absolute; top: 0; left: 0;
+    width: 200%; height: 100%;
+    animation: v4-slide 2.4s linear infinite;
+  }
+  @keyframes v4-slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  /* ───────── 05 · Halo rings ───────── */
+  .v5 {
+    width: 90px; height: 90px;
+    position: relative;
+    display: grid; place-items: center;
+  }
+  .v5 .orb {
+    width: 56px; height: 56px; border-radius: 999px;
+    background: var(--sage-soft); color: var(--moss);
+    display: grid; place-items: center;
+    position: relative; z-index: 2;
+  }
+  .v5 .orb svg { width: 22px; height: 22px; }
+  .v5 .ring {
+    position: absolute; inset: 0;
+    border-radius: 999px;
+    border: 1.5px solid var(--sage);
+    animation: v5-ring 2.2s cubic-bezier(.2,.6,.2,1) infinite;
+    opacity: 0;
+  }
+  .v5 .ring:nth-child(2) { animation-delay: 0s; }
+  .v5 .ring:nth-child(3) { animation-delay: 0.7s; }
+  .v5 .ring:nth-child(4) { animation-delay: 1.4s; }
+  @keyframes v5-ring {
+    0%   { transform: scale(0.55); opacity: 0;   }
+    20%  { opacity: 0.7; }
+    100% { transform: scale(1.6);  opacity: 0;   }
+  }
+</style>
+</head>
+<body>
+
+<div class="head">
+  <h1>Recording — варианты анимации</h1>
+  <div class="sub">5 направлений · все на палитре, easing спокойный · период 1.2–2.4с</div>
+</div>
+
+<div class="grid">
+
+  <!-- 01 -->
+  <div class="card">
+    <div class="label">01 · sine bars</div>
+    <div class="title">Бары · текущий</div>
+    <div class="stage">
+      <div class="v1">
+        <span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+    <div class="note">8 баров, по очереди вверх и вниз. Технично, читается мгновенно как «звук».</div>
+  </div>
+
+  <!-- 02 -->
+  <div class="card">
+    <div class="label">02 · mirror bars</div>
+    <div class="title">Симметрия от центра</div>
+    <div class="stage">
+      <div class="v2">
+        <span></span><span></span><span></span><span></span>
+        <span></span>
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+    <div class="note">Высота баров уже задана — анимация только сжимает/раздвигает. Спокойнее, как медитативное дыхание.</div>
+  </div>
+
+  <!-- 03 -->
+  <div class="card">
+    <div class="label">03 · pulse dots</div>
+    <div class="title">Пульс точек</div>
+    <div class="stage">
+      <div class="v3">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+    <div class="note">5 точек, бегущая волна. Дополнительно меняют цвет sage → moss. Дружелюбно, чуть «детский» характер.</div>
+  </div>
+
+  <!-- 04 -->
+  <div class="card">
+    <div class="label">04 · travelling wave</div>
+    <div class="title">Бегущая волна</div>
+    <div class="stage">
+      <div class="v4">
+        <svg viewBox="0 0 800 60" preserveAspectRatio="none">
+          <path d="M0 30 Q 25 6, 50 30 T 100 30 T 150 30 T 200 30 T 250 30 T 300 30 T 350 30 T 400 30 T 450 30 T 500 30 T 550 30 T 600 30 T 650 30 T 700 30 T 750 30 T 800 30"
+                fill="none" stroke="#5E8B62" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="note">Тонкая синусоида ползёт влево, бесконечно. Самый «брендовый» вариант — буквально логотип в движении.</div>
+  </div>
+
+  <!-- 05 -->
+  <div class="card">
+    <div class="label">05 · halo rings</div>
+    <div class="title">Кольца от орба</div>
+    <div class="stage">
+      <div class="v5">
+        <div class="orb">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+            <path d="M12 18v3"/>
+          </svg>
+        </div>
+        <div class="ring"></div>
+        <div class="ring"></div>
+        <div class="ring"></div>
+      </div>
+    </div>
+    <div class="note">Три кольца разбегаются от микрофона, по фазе со сдвигом. Тише всех — анимация почти на грани заметности.</div>
+  </div>
+
+</div>
+
+</body>
+</html>
