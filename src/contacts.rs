@@ -135,6 +135,19 @@ const TRIGGERS: &[&str] = &[
 ];
 
 /// Распарсить распознанный текст: «<триггер> имя текст» → (uid, message) или ошибка.
+///
+/// ASR часто склеивает или разделяет слова не так:
+///   «напишичине привет»      — trigger + name склеены  (1 слово вместо 2)
+///   «напиши чинепривет»      — name + message склеены  (1 слово вместо 2)
+///   «напишичинепривет»       — всё склеено             (1 слово вместо 3)
+///   «напешь чине привет»     — trigger переврался     (DL distance 1)
+/// Стратегия:
+///   1) Триггер ищется как **префикс** первого токена (не точное совпадение).
+///      Триггеры сортируются по длине DESC, чтобы «напишите» не съело «напиши».
+///   2) После strip-trigger ищется самый длинный контакт-алиас как char-префикс
+///      первого слова. Этого хватает чтобы расцепить «чинепривет»→«чине»+«привет».
+///   3) Если шаг 1 не нашёл триггер — допускаем DL≤1 на первом токене, на случай
+///      whisper'овской ослышки.
 pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), String> {
     // Нормализация: пунктуация (",.!?;:" итд) → пробелы, лишние пробелы схлопываются.
     // «Напиши, тиме, привет.» → «напиши тиме привет»
@@ -144,21 +157,58 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
         .map(|c| if c.is_alphanumeric() || c == ' ' || c == '\t' { c } else { ' ' })
         .collect();
     let t: String = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.is_empty() {
+        return Err(format!("пустой текст: «{}»", text));
+    }
 
-    // Триггер — первый токен, если он в списке.
-    let used = TRIGGERS.iter().find(|trig| {
-        t.starts_with(&format!("{} ", trig)) || t == **trig
-    });
-    let Some(used) = used else {
+    // Триггеры в порядке убывания длины: «напишите» проверяется раньше «напиши»,
+    // чтобы префикс-матч не поглотил длинный триггер коротким.
+    let mut sorted_triggers: Vec<&&str> = TRIGGERS.iter().collect();
+    sorted_triggers.sort_by_key(|s| std::cmp::Reverse(s.len()));
+
+    // Шаг 1: префикс-матч триггера (включая склейки «напишичине»).
+    let mut found: Option<(&'static str, String)> = None;
+    for &&trig in &sorted_triggers {
+        if t.starts_with(trig) {
+            let rest = t[trig.len()..].trim_start().to_string();
+            found = Some((trig, rest));
+            break;
+        }
+    }
+
+    // Шаг 1b: fuzzy-fallback если префикс-матч не сработал. Ослышка на 1 правку:
+    // «напешь маше» → DL(«напешь», «напиши»)=2 — не пройдёт. «напиши»→«напши»=1 — да.
+    // Делаем только для первого токена ≥4 символов, чтобы не путать с короткими словами.
+    if found.is_none() {
+        let first_tok = t.split_whitespace().next().unwrap_or("");
+        if first_tok.chars().count() >= 4 {
+            for &&trig in &sorted_triggers {
+                if damerau_levenshtein(first_tok, trig) <= 1 {
+                    let rest = t[first_tok.len()..].trim_start().to_string();
+                    info!("[parse] fuzzy-trigger: '{}' ≈ '{}'", first_tok, trig);
+                    found = Some((trig, rest));
+                    break;
+                }
+            }
+        }
+    }
+
+    let Some((used, rest)) = found else {
         return Err(format!(
             "команда не распознана (ожидалось «напиши» / «отправь»): «{}»",
             text
         ));
     };
-    let rest = t[used.len()..].trim();
-    let mut parts = rest.splitn(2, char::is_whitespace);
-    let name = parts.next().unwrap_or("").trim().to_string();
-    let message = parts.next().unwrap_or("").trim().to_string();
+    if rest.is_empty() {
+        return Err("имя получателя не указано".into());
+    }
+
+    // Шаг 2: вытащить имя из rest. Если первое слово — точный контакт или его стем,
+    // берём как есть. Иначе пробуем самый длинный контакт-алиас как char-префикс
+    // первого слова: «чинепривет»→«чине»+«привет».
+    let (name, message) = extract_name_and_message(&rest, contacts);
+    let name = name.trim().to_string();
+    let message = message.trim().to_string();
 
     if name.is_empty() {
         return Err("имя получателя не указано".into());
@@ -170,7 +220,7 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
         ));
     }
 
-    info!("[parse] text='{}' → name='{}' message='{}'", text, name, message);
+    info!("[parse] text='{}' (trig='{}') → name='{}' message='{}'", text, used, name, message);
 
     // Точное совпадение по алиасу
     if let Some(&uid) = contacts.get(&name) {
@@ -217,6 +267,72 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
         name,
         contacts.keys().cloned().collect::<Vec<_>>().join(", ")
     ))
+}
+
+/// Из строки `rest` (всё после триггера) вытащить (name, message).
+/// Покрывает три случая склейки от ASR:
+///   - «маше привет»      → name=маше, message=привет        (норм)
+///   - «машепривет»       → name=маша/маше (по алиасу), message=привет
+///   - «машепривет от Ивана» → name=маша, message=«привет от Ивана»
+fn extract_name_and_message(rest: &str, contacts: &Contacts) -> (String, String) {
+    // Случай 1: rest содержит пробел → первое слово = кандидат на имя.
+    if let Some(space_pos) = rest.char_indices().find(|(_, c)| c.is_whitespace()).map(|(i, _)| i) {
+        let first = &rest[..space_pos];
+        let tail = rest[space_pos..].trim_start();
+        let first_l = first.to_lowercase();
+
+        // Точный матч (или стем) — используем как есть.
+        if contacts.contains_key(&first_l) || contacts.contains_key(&russian_stem(&first_l)) {
+            return (first.to_string(), tail.to_string());
+        }
+        // Иначе пробуем расцепить first как «<алиас><хвост>»: «чинепривет» → «чине»+«привет».
+        if let Some((name, suffix)) = longest_alias_prefix(first, contacts) {
+            let message = if suffix.is_empty() {
+                tail.to_string()
+            } else if tail.is_empty() {
+                suffix.to_string()
+            } else {
+                format!("{} {}", suffix, tail)
+            };
+            return (name, message);
+        }
+        return (first.to_string(), tail.to_string());
+    }
+
+    // Случай 2: rest — одно слово. Скорее всего тут «имя+сообщение» склеены.
+    let rest_l = rest.to_lowercase();
+    if contacts.contains_key(&rest_l) || contacts.contains_key(&russian_stem(&rest_l)) {
+        return (rest.to_string(), String::new());
+    }
+    if let Some((name, suffix)) = longest_alias_prefix(rest, contacts) {
+        return (name, suffix);
+    }
+    (rest.to_string(), String::new())
+}
+
+/// Самый длинный контакт-алиас в `contacts`, являющийся char-префиксом `s`
+/// (case-insensitive). Возвращает (alias, suffix).
+///   `longest_alias_prefix("чинепривет", {"чин", "чине"}) = Some(("чине", "привет"))`
+fn longest_alias_prefix(s: &str, contacts: &Contacts) -> Option<(String, String)> {
+    let s_chars: Vec<char> = s.chars().flat_map(|c| c.to_lowercase()).collect();
+    let mut best: Option<(String, usize)> = None;
+    for alias in contacts.keys() {
+        // Алиасы короче 2 символов — слишком ложноположительны.
+        let a_chars: Vec<char> = alias.chars().collect();
+        if a_chars.len() < 2 || a_chars.len() > s_chars.len() {
+            continue;
+        }
+        if s_chars[..a_chars.len()] == a_chars[..] {
+            let n = a_chars.len();
+            if best.as_ref().map_or(true, |(_, bn)| n > *bn) {
+                best = Some((alias.clone(), n));
+            }
+        }
+    }
+    let (name, n_chars) = best?;
+    // Найдём byte-offset n-го char'а в `s` чтобы корректно нарезать UTF-8.
+    let suffix_byte = s.char_indices().nth(n_chars).map(|(b, _)| b).unwrap_or(s.len());
+    Some((name, s[suffix_byte..].to_string()))
 }
 
 fn fuzzy_score(a: &str, b: &str) -> f32 {
@@ -279,3 +395,124 @@ fn damerau_levenshtein(a: &str, b: &str) -> usize {
     }
     d[n][m]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_contacts() -> Contacts {
+        let mut c = Contacts::new();
+        c.insert("чине".into(), 1001);
+        c.insert("чина".into(), 1001);
+        c.insert("чин".into(), 1001);   // стем
+        c.insert("маша".into(), 2002);
+        c.insert("маше".into(), 2002);
+        c.insert("маш".into(), 2002);
+        c.insert("тима".into(), 3003);
+        c.insert("тиме".into(), 3003);
+        c.insert("тим".into(), 3003);
+        c
+    }
+
+    #[test]
+    fn happy_path() {
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("Напиши Чине привет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn punctuation_stripped() {
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("Напиши, Чине, привет.", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn trigger_glued_to_name() {
+        // ASR склеил trigger + name: «напишичине привет»
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напишичине привет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn name_glued_to_message() {
+        // ASR склеил name + message: «напиши чинепривет»
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши чинепривет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn everything_glued() {
+        // Всё одним словом: «напишичинепривет»
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напишичинепривет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn longest_alias_wins() {
+        // «чине» должно матчиться раньше «чин» (стема), чтобы не съесть «е» из «епривет».
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напишичинепривет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn message_with_spaces() {
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напишичине как дела", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "как дела");
+    }
+
+    #[test]
+    fn name_with_trailing_message_in_first_word_plus_more() {
+        // «напиши чинепривет от меня» — splice имени с первым словом сообщения,
+        // остальные слова идут следом.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши чинепривет от меня", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет от меня");
+    }
+
+    #[test]
+    fn fuzzy_trigger_one_typo() {
+        // «напши» = «напиши» с одной правкой (удаление 'и') → должно матчиться.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напши чине привет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn no_trigger_fails() {
+        let c = sample_contacts();
+        assert!(parse_command("привет чине", &c).is_err());
+    }
+
+    #[test]
+    fn unknown_contact_fails() {
+        let c = sample_contacts();
+        assert!(parse_command("напиши неизвестный текст", &c).is_err());
+    }
+
+    #[test]
+    fn longer_trigger_first() {
+        // «напишите» должно матчиться раньше «напиши», иначе «напишите маше» съест
+        // только «напиши» и оставит «те маше» — это сломает имя.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напишите маше привет", &c).unwrap();
+        assert_eq!(uid, 2002);
+        assert_eq!(msg, "привет");
+    }
+}
+
