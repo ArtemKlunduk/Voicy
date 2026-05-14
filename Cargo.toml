@@ -43,6 +43,17 @@ transcribe-rs = { version = "0.3", default-features = false, features = ["onnx"]
 # но MSVC-target позволяет натвиную линковку без DLL-плясок.
 ort = { version = "=2.0.0-rc.12", features = ["ndarray"] }
 
+# Для overlay-окна: chroma-key прозрачность через WS_EX_LAYERED.
+# wry/WebView2 на некоторых GPU не уважает RGBA-альфу — даёт белый прямоугольник.
+# Магента #FF00FF в HTML → SetLayeredWindowAttributes делает её прозрачной.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+] }
+raw-window-handle = "0.6"
+
 # Подключим следующим стейджем:
 # grammers-client = "0.6"  # telegram MTProto
 # tao = "0.30"             # window/overlay

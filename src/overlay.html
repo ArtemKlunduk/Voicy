@@ -13,13 +13,17 @@
   --ease:        cubic-bezier(0.2, 0.6, 0.2, 1);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
+/* Фон #FF00FF — chroma-key для WS_EX_LAYERED + LWA_COLORKEY.
+   Win32-compositor превращает каждый магента-пиксель в прозрачный.
+   В палитре проекта (sage/moss/danger) пурпурного нет — halo по краям
+   anti-aliasing'а orb'а будет ≤1 пикселя и почти невидим. */
 html, body {
   width:100%; height:100%;
-  background: rgba(0,0,0,0) !important;
-  background-color: transparent !important;
+  background: #FF00FF !important;
+  background-color: #FF00FF !important;
   overflow:hidden; user-select:none;
 }
-html { color-scheme: dark; }
+html { color-scheme: light; }
 
 .stage {
   width:100%; height:100%;

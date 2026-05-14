@@ -50,6 +50,7 @@ where
     let pos_x = (screen_w - win_w) / 2;
     let pos_y = screen_h - win_h - 24;
 
+    // Прозрачность — через chroma-key (см. crate::chroma).
     let window = WindowBuilder::new()
         .with_title("voicy-overlay")
         .with_inner_size(LogicalSize::new(win_w as f64, win_h as f64))
@@ -58,14 +59,12 @@ where
         .with_always_on_top(true)
         .with_resizable(false)
         .with_focused(false)
-        .with_transparent(true)
         .with_visible(false)
         .build(&event_loop)?;
+    crate::chroma::apply_chroma_key(&window);
 
     let webview = WebViewBuilder::new(&window)
         .with_html(OVERLAY_HTML)
-        .with_transparent(true)
-        .with_background_color((0, 0, 0, 0))
         .build()?;
 
     event_loop.run(move |event, _target, flow| {

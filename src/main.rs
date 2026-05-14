@@ -14,6 +14,7 @@ use tracing::{info, warn};
 
 mod asr;
 mod audio;
+mod chroma;
 mod config;
 mod contacts;
 mod hotkey;

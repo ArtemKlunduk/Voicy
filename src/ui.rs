@@ -160,6 +160,9 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
         .unwrap_or((1920, 1080));
     let ov_w = 220;
     let ov_h = 220;
+    // Прозрачность — через chroma-key (WS_EX_LAYERED). WebView2 на ряде GPU
+    // не уважает alpha, поэтому body в overlay.html залит магентой #FF00FF
+    // а Win32 делает его прозрачным.
     let overlay_window = WindowBuilder::new()
         .with_title("voicy-overlay")
         .with_inner_size(LogicalSize::new(ov_w as f64, ov_h as f64))
@@ -171,13 +174,11 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
         .with_always_on_top(true)
         .with_resizable(false)
         .with_focused(false)
-        .with_transparent(true)
         .with_visible(false)
         .build(&event_loop)?;
+    crate::chroma::apply_chroma_key(&overlay_window);
     let overlay_webview = WebViewBuilder::new(&overlay_window)
         .with_html(crate::overlay::OVERLAY_HTML)
-        .with_transparent(true)
-        .with_background_color((0, 0, 0, 0))
         .build()?;
 
     let rt = Arc::new(
