@@ -128,8 +128,19 @@ pub fn save_structured(path: &Path, contacts: &[Contact]) -> std::io::Result<()>
     std::fs::write(path, lines)
 }
 
+/// Глаголы-команды на отправку сообщения. Все варианты которые видим в ASR:
+/// - «напиши/напишите» — основной императив
+/// - «напишу» — 1л ед.ч., whisper иногда так слышит
+/// - «запиши/запишите» — частая ошибка распознавания: н→з
+/// - «пиши/пишите» — без приставки на-, тоже валидный императив
+/// - «отправь/отправьте/отправит» — синоним
+/// - «напишет/напиши-ка» — 3л и частица «-ка»
+///
+/// Сортируем по длине DESC при использовании, чтобы «напишите» не съело «напиши».
 const TRIGGERS: &[&str] = &[
-    "напиши", "напишите", "напиши-ка",
+    "напиши", "напишите", "напиши-ка", "напишу",
+    "запиши", "запишите",
+    "пиши", "пишите",
     "отправь", "отправьте", "отправит",
     "напишет",
 ];
@@ -270,25 +281,46 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
 }
 
 /// Из строки `rest` (всё после триггера) вытащить (name, message).
-/// Покрывает три случая склейки от ASR:
-///   - «маше привет»      → name=маше, message=привет        (норм)
-///   - «машепривет»       → name=маша/маше (по алиасу), message=привет
-///   - «машепривет от Ивана» → name=маша, message=«привет от Ивана»
+/// Покрывает кейсы склейки/расщепления от ASR:
+///   - «маше привет»        → name=маше, message=привет     (норм)
+///   - «машепривет»         → name=маша, message=привет     (имя+текст склеены)
+///   - «машепривет ивану»   → name=маша, message=«привет ивану»
+///   - «ма ше привет»       → name=маше, message=привет     (имя расщеплено на 2)
+///   - «ти м о фей привет»  → name=тимофей, message=привет  (имя расщеплено на 3)
+///   - «чи не привет»       → name=чине, message=привет     (имя расщеплено на 2)
+///
+/// Алгоритм: пробуем склеить первые K=1..=3 токенов как один кандидат имени,
+/// для каждого K проверяем точное совпадение/стем/longest-alias-prefix. Берём
+/// **самое длинное** K, которое смогло сматчиться — это гарантирует что «чине»
+/// не съест только «чи» из «чи не привет».
 fn extract_name_and_message(rest: &str, contacts: &Contacts) -> (String, String) {
-    // Случай 1: rest содержит пробел → первое слово = кандидат на имя.
-    if let Some(space_pos) = rest.char_indices().find(|(_, c)| c.is_whitespace()).map(|(i, _)| i) {
-        let first = &rest[..space_pos];
-        let tail = rest[space_pos..].trim_start();
-        let first_l = first.to_lowercase();
+    let tokens: Vec<&str> = rest.split_whitespace().collect();
+    if tokens.is_empty() {
+        return (String::new(), String::new());
+    }
+    let max_k = tokens.len().min(3);
 
-        // Точный матч (или стем) — используем как есть.
-        if contacts.contains_key(&first_l) || contacts.contains_key(&russian_stem(&first_l)) {
-            return (first.to_string(), tail.to_string());
+    // Шаг 1: exact-match по склеиванию первых K токенов, HIGH→LOW.
+    // Длинное склеивание приоритетнее короткого: для «ти м а привет» хотим
+    // k=3 («тима» exact) а не k=2 («тим» stem) — иначе «а» уйдёт в сообщение.
+    for k in (1..=max_k).rev() {
+        let glued: String = tokens[..k].concat().to_lowercase();
+        if contacts.contains_key(&glued) || contacts.contains_key(&russian_stem(&glued)) {
+            let tail = if k < tokens.len() { tokens[k..].join(" ") } else { String::new() };
+            return (glued, tail);
         }
-        // Иначе пробуем расцепить first как «<алиас><хвост>»: «чинепривет» → «чине»+«привет».
-        if let Some((name, suffix)) = longest_alias_prefix(first, contacts) {
+    }
+
+    // Шаг 2: longest-alias-prefix, LOW→HIGH. Это для случаев когда имя
+    // склеено с первым словом сообщения: «чинепривет» (k=1) → «чине»+«привет».
+    // Низкое k приоритетнее — иначе мы бы съели в glued куски сообщения,
+    // и пробелы в сообщении пропали бы.
+    for k in 1..=max_k {
+        let glued: String = tokens[..k].concat().to_lowercase();
+        if let Some((name, suffix)) = longest_alias_prefix(&glued, contacts) {
+            let tail = if k < tokens.len() { tokens[k..].join(" ") } else { String::new() };
             let message = if suffix.is_empty() {
-                tail.to_string()
+                tail
             } else if tail.is_empty() {
                 suffix.to_string()
             } else {
@@ -296,18 +328,12 @@ fn extract_name_and_message(rest: &str, contacts: &Contacts) -> (String, String)
             };
             return (name, message);
         }
-        return (first.to_string(), tail.to_string());
     }
 
-    // Случай 2: rest — одно слово. Скорее всего тут «имя+сообщение» склеены.
-    let rest_l = rest.to_lowercase();
-    if contacts.contains_key(&rest_l) || contacts.contains_key(&russian_stem(&rest_l)) {
-        return (rest.to_string(), String::new());
-    }
-    if let Some((name, suffix)) = longest_alias_prefix(rest, contacts) {
-        return (name, suffix);
-    }
-    (rest.to_string(), String::new())
+    // Fallback: первое слово как есть → дальше пойдёт fuzzy в parse_command.
+    let first = tokens[0].to_string();
+    let tail = tokens[1..].join(" ");
+    (first, tail)
 }
 
 /// Самый длинный контакт-алиас в `contacts`, являющийся char-префиксом `s`
@@ -512,6 +538,74 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напишите маше привет", &c).unwrap();
         assert_eq!(uid, 2002);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn name_split_two_words() {
+        // ASR расщепил «чине» на два слова: «чи не».
+        // k=2: glued=«чине» — exact match.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши чи не привет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn name_split_three_words() {
+        // ASR расщепил «тима» на три слова: «ти м а» (пограничный случай).
+        // k=3: glued=«тима» — exact match.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши ти м а привет", &c).unwrap();
+        assert_eq!(uid, 3003);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn name_split_with_glued_message() {
+        // Имя расщеплено + сообщение склеено с последним куском.
+        // «напиши чи непривет» — k=1 «чи» fail. k=2 glued=«чинепривет»,
+        // longest_alias_prefix → name=«чине», suffix=«привет», tail="" → msg=«привет».
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши чи непривет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn trigger_zapishi() {
+        // Whisper часто слышит «напиши» как «запиши» (н→з).
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("запиши чине привет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn trigger_napishu() {
+        // «напишу» — первое лицо ед.ч., тоже валидный триггер.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напишу чине привет", &c).unwrap();
+        assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn trigger_pishi() {
+        // «пиши» без приставки на-.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("пиши маше как дела", &c).unwrap();
+        assert_eq!(uid, 2002);
+        assert_eq!(msg, "как дела");
+    }
+
+    #[test]
+    fn longest_glue_wins() {
+        // Если рассыпать «тиме» на «ти ме», k=1 даст «ти» (нет в контактах),
+        // но k=2 даст «тиме» (exact). Берём более длинное склеивание.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши ти ме привет", &c).unwrap();
+        assert_eq!(uid, 3003);
         assert_eq!(msg, "привет");
     }
 }
