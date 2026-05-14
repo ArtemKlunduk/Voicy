@@ -36,8 +36,8 @@ use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetSystemMetrics, PeekMessageW,
     RegisterClassW, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST,
-    MSG, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_NOSIZE, SW_HIDE,
-    SW_SHOWNOACTIVATE, ULW_ALPHA, WM_QUIT, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    MSG, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_SHOWWINDOW, SW_HIDE, ULW_ALPHA, WM_QUIT, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
@@ -113,10 +113,20 @@ fn overlay_thread(rx: Receiver<State>) {
         if got_state {
             state_started = Instant::now();
             unsafe {
-                ShowWindow(
-                    hwnd,
-                    if state == State::Hidden { SW_HIDE } else { SW_SHOWNOACTIVATE },
-                );
+                if state == State::Hidden {
+                    ShowWindow(hwnd, SW_HIDE);
+                } else {
+                    // SetWindowPos с HWND_TOPMOST + SWP_SHOWWINDOW + SWP_NOACTIVATE:
+                    // 1) принудительно поднимает overlay поверх всех окон (даже если
+                    //    наше main-окно Voicy активно сверху)
+                    // 2) делает видимым без кражи фокуса у текущего окна юзера
+                    SetWindowPos(
+                        hwnd,
+                        HWND_TOPMOST,
+                        0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                    );
+                }
             }
             last_rendered = Instant::now() - std::time::Duration::from_secs(1); // force redraw
         }
