@@ -12,19 +12,137 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{info, warn};
 
+mod ai_assistant;
 mod asr;
+mod gemini;
 mod audio;
+mod browser;
 mod config;
 mod contacts;
 mod hotkey;
 #[cfg(windows)]
 mod native_overlay;
 mod parakeet;
+#[cfg(windows)]
+mod startup;
 mod telegram;
+mod tts;
 mod ui;
+
+/// Переносит данные из старых путей (рядом с exe) в новые (%APPDATA%/voicy).
+fn migrate_legacy_data() {
+    let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else {
+        return;
+    };
+    let new_dir = dirs::data_dir()
+        .map(|d| d.join("voicy"))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let _ = std::fs::create_dir_all(&new_dir);
+
+    // Миграция файлов
+    let files = [
+        ("voicy_session.session", "session"),
+        ("contacts.txt", "contacts"),
+        ("voicy_dialogs.cache", "dialog cache"),
+    ];
+    for (name, label) in files {
+        let old = exe_dir.join(name);
+        let new = new_dir.join(name);
+        if old.exists() && !new.exists() {
+            if let Err(e) = std::fs::copy(&old, &new) {
+                warn!("[migrate] failed to copy {}: {}", label, e);
+            } else {
+                info!("[migrate] copied {} → {}", old.display(), new.display());
+            }
+        }
+    }
+
+    // Миграция папки models (Parakeet, Canary и др.)
+    let old_models = exe_dir.join("models");
+    let new_models = new_dir.join("models");
+    if old_models.exists() && old_models.is_dir() && !new_models.exists() {
+        if let Err(e) = copy_dir_all(&old_models, &new_models) {
+            warn!("[migrate] failed to copy models dir: {}", e);
+        } else {
+            info!("[migrate] copied models {} → {}", old_models.display(), new_models.display());
+        }
+    }
+
+    // Миграция папки whisper (whisper-cli + ggml-модели)
+    let old_whisper = exe_dir.join("whisper");
+    let new_whisper = new_dir.join("whisper");
+    if old_whisper.exists() && old_whisper.is_dir() && !new_whisper.exists() {
+        if let Err(e) = copy_dir_all(&old_whisper, &new_whisper) {
+            warn!("[migrate] failed to copy whisper dir: {}", e);
+        } else {
+            info!("[migrate] copied whisper {} → {}", old_whisper.display(), new_whisper.display());
+        }
+    }
+}
+
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Спросить ИИ-ассистента. Сначала пробуем Gemini API (быстрый, облачный).
+/// Если ключ не указан или Gemini упал — fallback на локальную модель (медленнее, офлайн).
+fn ask_ai_assistant(
+    cfg: &config::Config,
+    ai_slot: &Arc<Mutex<Option<ai_assistant::AiAssistant>>>,
+    question: &str,
+) -> anyhow::Result<String> {
+    // 1. Gemini API (быстрый, облачный)
+    if !cfg.gemini_api_key.is_empty() {
+        match gemini::ask(&cfg.gemini_api_key, question, &cfg.ai_language) {
+            Ok(text) => {
+                info!("[ai] Gemini ответ: {}", text);
+                return Ok(text);
+            }
+            Err(e) => {
+                warn!("[ai] Gemini failed: {}, falling back to local model", e);
+            }
+        }
+    }
+
+    // 2. Fallback: локальная модель через candelabra (офлайн, ~30–50 с на ответ)
+    let mut ai_guard = ai_slot.lock();
+    if ai_guard.is_none() {
+        if !ai_assistant::AiAssistant::is_model_cached() {
+            info!("[ai] локальная модель не найдена, скачиваем…");
+            ai_assistant::AiAssistant::download_model_sync()
+                .map_err(|e| anyhow::anyhow!("download: {}", e))?;
+        }
+        let assistant = ai_assistant::AiAssistant::load_if_cached()
+            .map_err(|e| anyhow::anyhow!("load: {}", e))?
+            .ok_or_else(|| anyhow::anyhow!("model not available after download"))?;
+        *ai_guard = Some(assistant);
+    }
+
+    if let Some(ref mut assistant) = *ai_guard {
+        let response = assistant.ask(question)
+            .map_err(|e| anyhow::anyhow!("inference: {}", e))?;
+        info!("[ai] local ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
+        Ok(response.text)
+    } else {
+        Err(anyhow::anyhow!("AI assistant not available"))
+    }
+}
 
 fn main() -> Result<()> {
     init_logging();
+    migrate_legacy_data();
     // ort load-dynamic ищет onnxruntime.dll по ORT_DYLIB_PATH.
     // Указываем на DLL рядом с exe (или ".\\onnxruntime.dll" fallback).
     let ort_path = asr::onnxruntime_dll_path();
@@ -52,6 +170,9 @@ fn main() -> Result<()> {
             config::Config::default()
         }
     };
+
+    #[cfg(windows)]
+    startup::sync_with_config(cfg.startup_launch);
 
     match cmd {
         "info" => cmd_info(&cfg, &cfg_path),
@@ -168,6 +289,25 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
     );
     let contact_map = Arc::new(contact_map);
 
+    // ИИ-ассистент: ленивая загрузка (только при первом использовании)
+    let ai_assistant: Arc<Mutex<Option<ai_assistant::AiAssistant>>> = Arc::new(Mutex::new(None));
+    let ai_assistant_thr = ai_assistant.clone();
+
+    // Прогрев ASR-модели в RAM если включено в настройках
+    if cfg.preload_model {
+        if let Some(meta) = asr::model_meta(&cfg.model) {
+            if meta.engine == "nemo" && asr::model_is_downloaded(&cfg.model) {
+                let model_dir = asr::nemo_model_dir(&cfg.model);
+                info!("[preload] прогрев Parakeet {}…", cfg.model);
+                if let Err(e) = parakeet::preload(&cfg.model, &model_dir) {
+                    warn!("[preload] {}", e);
+                } else {
+                    info!("[preload] Parakeet готов в RAM");
+                }
+            }
+        }
+    }
+
     info!(
         "[hotkey] жду {} + {}",
         cfg.hotkey.modifiers.join(" + "),
@@ -176,6 +316,11 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
 
     let session: Arc<Mutex<Option<RecordingSession>>> = Arc::new(Mutex::new(None));
     let session_press = session.clone();
+
+    // Состояние ИИ-ассистента: ждём вопрос после команды "дай ответ"
+    let waiting_for_ai = Arc::new(AtomicBool::new(false));
+    let waiting_for_ai_release = waiting_for_ai.clone();
+
     let on_press = move || {
         let mut slot = session_press.lock();
         if slot.is_some() {
@@ -198,6 +343,7 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
     let client_thr = client.clone();
     let rt_thr = rt.clone();
     let contacts_thr = contact_map.clone();
+    let ai_assistant_release = ai_assistant_thr.clone();
     let on_release = move || {
         let s = session_release.lock().take();
         let Some(s) = s else { return };
@@ -208,6 +354,8 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
         let client = client_thr.clone();
         let rt = rt_thr.clone();
         let contacts = contacts_thr.clone();
+        let waiting = waiting_for_ai_release.clone();
+        let ai = ai_assistant_release.clone();
         std::thread::spawn(move || {
             let samples = match res {
                 Ok(Ok(s)) => s,
@@ -243,6 +391,97 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                 }
             };
             info!("[hotkey] 📝 «{}»", text);
+
+            // --- ИИ-ассистент ---
+            if cfg.ai_assistant_enabled {
+                let ai_trigger = ["дай ответ", "ответь", "вопрос", "спроси"];
+                let text_lower = text.to_lowercase();
+
+                // Проверяем: сказали ли триггер + вопрос сразу (одной фразой)
+                let mut question_immediate: Option<String> = None;
+                for trigger in &ai_trigger {
+                    if let Some(pos) = text_lower.find(trigger) {
+                        let after = text[pos + trigger.len()..].trim();
+                        if !after.is_empty() {
+                            question_immediate = Some(after.to_string());
+                        }
+                        break;
+                    }
+                }
+
+                // Если триггер + вопрос сразу — отправляем без режима ожидания
+                if let Some(question) = question_immediate {
+                    info!("[ai] вопрос сразу: {}", question);
+                    #[cfg(windows)]
+                    native_overlay::send(native_overlay::State::AiThinking);
+
+                    match ask_ai_assistant(&cfg, &ai, &question) {
+                        Ok(response) => {
+                            info!("[ai] ответ: {}", response);
+                            #[cfg(windows)]
+                            native_overlay::send(native_overlay::State::Success);
+                            if let Err(e) = tts::speak(&response) {
+                                warn!("[ai] tts error: {}", e);
+                            }
+                            schedule_hide();
+                        }
+                        Err(e) => {
+                            warn!("[ai] generation failed: {}", e);
+                            show_error();
+                            schedule_hide();
+                        }
+                    }
+                    return;
+                }
+
+                // Если мы уже ждём вопрос — отправляем его в LLM
+                if waiting.load(Ordering::Relaxed) {
+                    waiting.store(false, Ordering::Relaxed);
+                    #[cfg(windows)]
+                    native_overlay::send(native_overlay::State::AiThinking);
+
+                    match ask_ai_assistant(&cfg, &ai, &text) {
+                        Ok(response) => {
+                            info!("[ai] ответ: {}", response);
+                            #[cfg(windows)]
+                            native_overlay::send(native_overlay::State::Success);
+                            if let Err(e) = tts::speak(&response) {
+                                warn!("[ai] tts error: {}", e);
+                            }
+                            schedule_hide();
+                        }
+                        Err(e) => {
+                            warn!("[ai] generation failed: {}", e);
+                            show_error();
+                            schedule_hide();
+                        }
+                    }
+                    return;
+                }
+
+                // Только триггер без вопроса — активируем режим ожидания
+                if ai_trigger.iter().any(|t| text_lower.contains(t)) {
+                    waiting.store(true, Ordering::Relaxed);
+                    info!("[ai] активирован режим вопроса");
+                    #[cfg(windows)]
+                    native_overlay::send(native_overlay::State::AiListening);
+                    schedule_hide();
+                    return;
+                }
+            }
+
+            // Проверяем браузерную команду
+            if let Some(cmd) = browser::parse(&text) {
+                info!("[hotkey] browser → {}: {}", cmd.provider, cmd.query);
+                if let Err(e) = browser::open(&cmd.url) {
+                    warn!("[hotkey] browser open: {}", e);
+                    show_error();
+                } else {
+                    show_success();
+                }
+                schedule_hide();
+                return;
+            }
 
             let (uid, message) = match contacts::parse_command(&text, &contacts) {
                 Ok(x) => x,

@@ -63,6 +63,8 @@ pub enum State {
     Recording,
     Success,
     Error,
+    AiListening,
+    AiThinking,
 }
 
 static SENDER: OnceLock<Sender<State>> = OnceLock::new();
@@ -250,6 +252,16 @@ unsafe fn render_and_push(hwnd: HWND, state: State, elapsed_ms: u32) {
             draw_orb(&mut pixmap, danger());
             draw_x_icon(&mut pixmap, white());
         }
+        State::AiListening => {
+            draw_halo_rings(&mut pixmap, elapsed_ms, Color::from_rgba8(0x7B, 0x9E, 0xC9, 0xFF));
+            draw_orb(&mut pixmap, Color::from_rgba8(0xB8, 0xD4, 0xE8, 0xFF));
+            draw_mic_icon(&mut pixmap, Color::from_rgba8(0x2E, 0x4A, 0x6E, 0xFF));
+        }
+        State::AiThinking => {
+            draw_halo_rings(&mut pixmap, elapsed_ms, Color::from_rgba8(0xD4, 0xA5, 0x6A, 0xFF));
+            draw_orb(&mut pixmap, Color::from_rgba8(0xF0, 0xD4, 0xA8, 0xFF));
+            draw_spinner_icon(&mut pixmap, elapsed_ms, Color::from_rgba8(0x6B, 0x4A, 0x2A, 0xFF));
+        }
         State::Hidden => return,
     }
 
@@ -419,6 +431,45 @@ fn draw_x_icon(pixmap: &mut Pixmap, color: Color) {
     pb.line_to(ox + 6.0 * scale, oy + 18.0 * scale);
     pb.move_to(ox + 6.0 * scale, oy + 6.0 * scale);
     pb.line_to(ox + 18.0 * scale, oy + 18.0 * scale);
+    if let Some(path) = pb.finish() {
+        pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+    }
+}
+
+fn draw_spinner_icon(pixmap: &mut Pixmap, elapsed_ms: u32, color: Color) {
+    // Вращающаяся дуга — индикатор "думаю"
+    let icon_size = 32.0;
+    let scale = icon_size / 24.0;
+    let cx = CENTER;
+    let cy = CENTER;
+    let r = 10.0 * scale;
+
+    let angle = (elapsed_ms as f32 / 800.0) % (2.0 * std::f32::consts::PI);
+    let arc_len = 1.5; // длина дуги в радианах
+
+    let start_angle = angle;
+    let end_angle = angle + arc_len;
+
+    let mut paint = Paint::default();
+    paint.set_color(color);
+    paint.anti_alias = true;
+    let mut stroke = Stroke::default();
+    stroke.width = 2.5 * scale;
+    stroke.line_cap = tiny_skia::LineCap::Round;
+
+    let mut pb = PathBuilder::new();
+    // Рисуем дугу от start_angle до end_angle
+    let steps = 20;
+    for i in 0..=steps {
+        let a = start_angle + (end_angle - start_angle) * (i as f32 / steps as f32);
+        let x = cx + r * a.cos();
+        let y = cy + r * a.sin();
+        if i == 0 {
+            pb.move_to(x, y);
+        } else {
+            pb.line_to(x, y);
+        }
+    }
     if let Some(path) = pb.finish() {
         pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
     }

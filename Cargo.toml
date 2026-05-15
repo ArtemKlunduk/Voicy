@@ -14,7 +14,7 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
-dirs = "5"
+dirs = "6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 cpal = "0.15"
@@ -33,6 +33,7 @@ tower = "0.5"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 base64 = "0.22"
 url = "2"
+urlencoding = "2"
 image = { version = "0.25", default-features = false, features = ["ico"] }
 arboard = { version = "3", default-features = false }
 # Parakeet inference — Handy использует тот же стек.
@@ -47,12 +48,25 @@ ort = { version = "=2.0.0-rc.12", features = ["ndarray"] }
 # прямоугольник. Поэтому рендерим orb + halo rings векторно через tiny-skia
 # в RGBA-битмап и пушим в WS_EX_LAYERED-окно через UpdateLayeredWindow.
 tiny-skia = "0.11"
+candelabra = { git = "https://github.com/alan13367/candelabra" }
+tokenizers = "0.19"
+rodio = "0.19"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
     "Win32_UI_WindowsAndMessaging",
+] }
+windows = { version = "0.58", features = [
+    "Media_SpeechSynthesis",
+    "Media_Playback",
+    "Media_Core",
+    "Storage_Streams",
+    "Foundation",
+    "Foundation_Collections",
 ] }
 
 

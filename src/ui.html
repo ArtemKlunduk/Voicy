@@ -294,6 +294,13 @@ main { padding:0; height:100vh; display:flex; }
   background:var(--accent); border-color:var(--accent);
   box-shadow:0 0 0 3px var(--accent-ring);
 }
+.model.is-recommended {
+  background: linear-gradient(180deg, var(--accent-bg) 0%, var(--surface) 100%);
+  border: 1px solid var(--accent-soft);
+  border-radius: 10px;
+  padding: 13px 14px;
+  margin: 0 -14px;
+}
 .model .info { min-width:0; }
 .model .row1 { display:flex; align-items:baseline; gap:10px; margin-bottom:3px; flex-wrap:wrap; }
 .model .nm { font-size:14px; font-weight:600; color:var(--ink); letter-spacing:-.01em; }
@@ -310,6 +317,49 @@ main { padding:0; height:100vh; display:flex; }
 .tiny-tag.muted { background:var(--hair-vsoft); color:var(--ink-3); border:1px solid var(--hair-soft); }
 .ghost-action { color:var(--ink-3); font-size:12.5px; cursor:pointer; background:transparent; border:0; padding:0; }
 .ghost-action:hover { color:var(--warn); }
+.recommended-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  font-family:var(--sans); font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; color:#fff; background:var(--accent);
+  padding:3px 8px 2px; border-radius:999px; font-weight:600;
+  margin-left:8px; vertical-align:1px;
+}
+.help-icon {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:18px; height:18px; border-radius:50%;
+  background:var(--hair-vsoft); color:var(--ink-3);
+  font-size:11px; font-weight:600; cursor:pointer;
+  border:1px solid var(--hair); user-select:none;
+}
+.modal-overlay {
+  position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.45);
+  backdrop-filter:blur(6px);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none;
+  transition:opacity .25s var(--ease);
+}
+.modal-overlay.show { opacity:1; pointer-events:auto; }
+.modal-card {
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--hair-soft); border-radius:14px;
+  padding:28px 32px; max-width:420px; width:90%;
+  box-shadow:0 24px 60px rgba(0,0,0,.25);
+  transform:scale(.96) translateY(10px);
+  transition:transform .25s var(--ease);
+}
+.modal-overlay.show .modal-card {
+  transform:scale(1) translateY(0);
+}
+.modal-card h3 {
+  margin:0 0 10px; font-size:16px; font-weight:600;
+}
+.modal-card p {
+  margin:0; font-size:13px; line-height:1.6; color:var(--ink-2);
+}
+.modal-card .row-actions {
+  display:flex; justify-content:flex-end; margin-top:18px;
+}
 .sz-action {
   font-family:var(--mono); font-size:12px; color:var(--accent);
   font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:5px;
@@ -640,7 +690,7 @@ dialog label {
     <!-- ──────────── GENERAL ──────────── -->
     <section class="pane" data-pane="general">
       <div class="meta">
-        <span>Settings · basics</span>
+        <span data-i18n="settings_basics">Settings · basics</span>
         <span class="right"><span id="brand-meta">v0.1.0 · — MB</span></span>
       </div>
 
@@ -650,46 +700,112 @@ dialog label {
             <span class="d" id="listener-hint">…</span>
           </div>
           <div class="v" id="listener-meta-wrap">
-            <span id="listener-meta"><span class="badge">проверяю…</span></span>
+            <span id="listener-meta"><span class="badge" data-i18n="listener_checking">checking…</span></span>
             <button class="link" id="btn-listen-start">Start</button>
             <button class="ghost-action hidden" id="btn-listen-stop">Stop</button>
           </div>
         </div>
 
+        <div class="section-label"><span data-i18n="sec_input">Input</span></div>
+
         <div class="item">
           <div class="k">Hotkey
-            <span class="d">Hold to record, release to send.</span>
+            <span class="d" data-i18n="hotkey_desc">Hold to record, release to send.</span>
           </div>
           <div class="v">
             <span id="hotkey-display"><span class="kbd">Alt</span><span class="kbd-plus">+</span><span class="kbd">X</span></span>
-            <button class="link" id="btn-record-hotkey">change</button>
-            <button class="link-muted" id="btn-reset-hotkey">reset</button>
+            <button class="link" id="btn-record-hotkey" data-i18n="btn_change">change</button>
+            <button class="link-muted" id="btn-reset-hotkey" data-i18n="btn_reset">reset</button>
           </div>
         </div>
 
         <div class="item">
-          <div class="k">Recognition language
-            <span class="d">Язык для whisper. Авто-определение пока не поддерживается.</span>
+          <div class="k" data-i18n="recog_lang">Recognition language
+            <span class="d" data-i18n="recog_lang_desc">Whisper recognition language. Auto-detection is not yet supported.</span>
           </div>
           <div class="v">
             <select class="nat-select" id="rec-lang">
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
+              <option value="en" data-i18n="option_en">English</option>
+              <option value="ru" data-i18n="option_ru">Русский</option>
               <option value="auto">Auto</option>
             </select>
           </div>
         </div>
 
+        <div class="section-label"><span data-i18n="sec_ai">AI Assistant</span></div>
+
         <div class="item">
-          <div class="k">Activity
-            <span class="d">Последнее событие пайплайна.</span>
+          <div class="k" data-i18n="ai_assistant">Voice assistant
+            <span class="d" data-i18n="ai_assistant_desc">Say "give answer" → ask a question by voice → AI replies by voice. Model ~350 MB.</span>
           </div>
-          <div class="v"><span id="activity" class="val-mono">—</span></div>
+          <div class="v" style="gap:10px;">
+            <span class="toggle" id="ai-toggle"></span>
+            <span id="ai-status" style="font-size:11px; color:var(--ink-3);"></span>
+            <span class="help-icon" id="ai-help">?</span>
+          </div>
         </div>
 
         <div class="item">
-          <div class="k">App data
-            <span class="d">Конфиг, session, кэш диалогов и whisper-веса.</span>
+          <div class="k" data-i18n="gemini_key">Gemini API key
+            <span class="d" data-i18n="gemini_key_desc">Google Gemini 2.0 Flash — fast replies (~1-2 sec). Free tier: 1500 requests/day. If empty — uses local model.</span>
+          </div>
+          <div class="v" style="gap:8px; flex-wrap:wrap;">
+            <input type="password" id="gemini-key-input" placeholder="AIza..." style="width:180px; font-size:12px; padding:4px 8px; border-radius:5px; border:1px solid var(--hair); background:var(--surface); color:var(--ink);" />
+            <span class="help-icon" id="gemini-key-help">?</span>
+            <button class="link" id="gemini-key-save" data-i18n="btn_save">save</button>
+            <button class="link" id="gemini-key-check" data-i18n="btn_check">check</button>
+            <span id="gemini-key-status" style="font-size:11px; color:var(--ink-3);"></span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="ai_language_label">Assistant language
+            <span class="d" data-i18n="ai_language_desc">Language the AI will speak in.</span>
+          </div>
+          <div class="v">
+            <select class="nat-select" id="ai-language">
+              <option value="en" data-i18n="option_en">English</option>
+              <option value="ru" data-i18n="option_ru">Русский</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section-label"><span data-i18n="sec_system">System</span></div>
+
+        <div class="item">
+          <div class="k" data-i18n="model_warmup">Model warm-up
+            <span class="d" data-i18n="model_warmup_desc">Load ASR model into RAM immediately when the listener starts.</span>
+          </div>
+          <div class="v" style="gap:10px;">
+            <span class="toggle" id="preload-toggle"></span>
+            <span class="help-icon" id="preload-help">?</span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="lang_label">Language
+            <span class="d" data-i18n="lang_desc">Application interface language.</span>
+          </div>
+          <div class="v">
+            <select class="nat-select" id="ui-lang">
+              <option value="en" data-i18n="option_en">English</option>
+              <option value="ru" data-i18n="option_ru">Русский</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="startup">Run at startup
+            <span class="d" data-i18n="startup_desc">Start Voicy with Windows.</span>
+          </div>
+          <div class="v" style="gap:10px;">
+            <span class="toggle" id="startup-toggle"></span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="data_label">App data
+            <span class="d" data-i18n="data_desc">Config, session, dialog cache and Whisper weights.</span>
           </div>
           <div class="v">
             <span class="val-mono" id="appdir">…</span>
@@ -701,7 +817,7 @@ dialog label {
     <!-- ──────────── MODELS ──────────── -->
     <section class="pane" data-pane="models" hidden>
       <div class="meta">
-        <span>Local · 16 models · no network calls</span>
+        <span data-i18n="models_title">Models</span>
         <span class="right"><b id="active-model">…</b></span>
       </div>
 
@@ -712,7 +828,7 @@ dialog label {
         <button class="model-dd-trigger" id="model-dd-trigger" type="button">
           <div class="m-info">
             <span class="m-name" id="m-current-name">…</span>
-            <span class="m-sub" id="m-current-sub">…</span>
+            <span class="m-sub" id="m-current-sub" data-i18n="model_active_now">Active now</span>
           </div>
           <span class="m-caret">▾</span>
         </button>
@@ -736,8 +852,8 @@ dialog label {
       <div class="account-card">
         <div class="account-avatar" id="account-avatar">?</div>
         <div class="account-info">
-          <div class="name" id="account-name">Не залогинен</div>
-          <div class="handle" id="account-handle">войди для отправки сообщений</div>
+          <div class="name" id="account-name" data-i18n="not_logged_in">Не залогинен</div>
+          <div class="handle" id="account-handle" data-i18n="login_to_send">войди для отправки сообщений</div>
         </div>
         <div class="account-actions">
           <button class="btn btn-primary" id="btn-login-qr">QR</button>
@@ -747,10 +863,10 @@ dialog label {
       </div>
 
       <div class="section-label">
-        <span>Contacts</span>
+        <span data-i18n="contacts">Contacts</span>
         <span class="count" id="contact-count">0</span>
-        <button class="link" id="btn-contact-import" style="margin-left:auto;border-bottom:0;">↓ из Telegram</button>
-        <button class="link" id="btn-contact-add" style="border-bottom:0;">+ добавить</button>
+        <button class="btn btn-primary" id="btn-contact-import" style="margin-left:auto;font-size:11.5px;padding:5px 10px;" data-i18n="btn_import_tg">↓ from Telegram</button>
+        <button class="btn btn-ghost" id="btn-contact-add" style="font-size:11.5px;padding:5px 10px;" data-i18n="btn_add">+ add</button>
       </div>
       <div id="contacts-list" style="display:flex; flex-direction:column;"></div>
       <p class="val-mono" style="margin:8px 0 0; font-size:10.5px; color:var(--ink-4);">
@@ -773,9 +889,9 @@ dialog label {
 <!-- Login dialog -->
 <dialog id="dlg-login">
   <h2>Telegram login</h2>
-  <div class="step" id="dlg-step">шаг 1/3 — номер телефона</div>
+  <div class="step" id="dlg-step" data-i18n="dlg_step_phone">шаг 1/3 — номер телефона</div>
   <div id="dlg-body">
-    <label>Номер телефона</label>
+    <label data-i18n="label_phone">Номер телефона</label>
     <input id="dlg-input" placeholder="+12345678901" />
   </div>
   <div class="row-actions">
@@ -788,9 +904,9 @@ dialog label {
 <!-- QR dialog -->
 <dialog id="dlg-qr">
   <h2>Telegram QR login</h2>
-  <div class="step">Открой Telegram → Settings → Devices → Link Desktop Device.</div>
+  <div class="step" data-i18n="dlg_qr_hint">Открой Telegram → Settings → Devices → Link Desktop Device.</div>
   <div id="dlg-qr-img" style="display:flex; justify-content:center; padding:14px; background:#fff; border-radius:8px; margin-top:10px;">
-    <span class="val-mono">генерирую…</span>
+    <span class="val-mono" data-i18n="generating">генерирую…</span>
   </div>
   <div class="msg" id="dlg-qr-msg" style="margin-top:14px;"></div>
   <div class="row-actions">
@@ -800,30 +916,229 @@ dialog label {
 
 <!-- Import dialog -->
 <dialog id="dlg-import" style="max-width:480px;">
-  <h2>Импорт из Telegram</h2>
-  <div class="step">Выбери из недавних диалогов. Уже добавленные — серым.</div>
-  <input id="dlg-import-search" placeholder="фильтр по имени…" />
+  <h2 data-i18n="dlg_import_title">Импорт из Telegram</h2>
+  <div class="step" data-i18n="dlg_import_desc">Выбери из недавних диалогов. Уже добавленные — серым.</div>
+  <input id="dlg-import-search" placeholder="фильтр по имени…" data-i18n="filter_placeholder" />
   <div class="dlg-list" id="dlg-import-list">
-    <div class="contact-empty" style="border:0; background:transparent;">загружаю…</div>
+    <div class="contact-empty" style="border:0; background:transparent;" data-i18n="loading">загружаю…</div>
   </div>
   <div class="row-actions">
-    <button class="btn btn-ghost" id="dlg-import-close">Готово</button>
+    <button class="btn btn-ghost" id="dlg-import-close" data-i18n="btn_done">Готово</button>
   </div>
 </dialog>
 
-<div class="flash" id="flash">✓ сохранено</div>
+<div class="flash" id="flash" data-i18n="saved">✓ сохранено</div>
+
+<!-- Modal overlay for help -->
+<div class="modal-overlay" id="help-modal">
+  <div class="modal-card">
+    <h3 data-i18n="help_warmup_title">Режим прогрева модели</h3>
+    <p data-i18n="help_warmup_body"><b>Сразу</b> — модель загружается при старте listener'а. Команды выполняются быстрее (~1 сек), но занимает ~700 МБ RAM постоянно.<br><br>
+    <b>При первой команде</b> — экономит RAM. Первая команда после старта подождёт загрузку модели (~5–10 сек), остальные идут быстро.</p>
+    <div class="row-actions">
+      <button class="btn btn-primary" id="help-modal-close" data-i18n="btn_gotit">Понятно</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal overlay for AI assistant help -->
+<div class="modal-overlay" id="ai-help-modal">
+  <div class="modal-card">
+    <h3 data-i18n="help_ai_title">Голосовой ассистент</h3>
+    <p data-i18n="help_ai_body"><b>Как работает:</b> скажи «дай ответ» → задай вопрос голосом → ИИ отвечает кратко и озвучивает ответ.<br><br>
+    <b>Gemini API (основной):</b> введи ключ в настройках — ответы за 1–2 секунды, бесплатный tier 1500 запросов/день.<br>
+    <b>Fallback:</b> без ключа используется локальная модель (работает офлайн, но медленнее — ~30–50 сек).</p>
+    <div class="row-actions">
+      <button class="btn btn-primary" id="ai-help-modal-close" data-i18n="btn_gotit">Понятно</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal overlay for Gemini key help -->
+<div class="modal-overlay" id="gemini-help-modal">
+  <div class="modal-card">
+    <h3 data-i18n="help_gemini_title">How to get a Gemini key</h3>
+    <p data-i18n="help_gemini_why"><b>Why?</b> With a Gemini key the AI answers in 1–2 seconds with excellent quality. Without a key it falls back to a slow local model (~30–50 s per answer).</p>
+    <p data-i18n="help_gemini_body" style="margin-top:10px;">1. Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);">aistudio.google.com/app/apikey</a><br>2. Click <b>"Create API key"</b><br>3. Copy the key (starts with <b>AIza...</b>)<br>4. Paste into the <b>"Gemini API key"</b> field in Voicy settings<br>5. Click <b>"check"</b> → should show ✓</p>
+    <div class="row-actions">
+      <button class="btn btn-primary" id="gemini-help-modal-close" data-i18n="btn_gotit">Got it</button>
+    </div>
+  </div>
+</div>
 
 <!-- Модальная плашка «идёт загрузка модели» -->
 <div class="dl-banner hidden" id="dl-banner">
   <div class="dl-banner-card">
     <div class="dl-spin"></div>
-    <h3 id="dl-banner-title">Загрузка модели…</h3>
-    <p id="dl-banner-sub">Качаю с HuggingFace. Может занять 1-3 минуты в зависимости от размера и скорости интернета.</p>
+    <h3 id="dl-banner-title" data-i18n="dl_title">Загрузка модели…</h3>
+    <p id="dl-banner-sub" data-i18n="dl_desc">Качаю с HuggingFace. Может занять 1-3 минуты в зависимости от размера и скорости интернета.</p>
     <div class="progress-bar"></div>
   </div>
 </div>
 
 <script>
+// ── i18n ──
+var _lang = 'en';
+var locales = {
+  ru: {
+    tab_general: 'General', tab_models: 'Models', tab_telegram: 'Telegram',
+    tab_contacts: 'Contacts', tab_hotkey: 'Hotkey',
+    settings_basics: 'Настройки · основное',
+    sec_input: 'Ввод', sec_ai: 'ИИ-ассистент', sec_system: 'Система',
+    hotkey_desc: 'Зажми и говори. Отпусти — отправляет.',
+    lang_label: 'Язык интерфейса', lang_desc: 'Язык интерфейса приложения.',
+    listener_checking: 'проверяю…', listener_listening: 'слушаю', listener_stopped: 'остановлен',
+    listener_hint_hold: 'Зажми', listener_hint_say: 'и говори «напиши имя текст».',
+    listener_autostart_fail: 'Авто-старт упал — попробуй Start вручную.',
+    listener_login_first: 'Сначала войди в Telegram.',
+    model_warmup: 'Прогрев моделей', model_warmup_desc: 'Загружать ASR-модель (распознавание речи) в RAM сразу при старте. Первые команды работают быстрее, но занимает ~700 МБ RAM.',
+    ai_assistant: 'Голосовой ассистент', ai_assistant_desc: 'Команда «дай ответ» → задай вопрос голосом → ИИ отвечает голосом. Gemini API — ответы за 1–2 сек. Без ключа — локальная модель (медленнее).',
+    gemini_key: 'Ключ Gemini API', gemini_key_desc: 'Google Gemini 2.0 Flash — основной движок ИИ. Быстрые ответы (~1–2 сек), отличный русский. Бесплатный tier: 1500 запросов/день. Без ключа — fallback на локальную модель.',
+    ai_language_label: 'Язык ассистента', ai_language_desc: 'Язык, на котором ИИ будет отвечать голосом.',
+    btn_save: 'сохранить', btn_check: 'проверить', btn_change: 'изменить', btn_reset: 'сброс',
+    gemini_key_ok: '✓ ключ работает', gemini_key_bad: '✗ ключ не работает',
+    help_gemini_title: 'Как получить ключ Gemini',
+    help_gemini_why: '<b>Зачем?</b> С ключом Gemini ИИ отвечает за 1–2 секунды с отличным качеством. Без ключа используется медленная локальная модель (~30–50 с на ответ).',
+    help_gemini_body: '1. Перейди на <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);">aistudio.google.com/app/apikey</a><br>2. Нажми <b>"Create API key"</b><br>3. Скопируй ключ (начинается с <b>AIza...</b>)<br>4. Вставь в поле <b>"Ключ Gemini API"</b> в настройках Voicy<br>5. Нажми <b>"проверить"</b> → должно показать ✓',
+
+    startup: 'Автозапуск', startup_desc: 'Запускать Voicy вместе с Windows.',
+    log_label: 'Лог', log_desc: 'Последнее событие пайплайна.',
+    data_label: 'Данные', data_desc: 'Конфиг, session, кэш диалогов и whisper-веса.',
+    recog_lang: 'Язык распознавания', recog_lang_desc: 'Язык для whisper. Авто-определение пока не поддерживается.',
+    models_title: 'Модели',
+    model_active_now: 'Используется сейчас',
+    contacts: 'Контакты',
+    option_ru: 'Русский', option_en: 'English',
+    not_logged_in: 'Не залогинен', login_to_send: 'войди для отправки сообщений',
+    btn_import_tg: '↓ из Telegram', btn_add: '+ добавить',
+    dlg_step_phone: 'шаг 1/3 — номер телефона', label_phone: 'Номер телефона',
+    dlg_step_code: 'шаг 2/3 — код из Telegram', label_code: 'Код',
+    dlg_step_2fa: 'шаг 3/3 — 2FA пароль',
+    dlg_qr_hint: 'Открой Telegram → Settings → Devices → Link Desktop Device.',
+    generating: 'генерирую…', generating_qr: 'генерирую QR…',
+    waiting_scan: 'Жду сканирования…', logged_in: '✓ залогинен',
+    qr_2fa_switch: '2FA — переключаюсь на phone+code…', qr_timeout: 'Таймаут. Попробуй снова.',
+    dlg_import_title: 'Импорт из Telegram', dlg_import_desc: 'Выбери из недавних диалогов. Уже добавленные — серым.',
+    filter_placeholder: 'фильтр по имени…', loading: 'загружаю…', loading_dialogs: 'загружаю диалоги…',
+    btn_done: 'Готово', saved: '✓ сохранено',
+    help_warmup_title: 'Режим прогрева модели',
+    help_warmup_body: '<b>Прогрев включён</b> — ASR-модель (распознавание речи) загружается сразу при старте listener\'а. Голосовые команды выполняются быстрее (~1 сек), но занимает <b>~700 МБ RAM</b> постоянно.<br><br><b>Прогрев выключен</b> — экономит RAM. Первая голосовая команда после старта подождёт загрузку модели (~5–10 сек), остальные идут быстро. ИИ-модель (Gemini / локальная) всегда грузится по требованию.',
+    help_ai_title: 'Голосовой ассистент',
+    help_ai_body: '<b>Как работает:</b> скажи «дай ответ» → задай вопрос голосом → ИИ отвечает кратко и озвучивает ответ.<br><br><b>Gemini API (основной):</b> введи ключ в настройках — ответы за 1–2 секунды, бесплатный tier 1500 запросов/день.<br><b>Fallback:</b> без ключа используется локальная модель (работает офлайн, но медленнее — ~30–50 сек).',
+
+    btn_gotit: 'Понятно',
+    dl_title: 'Загрузка модели…', dl_desc: 'Качаю с HuggingFace. Может занять 1-3 минуты в зависимости от размера и скорости интернета.',
+    ai_status_ready: 'готов', ai_status_needs_download: 'нужен ключ Gemini или загрузка локальной модели',
+    quality_hint_tiny: '⚠ <b>Whisper Tiny</b> — нижний предел качества. На тихом микрофоне путает имена и слова. Скачай <b>Base</b> (142 MB) или <b>Small</b> (466 MB) в Models — качество качественно выше.',
+    quality_hint_noinf: '⚠ Активна модель <b>{{model}}</b>, но её inference в Rust не работает. Скачай <b>Whisper Base</b> для фактического распознавания.',
+    quality_hint_fallback: 'ℹ Активна <b>{{model}}</b> (только веса). Inference идёт через скачанный Whisper.',
+    no_contacts: 'Контактов нет. Жми «+ добавить» или импортируй из Telegram.',
+    contact_name_placeholder: 'Имя', contact_alias_placeholder: 'алиас + Enter…',
+    title_delete: 'удалить', header_recommended: 'Рекомендуемая', badge_recommended: 'рекомендуется',
+    press_combo: 'нажми сочетание…', need_modifier: 'нужен модификатор',
+    error_download: 'Ошибка загрузки: ', confirm_logout: 'Выйти из Telegram?',
+    prompt_user_id: 'Telegram user id (число):', new_contact: 'Новый',
+    confirm_delete: 'Удалить «{{name}}»?', nothing_found: 'ничего не найдено',
+    wait: 'жди…', min_title: 'свернуть', close_title: 'закрыть',
+    tg_phone_step: 'шаг 1/3 — номер телефона', tg_phone_label: 'Номер телефона',
+    tg_code_step: 'шаг 2/3 — код из Telegram', tg_code_label: 'Код',
+    tg_2fa_step: 'шаг 3/3 — 2FA пароль',
+    dl_banner_title: 'Загрузка {{model}}…',
+    dl_banner_desc: 'Качаю с HuggingFace (~{{size}}). Может занять 1-3 минуты. После завершения модель автоматически активируется.',
+    error: 'ошибка',
+  },
+  en: {
+    tab_general: 'General', tab_models: 'Models', tab_telegram: 'Telegram',
+    tab_contacts: 'Contacts', tab_hotkey: 'Hotkey',
+    settings_basics: 'Settings · basics',
+    sec_input: 'Input', sec_ai: 'AI Assistant', sec_system: 'System',
+    hotkey_desc: 'Hold to record, release to send.',
+    lang_label: 'Language', lang_desc: 'Application interface language.',
+    listener_checking: 'checking…', listener_listening: 'listening', listener_stopped: 'stopped',
+    listener_hint_hold: 'Hold', listener_hint_say: 'and say "write name text".',
+    listener_autostart_fail: 'Auto-start failed — try Start manually.',
+    listener_login_first: 'Log in to Telegram first.',
+    model_warmup: 'Model warm-up', model_warmup_desc: 'Load the ASR model (speech recognition) into RAM immediately on start. First commands are faster, but uses ~700 MB RAM.',
+    ai_assistant: 'Voice assistant', ai_assistant_desc: 'Say "give answer" → ask a question by voice → AI replies by voice. Gemini API — replies in 1–2 sec. Without key — local model (slower).',
+    gemini_key: 'Gemini API key', gemini_key_desc: 'Google Gemini 2.0 Flash — primary AI engine. Fast replies (~1–2 sec), excellent English. Free tier: 1500 requests/day. Without key — fallback to local model.',
+    ai_language_label: 'Assistant language', ai_language_desc: 'Language the AI will speak in.',
+    btn_save: 'save', btn_check: 'check', btn_change: 'change', btn_reset: 'reset',
+    gemini_key_ok: '✓ key valid', gemini_key_bad: '✗ key invalid',
+    help_gemini_title: 'How to get a Gemini key',
+    help_gemini_why: '<b>Why?</b> With a Gemini key the AI answers in 1–2 seconds with excellent quality. Without a key it falls back to a slow local model (~30–50 s per answer).',
+    help_gemini_body: '1. Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);">aistudio.google.com/app/apikey</a><br>2. Click <b>"Create API key"</b><br>3. Copy the key (starts with <b>AIza...</b>)<br>4. Paste into the <b>"Gemini API key"</b> field in Voicy settings<br>5. Click <b>"check"</b> → should show ✓',
+
+    startup: 'Run at startup', startup_desc: 'Start Voicy with Windows.',
+    log_label: 'Log', log_desc: 'Last pipeline event.',
+    data_label: 'Data', data_desc: 'Config, session, dialog cache and Whisper weights.',
+    recog_lang: 'Recognition language', recog_lang_desc: 'Whisper recognition language. Auto-detection is not yet supported.',
+    models_title: 'Models',
+    model_active_now: 'Active now',
+    contacts: 'Contacts',
+    option_ru: 'Russian', option_en: 'English',
+    not_logged_in: 'Not logged in', login_to_send: 'log in to send messages',
+    btn_import_tg: '↓ from Telegram', btn_add: '+ add',
+    dlg_step_phone: 'Step 1/3 — phone number', label_phone: 'Phone number',
+    dlg_step_code: 'Step 2/3 — code from Telegram', label_code: 'Code',
+    dlg_step_2fa: 'Step 3/3 — 2FA password',
+    dlg_qr_hint: 'Open Telegram → Settings → Devices → Link Desktop Device.',
+    generating: 'generating…', generating_qr: 'generating QR…',
+    waiting_scan: 'Waiting for scan…', logged_in: '✓ logged in',
+    qr_2fa_switch: '2FA — switching to phone + code…', qr_timeout: 'Timeout. Try again.',
+    dlg_import_title: 'Import from Telegram', dlg_import_desc: 'Select from recent dialogs. Already added ones are grayed out.',
+    filter_placeholder: 'filter by name…', loading: 'loading…', loading_dialogs: 'loading dialogs…',
+    btn_done: 'Done', saved: '✓ saved',
+    help_warmup_title: 'Model warm-up mode',
+    help_warmup_body: '<b>Warm-up on</b> — the ASR model (speech recognition) loads immediately when the listener starts. Voice commands execute faster (~1 sec), but uses <b>~700 MB RAM</b> permanently.<br><br><b>Warm-up off</b> — saves RAM. The first voice command after start will wait for the model to load (~5–10 sec), the rest are fast. The AI model (Gemini / local) always loads on demand.',
+    help_ai_title: 'Voice assistant',
+    help_ai_body: '<b>How it works:</b> say "give answer" → ask a question by voice → AI replies briefly and speaks the answer.<br><br><b>Gemini API (primary):</b> enter your key in settings — replies in 1–2 sec, free tier 1500 requests/day.<br><b>Fallback:</b> without a key uses a local model (works offline but slower — ~30–50 sec).',
+
+    btn_gotit: 'Got it',
+    dl_title: 'Downloading model…', dl_desc: 'Downloading from HuggingFace. May take 1-3 minutes depending on size and internet speed.',
+    ai_status_ready: 'ready', ai_status_needs_download: 'needs Gemini key or local model download',
+    quality_hint_tiny: '⚠ <b>Whisper Tiny</b> — lowest quality threshold. On a quiet microphone it confuses names and words. Download <b>Base</b> (142 MB) or <b>Small</b> (466 MB) in Models — quality is significantly better.',
+    quality_hint_noinf: '⚠ Active model <b>{{model}}</b>, but its inference in Rust doesn\'t work. Download <b>Whisper Base</b> for actual recognition.',
+    quality_hint_fallback: 'ℹ Active <b>{{model}}</b> (weights only). Inference runs through the downloaded Whisper.',
+    no_contacts: 'No contacts. Tap "+ add" or import from Telegram.',
+    contact_name_placeholder: 'Name', contact_alias_placeholder: 'alias + Enter…',
+    title_delete: 'delete', header_recommended: 'Recommended', badge_recommended: 'recommended',
+    press_combo: 'press combination…', need_modifier: 'modifier required',
+    error_download: 'Download error: ', confirm_logout: 'Sign out of Telegram?',
+    prompt_user_id: 'Telegram user id (number):', new_contact: 'New',
+    confirm_delete: 'Delete «{{name}}»?', nothing_found: 'nothing found',
+    wait: 'wait…', min_title: 'Minimize', close_title: 'Close',
+    tg_phone_step: 'Step 1/3 — phone number', tg_phone_label: 'Phone number',
+    tg_code_step: 'Step 2/3 — code from Telegram', tg_code_label: 'Code',
+    tg_2fa_step: 'Step 3/3 — 2FA password',
+    dl_banner_title: 'Downloading {{model}}…',
+    dl_banner_desc: 'Downloading from HuggingFace (~{{size}}). May take 1-3 minutes. The model will be activated automatically when finished.',
+    error: 'error',
+  }
+};
+function t(key, vars) {
+  var str = (locales[_lang] && locales[_lang][key]) || key;
+  if (vars) {
+    for (var k in vars) str = str.replace('{{' + k + '}}', vars[k]);
+  }
+  return str;
+}
+function applyLanguage() {
+  document.documentElement.lang = _lang === 'ru' ? 'ru' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(function(el) {
+    var key = el.getAttribute('data-i18n');
+    if (!key) return;
+    var vars = {};
+    if (el.dataset.i18nVars) {
+      try { vars = JSON.parse(el.dataset.i18nVars); } catch(e) {}
+    }
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.placeholder = t(key, vars);
+    } else {
+      el.innerHTML = t(key, vars);
+    }
+  });
+}
+
 // ── IPC core ──
 var _cb = {};
 // Долгие команды (download/диалоги) получают свой увеличенный таймаут.
@@ -842,7 +1157,6 @@ window.voicyReply = function (id, data) {
 };
 window.voicyEvent = function (kind, data) {
   if (kind === "log") appendLog(data);
-  if (kind === "activity") setActivity(data);
 };
 window.addEventListener("error", function (e) {
   try { window.ipc.postMessage(JSON.stringify({id:"__err",cmd:"_jserror",payload:{msg:e.message,src:e.filename,line:e.lineno}})); } catch (_) {}
@@ -863,7 +1177,7 @@ function setActivity(text) {
 function escapeAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
 function flashOK(text) {
   var el = document.getElementById("flash");
-  el.textContent = text || "✓ сохранено";
+  el.textContent = text || t('saved');
   el.classList.add("show");
   clearTimeout(el._t);
   el._t = setTimeout(function(){ el.classList.remove("show"); }, 1200);
@@ -873,10 +1187,9 @@ function showDownloadBanner(modelName) {
   var mod = _modelsCache.find(function(x){return x.name === modelName;});
   var title = mod ? mod.display : modelName;
   var size = mod ? mod.size : "?";
-  document.getElementById("dl-banner-title").textContent = "Загрузка " + title + "…";
+  document.getElementById("dl-banner-title").textContent = t('dl_banner_title', {model: title});
   document.getElementById("dl-banner-sub").textContent =
-    "Качаю с HuggingFace (~" + size + "). Может занять 1-3 минуты. " +
-    "После завершения модель автоматически активируется.";
+  document.getElementById("dl-banner-sub").textContent = t('dl_banner_desc', {size: size});
   document.getElementById("dl-banner").classList.remove("hidden");
 }
 function hideDownloadBanner() {
@@ -934,6 +1247,65 @@ async function refresh() {
   var info = await callIpc("info");
   if (info.ui_theme) applyTheme(info.ui_theme);
   document.getElementById("brand-meta").textContent = "v" + info.version + " · " + (info.exe_size_kb/1024).toFixed(2) + " MB";
+
+  // language
+  var langRes = await callIpc("language_get");
+  if (langRes.ok && langRes.language) {
+    _lang = langRes.language;
+    var langSel = document.getElementById("ui-lang");
+    if (langSel) langSel.value = _lang;
+    applyLanguage();
+  }
+
+  // preload toggle
+  var preloadRes = await callIpc("preload_get");
+  var preloadToggle = document.getElementById("preload-toggle");
+  if (preloadToggle && preloadRes.ok) {
+    preloadToggle.classList.toggle("off", !preloadRes.preload);
+  }
+
+  // AI assistant toggle
+  var aiRes = await callIpc("ai_assistant_get");
+  var aiToggle = document.getElementById("ai-toggle");
+  var aiStatus = document.getElementById("ai-status");
+  if (aiToggle && aiRes.ok) {
+    aiToggle.classList.toggle("off", !aiRes.enabled);
+    if (aiStatus) {
+      if (aiRes.model_cached) {
+        aiStatus.textContent = t('ai_status_ready');
+        aiStatus.style.color = "var(--sage-deep)";
+      } else {
+        aiStatus.textContent = t('ai_status_needs_download');
+        aiStatus.style.color = "var(--warn)";
+      }
+    }
+  }
+
+  // AI assistant language
+  var aiLangRes = await callIpc("ai_language_get");
+  var aiLangSel = document.getElementById("ai-language");
+  if (aiLangSel && aiLangRes.ok && aiLangRes.language) {
+    aiLangSel.value = aiLangRes.language;
+  }
+
+  // Gemini API key
+  var geminiRes = await callIpc("gemini_key_get");
+  var geminiInput = document.getElementById("gemini-key-input");
+  var geminiStatus = document.getElementById("gemini-key-status");
+  if (geminiInput && geminiRes.ok) {
+    geminiInput.value = geminiRes.key || "";
+    if (geminiStatus) {
+      geminiStatus.textContent = "";
+    }
+  }
+
+  // Startup toggle
+  var startupRes = await callIpc("startup_get");
+  var startupToggle = document.getElementById("startup-toggle");
+  if (startupToggle && startupRes.ok) {
+    startupToggle.classList.toggle("off", !startupRes.startup);
+  }
+
   document.getElementById("hotkey-display").innerHTML = renderHotkey(info.hotkey);
   document.getElementById("appdir").textContent = (info.contacts_path || "").replace(/[\\\/]contacts\.txt$/, "");
 
@@ -950,8 +1322,8 @@ async function refresh() {
     logoutBtn.classList.remove("hidden");
     tgMeta.innerHTML = '<span class="badge active">✓ online</span>';
   } else {
-    name.textContent = "Не залогинен";
-    handle.textContent = "войди для отправки сообщений";
+    name.textContent = t('not_logged_in');
+    handle.textContent = t('login_to_send');
     avatar.textContent = "?";
     logoutBtn.classList.add("hidden");
     tgMeta.innerHTML = '<span class="badge warn">offline</span>';
@@ -974,12 +1346,12 @@ async function refresh() {
   var startBtn = document.getElementById("btn-listen-start");
   var stopBtn = document.getElementById("btn-listen-stop");
   if (lst.running) {
-    listenerMeta.innerHTML = '<span class="badge active"><span class="dot"></span>слушаю</span>';
-    hint.innerHTML = 'Зажми <span class="kbd">' + info.hotkey + '</span> и говори «напиши имя текст».';
+    listenerMeta.innerHTML = '<span class="badge active"><span class="dot"></span>' + t('listener_listening') + '</span>';
+    hint.innerHTML = t('listener_hint_hold') + ' <span class="kbd">' + info.hotkey + '</span> ' + t('listener_hint_say');
     startBtn.classList.add("hidden"); stopBtn.classList.remove("hidden");
   } else {
-    listenerMeta.innerHTML = '<span class="badge">остановлен</span>';
-    hint.textContent = info.signed_in ? 'Авто-старт упал — попробуй Start вручную.' : 'Сначала войди в Telegram.';
+    listenerMeta.innerHTML = '<span class="badge">' + t('listener_stopped') + '</span>';
+    hint.textContent = info.signed_in ? t('listener_autostart_fail') : t('listener_login_first');
     startBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
   }
 
@@ -992,18 +1364,24 @@ async function refresh() {
   var qualityHint = document.getElementById("model-quality-hint");
   if (qualityHint) {
     var m = _modelsCache.find(function(x){return x.name === info.model;});
-    if (m && m.name === "tiny") {
-      qualityHint.innerHTML = '⚠ <b>Whisper Tiny</b> — нижний предел качества. На тихом микрофоне путает имена и слова. Скачай <b>Base</b> (142 MB) или <b>Small</b> (466 MB) в Models — качество качественно выше.';
+    if (m && m.recommended) {
+      qualityHint.style.display = "none";
+    } else if (m && m.name === "tiny") {
+      qualityHint.innerHTML = t('quality_hint_tiny');
       qualityHint.style.display = "block";
+      qualityHint.style.background = "var(--warn-bg)";
+      qualityHint.style.color = "var(--warn)";
     } else if (m && !m.runnable) {
       // Active model не whisper — listener будет использовать fallback whisper.
       var hasWhisper = _modelsCache.some(function(x){return x.engine === "whisper" && x.downloaded;});
       if (!hasWhisper) {
-        qualityHint.innerHTML = '⚠ Активна модель <b>' + m.display + '</b>, но её inference в Rust не работает. Скачай <b>Whisper Base</b> для фактического распознавания.';
+        qualityHint.innerHTML = t('quality_hint_noinf', {model: m.display});
       } else {
-        qualityHint.innerHTML = 'ℹ Активна <b>' + m.display + '</b> (только веса). Inference идёт через скачанный Whisper.';
+        qualityHint.innerHTML = t('quality_hint_fallback', {model: m.display});
       }
       qualityHint.style.display = "block";
+      qualityHint.style.background = "var(--warn-bg)";
+      qualityHint.style.color = "var(--warn)";
     } else {
       qualityHint.style.display = "none";
     }
@@ -1038,7 +1416,7 @@ async function refreshContacts() {
 function renderContacts() {
   var box = document.getElementById("contacts-list");
   if (!_contacts.length) {
-    box.innerHTML = '<div class="contact-empty">Контактов нет. Жми «+ добавить» или импортируй из Telegram.</div>';
+    box.innerHTML = '<div class="contact-empty">' + t('no_contacts') + '</div>';
     return;
   }
   var html = "";
@@ -1053,11 +1431,11 @@ function renderContacts() {
     }
     html +=
       '<div class="contact-row" data-idx="' + i + '">' +
-        '<input class="contact-name-inp name-input" data-idx="' + i + '" value="' + escapeAttr(c.name) + '" placeholder="Имя" />' +
+        '<input class="contact-name-inp name-input" data-idx="' + i + '" value="' + escapeAttr(c.name) + '" placeholder="' + t('contact_name_placeholder') + '" />' +
         '<div class="tag-input" data-idx="' + i + '">' + tags +
-          '<input class="tag-bare" data-idx="' + i + '" placeholder="алиас + Enter…" /></div>' +
+          '<input class="tag-bare" data-idx="' + i + '" placeholder="' + t('contact_alias_placeholder') + '" /></div>' +
         '<span class="contact-uid">·' + c.uid + '</span>' +
-        '<button class="contact-del" data-idx="' + i + '" title="удалить">×</button>' +
+        '<button class="contact-del" data-idx="' + i + '" title="' + t('title_delete') + '">×</button>' +
       '</div>';
   }
   box.innerHTML = html;
@@ -1071,6 +1449,27 @@ async function saveContactsNow() {
   if (r.ok) flashOK();
   else appendLog("contacts_save: " + (r.error || "?"));
 }
+// Сохранить контакты при закрытии окна/вкладки (на случай если debounce-таймер ещё не сработал)
+window.addEventListener("beforeunload", function () {
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+  // синхронный IPC не доступен, но можем попробовать отправить асинхронно
+  // либо просто отправить — браузер подождёт Promise? Нет, beforeunload не ждёт async.
+  // Однако fetch с keepalive или navigator.sendBeacon могут помочь.
+  // В wry IPC postMessage — синхронный вызов? Давайте просто вызовем contacts_save
+  // через вызов fetch на кастомный протокол? Нет.
+  // В wry window.ipc.postMessage — это синхронный post к Rust, Rust обрабатывает
+  // в отдельном треде. Но beforeunload может не дождаться ответа.
+  // Простейшее решение: использовать sync XHR? Нет.
+  // Лучшее: просто вызвать saveContactsNow — если IPC быстрый, успеет.
+  // Или использовать sendBeacon с JSON.
+  // Но в wry IPC не работает через HTTP. 
+  // Пробуем window.ipc.postMessage напрямую — это вызовет IPC handler в Rust,
+  // который сохранит контакты. Браузер может прервать, но обычно успевает.
+  try {
+    var msg = JSON.stringify({ id: "unload", cmd: "contacts_save", payload: { contacts: _contacts } });
+    if (window.ipc && window.ipc.postMessage) window.ipc.postMessage(msg);
+  } catch (e) {}
+});
 document.addEventListener("input", function (e) {
   var t = e.target;
   if (!t || !t.classList) return;
@@ -1118,24 +1517,39 @@ function renderModelDropdown() {
   if (!_modelsCache.length) return;
   var cur = activeOrDefault();
   document.getElementById("m-current-name").textContent = cur.display;
-  var lbl = cur.runnable ? "inference" : "weights only";
-  document.getElementById("m-current-sub").textContent = cur.engine + " · " + lbl + " · " + cur.size + " · " + cur.lang;
+  var sub = document.getElementById("m-current-sub");
+  if (sub) sub.textContent = t('model_active_now');
 
+  var rec = _modelsCache.find(function(x){return x.recommended;});
   var groups = []; var seen = {};
   for (var i = 0; i < _modelsCache.length; i++) {
     var m = _modelsCache[i];
+    if (m.recommended) continue;
     if (!seen[m.family]) { seen[m.family] = []; groups.push(m.family); }
     seen[m.family].push(m);
   }
   var html = "";
+  if (rec) {
+    html += '<div class="dd-group-head">' + t('header_recommended') + '<small>' + (rec.runnable ? "inference works" : rec.engine + " · weights only") + '</small></div>';
+    var recRight = rec.active ? '<span class="right" style="color:var(--accent);">✓ active</span>' :
+      (rec.downloaded ? '<span class="right">✓ ready</span>' : '<span class="right">download</span>');
+    html += '<div class="dd-item" data-name="' + rec.name + '" style="background:var(--accent-bg);">' +
+      '<span class="dot ' + (rec.downloaded?"have":"missing") + '"></span>' +
+      '<span class="v">' + escapeAttr(rec.variant) + '</span>' +
+      '<span class="meta">' + rec.size + ' · ' + rec.lang + ' — ' + escapeAttr(rec.desc) + '</span>' +
+      recRight + '</div>';
+  }
   for (var g = 0; g < groups.length; g++) {
     var fam = groups[g]; var variants = seen[fam];
     var runs = variants[0].engine === "whisper";
     html += '<div class="dd-group-head">' + escapeAttr(fam) + '<small>' + (runs ? "inference works" : variants[0].engine + " · weights only") + '</small></div>';
     for (var k = 0; k < variants.length; k++) {
       var v = variants[k];
-      var right = v.active ? '<span class="right" style="color:var(--accent);">✓ active</span>' :
-        (v.downloaded ? '<span class="right">✓ ready</span>' : '<span class="right">download</span>');
+      var right;
+      if (v.active && !v.downloaded) right = '<span class="right" style="color:var(--warn);">✓ active · download</span>';
+      else if (v.active) right = '<span class="right" style="color:var(--accent);">✓ active</span>';
+      else if (v.downloaded) right = '<span class="right">✓ ready</span>';
+      else right = '<span class="right">download</span>';
       html += '<div class="dd-item" data-name="' + v.name + '">' +
         '<span class="dot ' + (v.downloaded?"have":"missing") + '"></span>' +
         '<span class="v">' + escapeAttr(v.variant) + '</span>' +
@@ -1161,7 +1575,9 @@ function renderModelLists() {
   var loaded = []; var avail = [];
   for (var i = 0; i < _modelsCache.length; i++) {
     var m = _modelsCache[i];
-    (m.downloaded ? loaded : avail).push(m);
+    // Активная модель всегда в loaded, даже если не скачана — иначе выглядит как баг
+    if (m.active || m.downloaded) loaded.push(m);
+    else avail.push(m);
   }
   document.getElementById("cnt-loaded").textContent = loaded.length;
   document.getElementById("cnt-avail").textContent = avail.length;
@@ -1170,14 +1586,16 @@ function renderModelLists() {
 }
 function renderModelRow(m) {
   var tagMulti = '<span class="tag"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5.5" cy="5.5" r="4"/><path d="M1.5 5.5h8"/><path d="M5.5 1.5C7 3 7.5 4.5 7.5 5.5S7 8 5.5 9.5"/><path d="M5.5 1.5C4 3 3.5 4.5 3.5 5.5S4 8 5.5 9.5"/></svg><span>' + (m.lang === "multi" ? "Multilingual" : m.lang === "ru" ? "Russian only" : "English only") + '</span></span>';
+  var recBadge = m.recommended ? '<span class="recommended-badge">' + t('badge_recommended') + '</span>' : '';
   var action;
-  if (m.active) action = '<span class="tiny-tag">active</span>';
+  if (m.active && !m.downloaded) action = '<button class="sz-action" data-act="download" data-name="' + m.name + '"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 1.5v6M3 5l2.5 2.5L8 5M2 9.5h7"/></svg>' + m.size + '</button>';
+  else if (m.active) action = '<span class="tiny-tag">active</span>';
   else if (m.downloaded) action = '<button class="link" data-act="activate" data-name="' + m.name + '">choose</button>';
   else action = '<button class="sz-action" data-act="download" data-name="' + m.name + '"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 1.5v6M3 5l2.5 2.5L8 5M2 9.5h7"/></svg>' + m.size + '</button>';
-  return '<div class="model' + (m.active?" is-active":"") + '">' +
+  return '<div class="model' + (m.active?" is-active":"") + (m.recommended?" is-recommended":"") + '">' +
     '<span class="mk"></span>' +
     '<div class="info">' +
-      '<div class="row1"><span class="nm">' + escapeAttr(m.display) + '</span></div>' +
+      '<div class="row1"><span class="nm">' + escapeAttr(m.display) + '</span>' + recBadge + '</div>' +
       '<div class="desc">' + escapeAttr(m.desc) + '</div>' +
       '<div class="tags">' + tagMulti + '</div>' +
     '</div>' +
@@ -1228,6 +1646,47 @@ document.addEventListener("click", async function (e) {
       refresh(); return;
     }
   }
+  // preload toggle
+  if (t.id === "preload-toggle") {
+    var cur = !t.classList.contains("off");
+    await callIpc("preload_set", { preload: !cur });
+    refresh(); return;
+  }
+  // AI assistant toggle
+  if (t.id === "ai-toggle") {
+    var cur = !t.classList.contains("off");
+    await callIpc("ai_assistant_set", { enabled: !cur });
+    refresh(); return;
+  }
+  // Startup toggle
+  if (t.id === "startup-toggle") {
+    var cur = !t.classList.contains("off");
+    await callIpc("startup_set", { startup: !cur });
+    refresh(); return;
+  }
+  // (legacy AI model download button removed — Gemini is primary)
+  // Gemini API key
+  if (t.id === "gemini-key-save") {
+    var inp = document.getElementById("gemini-key-input");
+    if (inp) {
+      var key = inp.value.trim();
+      var sr = await callIpc("gemini_key_set", { key: key });
+      if (sr.ok) { flashOK(); }
+      else { appendLog("gemini_key_set: " + (sr.error || "?")); }
+    }
+    return;
+  }
+  if (t.id === "gemini-key-check") {
+    var st = document.getElementById("gemini-key-status");
+    if (st) { st.textContent = t('listener_checking'); st.style.color = "var(--ink-3)"; }
+    var cr = await callIpc("gemini_key_check");
+    if (st) {
+      if (cr.ok && cr.valid) { st.textContent = t('gemini_key_ok'); st.style.color = "var(--sage-deep)"; }
+      else if (cr.ok && !cr.valid) { st.textContent = t('gemini_key_bad'); st.style.color = "var(--warn)"; }
+      else { st.textContent = (cr.error || "?"); st.style.color = "var(--warn)"; }
+    }
+    return;
+  }
   // listener
   if (t.id === "btn-listen-start") {
     t.disabled = true; var rs = await callIpc("listener_start");
@@ -1240,17 +1699,17 @@ document.addEventListener("click", async function (e) {
   // login
   if (t.id === "btn-login-qr") { openQrDialog(); return; }
   if (t.id === "btn-login")    { openLoginDialog(); return; }
-  if (t.id === "btn-logout")   { if (confirm("Выйти из Telegram?")) { await callIpc("logout"); refresh(); } return; }
+  if (t.id === "btn-logout")   { if (confirm(t('confirm_logout'))) { await callIpc("logout"); refresh(); } return; }
   // dialog buttons
   if (t.id === "dlg-action")    { await onDialogAction(); return; }
   if (t.id === "dlg-cancel")    { document.getElementById("dlg-login").close(); return; }
   if (t.id === "dlg-qr-cancel") { qrCancelled = true; document.getElementById("dlg-qr").close(); return; }
   // contacts add / import / delete / tag-x
   if (t.id === "btn-contact-add") {
-    var uidStr = prompt("Telegram user id (число):");
+    var uidStr = prompt(t('prompt_user_id'));
     var uid = parseInt(uidStr, 10);
     if (!uid || isNaN(uid)) return;
-    _contacts.push({uid:uid, name:"Новый", aliases:[]});
+    _contacts.push({uid:uid, name:t('new_contact'), aliases:[]});
     renderContacts(); saveContactsNow(); return;
   }
   if (t.id === "btn-contact-import") { openImportDialog(); return; }
@@ -1258,7 +1717,7 @@ document.addEventListener("click", async function (e) {
   if (t.classList && t.classList.contains("contact-del")) {
     var idx = +t.getAttribute("data-idx");
     var c = _contacts[idx];
-    if (c && confirm('Удалить «' + (c.name || c.uid) + '»?')) {
+    if (c && confirm(t('confirm_delete', {name: (c.name || c.uid)}))) {
       _contacts.splice(idx, 1); renderContacts(); saveContactsNow();
     }
     return;
@@ -1289,8 +1748,8 @@ document.addEventListener("click", async function (e) {
 var loginStep = "phone";
 function openLoginDialog() {
   loginStep = "phone";
-  document.getElementById("dlg-step").textContent = "шаг 1/3 — номер телефона";
-  document.getElementById("dlg-body").innerHTML = '<label>Номер телефона</label><input id="dlg-input" placeholder="+12345678901" />';
+  document.getElementById("dlg-step").textContent = t('dlg_step_phone');
+  document.getElementById("dlg-body").innerHTML = '<label>' + t('label_phone') + '</label><input id="dlg-input" placeholder="+12345678901" />';
   var ac = document.getElementById("dlg-action"); ac.textContent = "Send code"; ac.disabled = false;
   var msg = document.getElementById("dlg-msg"); msg.textContent = ""; msg.className = "msg";
   document.getElementById("dlg-login").showModal();
@@ -1300,14 +1759,14 @@ async function onDialogAction() {
   var inp = document.getElementById("dlg-input");
   var msg = document.getElementById("dlg-msg");
   var ac = document.getElementById("dlg-action");
-  ac.disabled = true; msg.className = "msg"; msg.textContent = "жди…";
+  ac.disabled = true; msg.className = "msg"; msg.textContent = t('wait');
   if (loginStep === "phone") {
     var r = await callIpc("login_phone", {phone:inp.value.trim()});
     ac.disabled = false;
     if (r.ok) {
       loginStep = "code";
-      document.getElementById("dlg-step").textContent = "шаг 2/3 — код из Telegram";
-      document.getElementById("dlg-body").innerHTML = '<label>Код</label><input id="dlg-input" placeholder="12345" inputmode="numeric" />';
+      document.getElementById("dlg-step").textContent = t('dlg_step_code');
+      document.getElementById("dlg-body").innerHTML = '<label>' + t('label_code') + '</label><input id="dlg-input" placeholder="12345" inputmode="numeric" />';
       ac.textContent = "Sign in"; msg.textContent = "";
       setTimeout(function(){ var i = document.getElementById("dlg-input"); if (i) i.focus(); }, 50);
     } else { msg.className = "msg err"; msg.textContent = "✗ " + r.error; }
@@ -1319,7 +1778,7 @@ async function onDialogAction() {
     if (rc.ok) { document.getElementById("dlg-login").close(); refresh(); }
     else if (rc.need_2fa) {
       loginStep = "pwd";
-      document.getElementById("dlg-step").textContent = "шаг 3/3 — 2FA пароль";
+      document.getElementById("dlg-step").textContent = t('dlg_step_2fa');
       document.getElementById("dlg-body").innerHTML = '<label>Cloud password</label><input id="dlg-input" type="password" />';
       ac.textContent = "Unlock"; msg.textContent = "";
       setTimeout(function(){ var i = document.getElementById("dlg-input"); if (i) i.focus(); }, 50);
@@ -1339,24 +1798,24 @@ var qrCancelled = false;
 async function openQrDialog() {
   qrCancelled = false;
   var img = document.getElementById("dlg-qr-img"); var msg = document.getElementById("dlg-qr-msg");
-  img.innerHTML = '<span class="val-mono">генерирую QR…</span>'; msg.textContent = ""; msg.className = "msg";
+  img.innerHTML = '<span class="val-mono">' + t('generating_qr') + '</span>'; msg.textContent = ""; msg.className = "msg";
   document.getElementById("dlg-qr").showModal();
   var r = await callIpc("login_qr_start");
   if (!r.ok) { msg.className = "msg err"; msg.textContent = "✗ " + (r.error || "qr error"); return; }
   img.innerHTML = '<img src="' + r.qr_data_url + '" width="220" height="220" alt="QR">';
-  msg.textContent = "Жду сканирования…";
+  msg.textContent = t('waiting_scan');
   for (var i = 0; i < 600; i++) {
     if (qrCancelled) return;
     await new Promise(function(res){ setTimeout(res, 1000); });
     if (qrCancelled) return;
     var s = await callIpc("login_qr_status");
     if (s.status === "authorized") {
-      msg.textContent = "✓ залогинен";
+      msg.textContent = t('logged_in');
       setTimeout(function(){ document.getElementById("dlg-qr").close(); refresh(); }, 800);
       return;
     }
     if (s.status === "2fa") {
-      msg.textContent = "2FA — переключаюсь на phone+code…";
+      msg.textContent = t('qr_2fa_switch');
       setTimeout(function(){ document.getElementById("dlg-qr").close(); openLoginDialog(); }, 1500);
       return;
     }
@@ -1364,13 +1823,13 @@ async function openQrDialog() {
       msg.className = "msg err"; msg.textContent = "✗ " + s.status; return;
     }
   }
-  msg.className = "msg err"; msg.textContent = "Таймаут. Попробуй снова.";
+  msg.className = "msg err"; msg.textContent = t('qr_timeout');
 }
 
 // ── hotkey capture ──
 function startHotkeyCapture() {
   var el = document.getElementById("hotkey-display");
-  el.innerHTML = '<span class="val-mono" style="color:var(--accent);">нажми сочетание…</span>';
+  el.innerHTML = '<span class="val-mono" style="color:var(--accent);">' + t('press_combo') + '</span>';
   function onKey(e) {
     e.preventDefault();
     var mods = [];
@@ -1380,7 +1839,7 @@ function startHotkeyCapture() {
     if (e.metaKey)  mods.push("win");
     var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (["Control","Alt","Shift","Meta","OS"].indexOf(e.key) !== -1) return;
-    if (!mods.length) { el.innerHTML = '<span class="val-mono" style="color:var(--warn);">нужен модификатор</span>'; return; }
+    if (!mods.length) { el.innerHTML = '<span class="val-mono" style="color:var(--warn);">' + t('need_modifier') + '</span>'; return; }
     callIpc("hotkey_set", {modifiers:mods, key:k}).then(function(){
       window.removeEventListener("keydown", onKey, true);
       refresh();
@@ -1395,9 +1854,9 @@ async function openImportDialog() {
   document.getElementById("dlg-import").showModal();
   document.getElementById("dlg-import-search").value = "";
   var list = document.getElementById("dlg-import-list");
-  list.innerHTML = '<div class="contact-empty" style="border:0;background:transparent;">загружаю диалоги…</div>';
+  list.innerHTML = '<div class="contact-empty" style="border:0;background:transparent;">' + t('loading_dialogs') + '</div>';
   var r = await callIpc("telegram_dialogs");
-  if (!r.ok) { list.innerHTML = '<div class="contact-empty" style="border:0;color:var(--warn);">✗ ' + (r.error||"ошибка") + '</div>'; return; }
+  if (!r.ok) { list.innerHTML = '<div class="contact-empty" style="border:0;color:var(--warn);">✗ ' + (r.error||t('error')) + '</div>'; return; }
   _dialogs = r.dialogs || [];
   renderDialogList("");
 }
@@ -1422,8 +1881,69 @@ function renderDialogList(filter) {
       '<span class="dlg-list-add">' + (added ? "added" : "add") + '</span>';
     list.appendChild(item);
   }
-  if (!any) list.innerHTML = '<div class="contact-empty" style="border:0;background:transparent;">ничего не найдено</div>';
+  if (!any) list.innerHTML = '<div class="contact-empty" style="border:0;background:transparent;">' + t('nothing_found') + '</div>';
 }
+
+// ── modal help ──
+(function(){
+  var modal = document.getElementById("help-modal");
+  var help = document.getElementById("preload-help");
+  var closeBtn = document.getElementById("help-modal-close");
+  function openModal() { if (modal) modal.classList.add("show"); }
+  function closeModal() { if (modal) modal.classList.remove("show"); }
+  if (help) help.addEventListener("click", openModal);
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (modal) modal.addEventListener("click", function(e) {
+    if (e.target === modal) closeModal();
+  });
+})();
+
+// ── AI help modal ──
+(function(){
+  var modal = document.getElementById("ai-help-modal");
+  var help = document.getElementById("ai-help");
+  var closeBtn = document.getElementById("ai-help-modal-close");
+  function openModal() { if (modal) modal.classList.add("show"); }
+  function closeModal() { if (modal) modal.classList.remove("show"); }
+  if (help) help.addEventListener("click", openModal);
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (modal) modal.addEventListener("click", function(e) {
+    if (e.target === modal) closeModal();
+  });
+})();
+
+// ── Gemini key help modal ──
+(function(){
+  var modal = document.getElementById("gemini-help-modal");
+  var help = document.getElementById("gemini-key-help");
+  var closeBtn = document.getElementById("gemini-help-modal-close");
+  function openModal() { if (modal) modal.classList.add("show"); }
+  function closeModal() { if (modal) modal.classList.remove("show"); }
+  if (help) help.addEventListener("click", openModal);
+  if (closeBtn) closeBtn.addEventListener("click", closeModal);
+  if (modal) modal.addEventListener("click", function(e) {
+    if (e.target === modal) closeModal();
+  });
+})();
+
+// language select
+document.getElementById("ui-lang").addEventListener("change", async function(e) {
+  var v = e.target.value;
+  await callIpc("language_set", { language: v });
+  refresh();
+});
+// rec-lang select
+document.getElementById("rec-lang").addEventListener("change", async function(e) {
+  var v = e.target.value;
+  await callIpc("rec_lang_set", { language: v });
+  refresh();
+});
+// ai-language select
+document.getElementById("ai-language").addEventListener("change", async function(e) {
+  var v = e.target.value;
+  await callIpc("ai_language_set", { language: v });
+  refresh();
+});
 
 refresh();
 setInterval(refresh, 5000);

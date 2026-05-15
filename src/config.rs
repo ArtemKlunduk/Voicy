@@ -19,9 +19,36 @@ pub struct Config {
     /// "light" | "dark" — UI theme, восстанавливается при перезапуске.
     #[serde(default = "default_theme")]
     pub ui_theme: String,
+    /// Загружать ASR-модель в RAM сразу при старте listener'а.
+    #[serde(default = "default_preload")]
+    pub preload_model: bool,
+    /// Включить голосового ИИ-ассистента (команда "дай ответ").
+    #[serde(default = "default_ai_enabled")]
+    pub ai_assistant_enabled: bool,
+    /// Загружать ИИ-модель в RAM при старте listener'а.
+    #[serde(default = "default_ai_preload")]
+    pub ai_preload: bool,
+    /// Запускать приложение при старте Windows.
+    #[serde(default = "default_startup_launch")]
+    pub startup_launch: bool,
+    /// Язык интерфейса: "ru" | "en".
+    #[serde(default = "default_language")]
+    pub language: String,
+    /// API ключ для Google Gemini (голосовой ассистент).
+    #[serde(default)]
+    pub gemini_api_key: String,
+    /// Язык голосового ассистента: "ru" | "en".
+    #[serde(default = "default_ai_language")]
+    pub ai_language: String,
 }
 
 fn default_theme() -> String { "light".into() }
+fn default_preload() -> bool { true }
+fn default_ai_enabled() -> bool { true }
+fn default_ai_preload() -> bool { false }
+fn default_startup_launch() -> bool { false }
+fn default_language() -> String { "en".into() }
+fn default_ai_language() -> String { "en".into() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -42,11 +69,18 @@ pub struct Telegram {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            model: "base".into(),
+            model: "parakeet-v3".into(),
             hotkey: Hotkey::default(),
             telegram: Telegram::default(),
             recognition_language: "ru".into(),
             ui_theme: "light".into(),
+            preload_model: true,
+            ai_assistant_enabled: true,
+            ai_preload: false,
+            startup_launch: false,
+            language: "en".into(),
+            gemini_api_key: String::new(),
+            ai_language: "en".into(),
         }
     }
 }

@@ -3,7 +3,7 @@
 //!          login_phone, login_code, login_password, logout,
 //!          hotkey_set.
 
-use crate::{asr, audio, config, contacts as cts, hotkey, telegram};
+use crate::{ai_assistant, asr, audio, browser, config, contacts as cts, hotkey, startup, telegram, tts};
 use anyhow::Result;
 use grammers_client::Client;
 use grammers_client::types::PasswordToken;
@@ -118,6 +118,10 @@ enum UiLoopEvent {
     OverlayError,
     /// Скрыть overlay
     OverlayHide,
+    /// Показать ИИ-слушание (синий orb)
+    OverlayAiListening,
+    /// Показать ИИ-думает (оранжевый orb)
+    OverlayAiThinking,
     /// Свернуть главное окно (кнопка в кастомном titlebar)
     WindowMinimize,
     /// Закрыть приложение
@@ -176,11 +180,15 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
         let cfg = cfg.clone();
         let slot = client_slot.clone();
         rt.spawn(async move {
-            if let Ok(c) = telegram::connect(&cfg).await {
-                // На фоновом коннекте сразу обновляем auth snapshot (1 сетевой ход)
-                // — все последующие cmd_info берут его из RAM моментально.
-                let _ = telegram::refresh_auth_snapshot(&c).await;
-                *slot.lock() = Some(c);
+            match telegram::connect(&cfg).await {
+                Ok(c) => {
+                    let snap = telegram::refresh_auth_snapshot(&c).await;
+                    info!("[ui-boot] telegram connected signed_in={}", snap.signed_in);
+                    *slot.lock() = Some(c);
+                }
+                Err(e) => {
+                    warn!("[ui-boot] telegram connect failed: {}", e);
+                }
             }
         });
     }
@@ -195,6 +203,11 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
     let listener_ipc = listener.clone();
     let proxy = event_loop.create_proxy();
     let proxy_listener = proxy.clone();
+
+    // Клоны для graceful shutdown при закрытии окна
+    let client_shutdown = client_slot.clone();
+    let rt_shutdown = rt.clone();
+    let cfg_shutdown = cfg_arc.clone();
 
     let ipc_handler = move |req: wry::http::Request<String>| {
         let body = req.into_body();
@@ -259,6 +272,7 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                 // Закрытие главного окна — выход. Overlay не закрывается пользователем
                 // (он без декораций), но на всякий случай — игнорим.
                 if window_id == window.id() {
+                    graceful_shutdown(&client_shutdown, &rt_shutdown, &cfg_shutdown);
                     *flow = ControlFlow::Exit;
                 }
             }
@@ -282,10 +296,19 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                     #[cfg(windows)]
                     crate::native_overlay::send(crate::native_overlay::State::Hidden);
                 }
+                UiLoopEvent::OverlayAiListening => {
+                    #[cfg(windows)]
+                    crate::native_overlay::send(crate::native_overlay::State::AiListening);
+                }
+                UiLoopEvent::OverlayAiThinking => {
+                    #[cfg(windows)]
+                    crate::native_overlay::send(crate::native_overlay::State::AiThinking);
+                }
                 UiLoopEvent::WindowMinimize => {
                     window.set_minimized(true);
                 }
                 UiLoopEvent::WindowClose => {
+                    graceful_shutdown(&client_shutdown, &rt_shutdown, &cfg_shutdown);
                     *flow = ControlFlow::Exit;
                 }
                 UiLoopEvent::WindowDrag => {
@@ -299,6 +322,31 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
 
 fn err(msg: impl Into<String>) -> serde_json::Value {
     serde_json::json!({ "ok": false, "error": msg.into() })
+}
+
+/// Сохранить все данные при закрытии приложения: dialog cache + Telegram session.
+fn graceful_shutdown(
+    client: &Arc<Mutex<Option<Client>>>,
+    rt: &Arc<tokio::runtime::Runtime>,
+    cfg: &Arc<Mutex<config::Config>>,
+) {
+    // 1. Сохраняем dialog cache (синхронно)
+    let cache_path = telegram::dialog_cache_path();
+    match telegram::save_dialog_cache(&cache_path) {
+        Ok(n) => info!("[shutdown] dialog cache saved: {} entries", n),
+        Err(e) => warn!("[shutdown] dialog cache save failed: {}", e),
+    }
+
+    // 2. Сохраняем Telegram session
+    let cfg_c = cfg.lock().clone();
+    if let Some(c) = client.lock().as_ref() {
+        match rt.block_on(telegram::save_session(c, &cfg_c)) {
+            Ok(()) => info!("[shutdown] Telegram session saved"),
+            Err(e) => warn!("[shutdown] Telegram session save failed: {}", e),
+        }
+    } else {
+        info!("[shutdown] no Telegram client to save");
+    }
 }
 
 fn dispatch(
@@ -353,6 +401,22 @@ fn dispatch(
         "contacts_save" => cmd_contacts_save(&msg.payload),
         "telegram_dialogs" => cmd_telegram_dialogs(rt, client),
         "theme_set" => cmd_theme_set(cfg, cfg_path, &msg.payload),
+        "preload_get" => cmd_preload_get(cfg),
+        "preload_set" => cmd_preload_set(cfg, cfg_path, &msg.payload),
+        "ai_assistant_get" => cmd_ai_assistant_get(cfg),
+        "ai_assistant_set" => cmd_ai_assistant_set(cfg, cfg_path, &msg.payload),
+        "ai_model_status" => cmd_ai_model_status(),
+        "ai_model_download" => cmd_ai_model_download(),
+        "gemini_key_get" => cmd_gemini_key_get(cfg),
+        "gemini_key_set" => cmd_gemini_key_set(cfg, cfg_path, &msg.payload),
+        "gemini_key_check" => cmd_gemini_key_check(cfg),
+        "ai_language_get" => cmd_ai_language_get(cfg),
+        "ai_language_set" => cmd_ai_language_set(cfg, cfg_path, &msg.payload),
+        "startup_get" => cmd_startup_get(cfg),
+        "startup_set" => cmd_startup_set(cfg, cfg_path, &msg.payload),
+        "rec_lang_set" => cmd_rec_lang_set(cfg, cfg_path, &msg.payload),
+        "language_get" => cmd_language_get(cfg),
+        "language_set" => cmd_language_set(cfg, cfg_path, &msg.payload),
         "_window_close" => {
             let _ = proxy.send_event(UiLoopEvent::WindowClose);
             serde_json::json!({ "ok": true })
@@ -431,6 +495,205 @@ fn cmd_theme_set(
     serde_json::json!({ "ok": true, "theme": theme })
 }
 
+fn cmd_preload_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({ "ok": true, "preload": c.preload_model })
+}
+
+fn cmd_preload_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("preload").and_then(|v| v.as_bool()).unwrap_or(true);
+    let mut c = cfg.lock();
+    c.preload_model = val;
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] preload_model updated: {}", val);
+    serde_json::json!({ "ok": true, "preload": val })
+}
+
+fn cmd_ai_assistant_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({
+        "ok": true,
+        "enabled": c.ai_assistant_enabled,
+        "model_cached": ai_assistant::AiAssistant::is_model_cached(),
+    })
+}
+
+fn cmd_ai_assistant_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+    let mut c = cfg.lock();
+    c.ai_assistant_enabled = val;
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] ai_assistant_enabled updated: {}", val);
+    serde_json::json!({ "ok": true, "enabled": val })
+}
+
+fn cmd_ai_model_status() -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "cached": ai_assistant::AiAssistant::is_model_cached(),
+        "model_name": "Local fallback model",
+        "model_size": "~350 MB (downloaded on first use)",
+    })
+}
+
+fn cmd_gemini_key_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({ "ok": true, "key": c.gemini_api_key })
+}
+
+fn cmd_gemini_key_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let mut c = cfg.lock();
+    c.gemini_api_key = val.clone();
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] gemini_api_key updated (len={})", val.len());
+    serde_json::json!({ "ok": true })
+}
+
+fn cmd_gemini_key_check(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    if c.gemini_api_key.is_empty() {
+        return serde_json::json!({ "ok": true, "valid": false, "reason": "empty" });
+    }
+    match crate::gemini::check_key(&c.gemini_api_key) {
+        Ok(true) => serde_json::json!({ "ok": true, "valid": true }),
+        Ok(false) => serde_json::json!({ "ok": true, "valid": false, "reason": "invalid" }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+fn cmd_ai_language_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({ "ok": true, "language": c.ai_language })
+}
+
+fn cmd_ai_language_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("language").and_then(|v| v.as_str()).unwrap_or("en").to_string();
+    let mut c = cfg.lock();
+    c.ai_language = val.clone();
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] ai_language updated: {}", val);
+    serde_json::json!({ "ok": true, "language": val })
+}
+
+fn cmd_ai_preload_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({ "ok": true, "ai_preload": c.ai_preload })
+}
+
+fn cmd_ai_preload_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("ai_preload").and_then(|v| v.as_bool()).unwrap_or(false);
+    let mut c = cfg.lock();
+    c.ai_preload = val;
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] ai_preload updated: {}", val);
+    serde_json::json!({ "ok": true, "ai_preload": val })
+}
+
+fn cmd_startup_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    let enabled = c.startup_launch;
+    let registry = startup::is_enabled();
+    serde_json::json!({ "ok": true, "startup": enabled, "registry": registry })
+}
+
+fn cmd_startup_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("startup").and_then(|v| v.as_bool()).unwrap_or(false);
+    startup::sync_with_config(val);
+    let mut c = cfg.lock();
+    c.startup_launch = val;
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] startup_launch updated: {}", val);
+    serde_json::json!({ "ok": true, "startup": val })
+}
+
+fn cmd_rec_lang_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("language").and_then(|v| v.as_str()).unwrap_or("ru").to_string();
+    let mut c = cfg.lock();
+    c.recognition_language = val.clone();
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] recognition_language updated: {}", val);
+    serde_json::json!({ "ok": true, "language": val })
+}
+
+fn cmd_language_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({ "ok": true, "language": c.language })
+}
+
+fn cmd_language_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("language").and_then(|v| v.as_str()).unwrap_or("ru").to_string();
+    let mut c = cfg.lock();
+    c.language = val.clone();
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] language updated: {}", val);
+    serde_json::json!({ "ok": true, "language": val })
+}
+
+fn cmd_ai_model_download() -> serde_json::Value {
+    if ai_assistant::AiAssistant::is_model_cached() {
+        return serde_json::json!({ "ok": true, "cached": true });
+    }
+    match ai_assistant::AiAssistant::download_model_sync() {
+        Ok(path) => {
+            info!("[ui] AI model downloaded: {}", path.display());
+            serde_json::json!({ "ok": true, "path": path.display().to_string() })
+        }
+        Err(e) => {
+            warn!("[ui] AI model download failed: {}", e);
+            err(format!("download: {}", e))
+        }
+    }
+}
+
 fn cmd_telegram_dialogs(
     rt: &Arc<tokio::runtime::Runtime>,
     client: &Arc<Mutex<Option<Client>>>,
@@ -502,6 +765,8 @@ struct ModelEntry {
     active: bool,
     /// inference поддерживается этим движком в Rust-порте (пока только whisper)
     runnable: bool,
+    /// Рекомендуемая модель — выделяется в UI
+    recommended: bool,
 }
 
 fn cmd_models_list(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
@@ -521,6 +786,7 @@ fn cmd_models_list(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
             downloaded: asr::model_is_downloaded(m.name),
             active: m.name == active,
             runnable: matches!(m.engine, "whisper" | "nemo"),
+            recommended: m.recommended,
         })
         .collect();
     serde_json::json!({ "ok": true, "models": models })
@@ -642,12 +908,14 @@ fn cmd_login_code(
     let res = rt.block_on(async { c.sign_in(&tok, &code).await });
     match res {
         Ok(_user) => {
-            let _ = rt.block_on(async {
-                // get_me() сначала чтобы grammers закоммитил session state.
+            match rt.block_on(async {
                 telegram::refresh_auth_snapshot(&c).await;
                 telegram::save_session(&c, &cfg).await?;
                 Ok::<_, anyhow::Error>(())
-            });
+            }) {
+                Ok(()) => info!("[ui-login] session saved after sign_in"),
+                Err(e) => warn!("[ui-login] session save failed after sign_in: {}", e),
+            }
             serde_json::json!({ "ok": true })
         }
         Err(grammers_client::SignInError::PasswordRequired(pwd_tok)) => {
@@ -677,11 +945,14 @@ fn cmd_login_password(
     let res = rt.block_on(async { c.check_password(pwd_tok, &pwd).await });
     match res {
         Ok(_) => {
-            let _ = rt.block_on(async {
+            match rt.block_on(async {
                 telegram::refresh_auth_snapshot(&c).await;
                 telegram::save_session(&c, &cfg).await?;
                 Ok::<_, anyhow::Error>(())
-            });
+            }) {
+                Ok(()) => info!("[ui-login] session saved after check_password"),
+                Err(e) => warn!("[ui-login] session save failed after check_password: {}", e),
+            }
             serde_json::json!({ "ok": true })
         }
         Err(e) => err(format!("check_password: {}", e)),
@@ -726,7 +997,16 @@ fn cmd_listener_start(
     listener: &Arc<Mutex<ListenerState>>,
     proxy: &EventLoopProxy<UiLoopEvent>,
 ) -> serde_json::Value {
+    info!("[listener] cmd_listener_start called");
     let mut cfg_c = cfg.lock().clone();
+
+    {
+        let st = listener.lock();
+        if st.running.load(Ordering::Acquire) {
+            info!("[listener] already running, returning already=true");
+            return serde_json::json!({ "ok": true, "already": true });
+        }
+    }
 
     // Active = whisper или nemo (Parakeet). transcribe_wav сама свалится на whisper если nemo не сработал.
     let active_ok = asr::model_meta(&cfg_c.model)
@@ -742,13 +1022,10 @@ fn cmd_listener_start(
             .find(|name| asr::model_is_downloaded(name))
             .map(|s| s.to_string())
     });
-    let Some(inference_model) = chosen else {
-        return err(
-            "Для inference нужна скачанная модель. Открой выпадашку → Models, \
-             выбери Parakeet V3 (лучше всего) или Whisper Base."
-                .to_string(),
-        );
-    };
+    let inference_model = chosen.unwrap_or_else(|| {
+        warn!("[listener] no ASR model downloaded — using configured model anyway");
+        cfg_c.model.clone()
+    });
 
     // whisper-cli нужен только если inference пойдёт через whisper. Если
     // активный движок — Parakeet (nemo), whisper-cli может отсутствовать.
@@ -802,6 +1079,24 @@ fn cmd_listener_start(
         });
     }
 
+    // Прогрев ASR-модели в RAM если включено в настройках
+    if cfg_c.preload_model {
+        if let Some(meta) = asr::model_meta(&cfg_c.model) {
+            if meta.engine == "nemo" && asr::model_is_downloaded(&cfg_c.model) {
+                let model_dir = asr::nemo_model_dir(&cfg_c.model);
+                let model_name = cfg_c.model.clone();
+                info!("[preload-ui] прогрев Parakeet {}…", model_name);
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::parakeet::preload(&model_name, &model_dir) {
+                        warn!("[preload-ui] {}", e);
+                    } else {
+                        info!("[preload-ui] Parakeet готов в RAM");
+                    }
+                });
+            }
+        }
+    }
+
     let mut st = listener.lock();
     if st.running.load(Ordering::Acquire) {
         return serde_json::json!({ "ok": true, "already": true });
@@ -810,12 +1105,20 @@ fn cmd_listener_start(
     running.store(true, Ordering::Release);
     let proxy_listener = proxy.clone();
 
+    // ИИ-ассистент: ленивая загрузка модели (только при первом использовании)
+    let ai_assistant_slot: Arc<Mutex<Option<ai_assistant::AiAssistant>>> = Arc::new(Mutex::new(None));
+    let ai_assistant_release = ai_assistant_slot.clone();
+
     let recording: Arc<Mutex<Option<(Arc<AtomicBool>, std::thread::JoinHandle<anyhow::Result<Vec<i16>>>)>>> =
         Arc::new(Mutex::new(None));
     // Single-flight: пока pipeline крутится (запись→ASR→TG), новые Alt+X
     // игнорятся. Иначе нажав 5 раз подряд получаем 5 параллельных тредов
     // на один и тот же микрофон и кэш модели.
     let processing: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+
+    // Состояние: ждём вопрос после "дай ответ"
+    let waiting_for_ai: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+    let waiting_for_ai_release = waiting_for_ai.clone();
 
     let rec_press = recording.clone();
     let running_press = running.clone();
@@ -854,6 +1157,8 @@ fn cmd_listener_start(
     let cfg_thr = cfg_c.clone();
     let client_slot_thr = client.clone();
     let rt_thr = rt.clone();
+    let ai_slot_thr = ai_assistant_release.clone();
+    let waiting_ai_thr = waiting_for_ai_release.clone();
     let proxy_release = proxy_listener.clone();
     let on_release = move || {
         if !running_release.load(Ordering::Acquire) {
@@ -867,6 +1172,8 @@ fn cmd_listener_start(
         let client_slot = client_slot_thr.clone();
         let rt = rt_thr.clone();
         let proxy = proxy_release.clone();
+        let waiting = waiting_ai_thr.clone();
+        let ai_slot = ai_slot_thr.clone();
         push_event(&proxy, "activity", "⏹ распознаю…");
         let proxy_panic = proxy.clone();
         // Поднимаем флаг — следующие Alt+X будут игнорироваться пока этот
@@ -920,6 +1227,172 @@ fn cmd_listener_start(
             };
             info!("[listener] 📝 «{}» (через {})", text, cfg.model);
             push_event(&proxy, "log", &format!("📝 «{}» · engine: {}", text, cfg.model));
+
+            // Проверяем браузерную команду
+            if let Some(cmd) = browser::parse(&text) {
+                info!("[listener] browser → {}: {}", cmd.provider, cmd.query);
+                if let Err(e) = browser::open(&cmd.url) {
+                    warn!("[listener] browser open: {}", e);
+                    push_event(&proxy, "log", &format!("✗ browser: {}", e));
+                    push_event(&proxy, "activity", "");
+                    flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                } else {
+                    push_event(&proxy, "log", &format!("✅ {} → {}", cmd.provider, cmd.query));
+                    push_event(&proxy, "activity", &format!("→ {}", cmd.provider));
+                    flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                }
+                return;
+            }
+
+            // --- ИИ-ассистент ---
+            if cfg.ai_assistant_enabled {
+                let ai_trigger = ["дай ответ", "ответь", "вопрос", "спроси"];
+                let text_lower = text.to_lowercase();
+
+                // Проверяем: сказали ли триггер + вопрос сразу (одной фразой)
+                let mut question_immediate: Option<String> = None;
+                for trigger in &ai_trigger {
+                    if let Some(pos) = text_lower.find(trigger) {
+                        let after = text[pos + trigger.len()..].trim();
+                        if !after.is_empty() {
+                            question_immediate = Some(after.to_string());
+                        }
+                        break;
+                    }
+                }
+
+                // Если триггер + вопрос сразу — отправляем без режима ожидания
+                if let Some(question) = question_immediate {
+                    info!("[ai] вопрос сразу: {}", question);
+                    push_event(&proxy, "activity", "🤖 думаю...");
+                    push_event(&proxy, "log", &format!("🤖 вопрос: {}", question));
+                    let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
+
+                    let mut ai_guard = ai_slot.lock();
+                    if ai_guard.is_none() {
+                        if !ai_assistant::AiAssistant::is_model_cached() {
+                            push_event(&proxy, "log", "🤖 загрузка модели ИИ...");
+                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync() {
+                                warn!("[ai] download failed: {}", e);
+                                push_event(&proxy, "log", &format!("✗ ИИ загрузка: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                        }
+                        match ai_assistant::AiAssistant::load_if_cached() {
+                            Ok(Some(a)) => { *ai_guard = Some(a); }
+                            Ok(None) => {
+                                push_event(&proxy, "log", "✗ ИИ модель не загрузилась");
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                            Err(e) => {
+                                push_event(&proxy, "log", &format!("✗ ИИ load: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                        }
+                    }
+
+                    if let Some(ref mut assistant) = *ai_guard {
+                        match assistant.ask(&question) {
+                            Ok(response) => {
+                                info!("[ai] ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
+                                push_event(&proxy, "log", &format!("🤖 {} ({} tok/s)", response.text, response.tokens_per_second));
+                                push_event(&proxy, "activity", "🤖 отвечаю...");
+                                if let Err(e) = tts::speak(&response.text) {
+                                    warn!("[ai] tts error: {}", e);
+                                    push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
+                                }
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                            }
+                            Err(e) => {
+                                warn!("[ai] generation failed: {}", e);
+                                push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // Если ждём вопрос — отправляем в LLM
+                if waiting.load(Ordering::Relaxed) {
+                    waiting.store(false, Ordering::Relaxed);
+                    push_event(&proxy, "activity", "🤖 думаю...");
+                    push_event(&proxy, "log", &format!("🤖 вопрос: {}", text));
+                    let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
+
+                    let mut ai_guard = ai_slot.lock();
+                    if ai_guard.is_none() {
+                        if !ai_assistant::AiAssistant::is_model_cached() {
+                            push_event(&proxy, "log", "🤖 загрузка модели ИИ...");
+                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync() {
+                                warn!("[ai] download failed: {}", e);
+                                push_event(&proxy, "log", &format!("✗ ИИ загрузка: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                        }
+                        match ai_assistant::AiAssistant::load_if_cached() {
+                            Ok(Some(a)) => { *ai_guard = Some(a); }
+                            Ok(None) => {
+                                push_event(&proxy, "log", "✗ ИИ модель не загрузилась");
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                            Err(e) => {
+                                push_event(&proxy, "log", &format!("✗ ИИ load: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                        }
+                    }
+
+                    if let Some(ref mut assistant) = *ai_guard {
+                        match assistant.ask(&text) {
+                            Ok(response) => {
+                                info!("[ai] ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
+                                push_event(&proxy, "log", &format!("🤖 {} ({} tok/s)", response.text, response.tokens_per_second));
+                                push_event(&proxy, "activity", "🤖 отвечаю...");
+                                if let Err(e) = tts::speak(&response.text) {
+                                    warn!("[ai] tts error: {}", e);
+                                    push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
+                                }
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                            }
+                            Err(e) => {
+                                warn!("[ai] generation failed: {}", e);
+                                push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // Только триггер без вопроса — активируем режим ожидания
+                if ai_trigger.iter().any(|t| text_lower.contains(t)) {
+                    waiting.store(true, Ordering::Relaxed);
+                    info!("[ai] активирован режим вопроса");
+                    push_event(&proxy, "log", "🤖 Слушаю вопрос...");
+                    push_event(&proxy, "activity", "🤖 Слушаю вопрос...");
+                    let _ = proxy.send_event(UiLoopEvent::OverlayAiListening);
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(2500));
+                        let _ = proxy.send_event(UiLoopEvent::OverlayHide);
+                    });
+                    return;
+                }
+            }
 
             let contacts = cts::load(&cts::default_path());
             let (uid, message) = match cts::parse_command(&text, &contacts) {
@@ -1040,7 +1513,9 @@ fn cmd_login_qr_start(
 
     if rt.block_on(c.is_authorized()).unwrap_or(false) {
         rt.block_on(telegram::refresh_auth_snapshot(&c));
-        let _ = rt.block_on(telegram::save_session(&c, &cfg_c));
+        if let Err(e) = rt.block_on(telegram::save_session(&c, &cfg_c)) {
+            warn!("[ui-login-url] save_session failed: {}", e);
+        }
         login.lock().qr_status = Some("authorized".into());
         return serde_json::json!({ "ok": true, "already_authorized": true });
     }
@@ -1053,7 +1528,9 @@ fn cmd_login_qr_start(
         Ok(tl::enums::auth::LoginToken::Token(t)) => (t.token, t.expires),
         Ok(tl::enums::auth::LoginToken::Success(_)) => {
             rt.block_on(telegram::refresh_auth_snapshot(&c));
-            let _ = rt.block_on(telegram::save_session(&c, &cfg_c));
+            if let Err(e) = rt.block_on(telegram::save_session(&c, &cfg_c)) {
+                warn!("[ui-login-url] save_session failed on token success: {}", e);
+            }
             login.lock().qr_status = Some("authorized".into());
             return serde_json::json!({ "ok": true, "already_authorized": true });
         }

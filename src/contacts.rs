@@ -17,11 +17,16 @@ pub struct Contact {
     pub aliases: Vec<String>,
 }
 
+fn app_data_dir() -> PathBuf {
+    dirs::data_dir()
+        .map(|d| d.join("voicy"))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 pub fn default_path() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("contacts.txt")))
-        .unwrap_or_else(|| PathBuf::from("contacts.txt"))
+    let base = app_data_dir();
+    std::fs::create_dir_all(&base).ok();
+    base.join("contacts.txt")
 }
 
 pub fn load(path: &Path) -> Contacts {

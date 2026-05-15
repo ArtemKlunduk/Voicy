@@ -74,12 +74,11 @@ pub async fn refresh_auth_snapshot(client: &Client) -> AuthSnapshot {
     snap
 }
 
-/// Путь к файлу кэша диалогов — `<exe_dir>/voicy_dialogs.cache`.
+/// Путь к файлу кэша диалогов — `<app_data_dir>/voicy_dialogs.cache`.
 pub fn dialog_cache_path() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("voicy_dialogs.cache")))
-        .unwrap_or_else(|| PathBuf::from("voicy_dialogs.cache"))
+    let base = app_data_dir();
+    std::fs::create_dir_all(&base).ok();
+    base.join("voicy_dialogs.cache")
 }
 
 /// Загрузить кэш с диска (вызывать на старте). Возвращает количество записей.
@@ -122,13 +121,35 @@ static RECONN: FixedReconnect = FixedReconnect {
     delay: Duration::from_secs(3),
 };
 
-/// Путь к session-файлу: <exe_dir>/<session>.session
+/// Стабильная директория для данных приложения (%APPDATA%/voicy на Windows).
+fn app_data_dir() -> PathBuf {
+    dirs::data_dir()
+        .map(|d| d.join("voicy"))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Путь к session-файлу: <app_data_dir>/<session>.session
 pub fn session_path(cfg: &Config) -> PathBuf {
-    let base = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
+    let base = app_data_dir();
+    std::fs::create_dir_all(&base).ok();
     base.join(format!("{}.session", cfg.telegram.session))
+}
+
+/// Проверить размер session-файла и залоггировать состояние.
+fn log_session_state(label: &str, session: &Session, path: &std::path::Path) {
+    let signed_in = session.signed_in();
+    let dcs = session.get_dcs();
+    let data = session.save();
+    let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    info!(
+        "[tg-session] {} path={} signed_in={} dcs={} ram_bytes={} file_bytes={}",
+        label,
+        path.display(),
+        signed_in,
+        dcs.len(),
+        data.len(),
+        file_size
+    );
 }
 
 /// Подключиться к Telegram. Если сессия валидна — возвращаем готового Client.
@@ -136,6 +157,7 @@ pub fn session_path(cfg: &Config) -> PathBuf {
 pub async fn connect(cfg: &Config) -> Result<Client> {
     let sp = session_path(cfg);
     let session = Session::load_file_or_create(&sp).context("Session::load")?;
+    log_session_state("connect(load)", &session, &sp);
     let params = InitParams {
         reconnection_policy: &RECONN,
         ..Default::default()
@@ -159,7 +181,9 @@ pub async fn is_signed_in(client: &Client) -> Result<bool> {
 /// Сохранить сессию на диск.
 pub async fn save_session(client: &Client, cfg: &Config) -> Result<()> {
     let sp = session_path(cfg);
+    log_session_state("save(before)", client.session(), &sp);
     client.session().save_to_file(&sp).context("save session")?;
+    log_session_state("save(after)", client.session(), &sp);
     Ok(())
 }
 
@@ -202,6 +226,8 @@ pub async fn interactive_login(cfg: &Config) -> Result<Client> {
         Err(e) => return Err(anyhow!("sign_in: {}", e)),
     }
 
+    // grammers закоммитит session state только после get_me() / is_authorized().
+    let _ = client.get_me().await;
     save_session(&client, cfg).await?;
     info!("[tg] логин успешен, сессия сохранена → {}", session_path(cfg).display());
     Ok(client)
