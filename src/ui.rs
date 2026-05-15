@@ -1101,6 +1101,17 @@ fn cmd_listener_start(
     if st.running.load(Ordering::Acquire) {
         return serde_json::json!({ "ok": true, "already": true });
     }
+    // ВАЖНО: rdev::listen блокирует тред навсегда (нет clean shutdown API).
+    // Если предыдущий listener уже создавал тред — НЕ спавним новый, иначе
+    // получим N тредов с одним и тем же AtomicBool и Alt+X вызовет pipeline
+    // N раз → дубли сообщений в Telegram. Стоимость такого решения: смена
+    // хоткея в UI не подхватится без перезапуска приложения (старый тред
+    // помнит старый хоткей в captured closure).
+    if st.thread.is_some() {
+        st.running.store(true, Ordering::Release);
+        info!("[listener] reusing existing rdev thread (hotkey change requires app restart)");
+        return serde_json::json!({ "ok": true, "resumed": true });
+    }
     let running = st.running.clone();
     running.store(true, Ordering::Release);
     let proxy_listener = proxy.clone();
