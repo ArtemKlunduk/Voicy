@@ -7,9 +7,14 @@ REM Файл .creds/ в gitignore — никогда не попадёт на Gi
 REM
 REM Без .creds/build-credentials.env exe соберётся без embedded creds,
 REM юзеру придётся вписать свои в voicy.toml.
-setlocal
+REM
+REM Usage:
+REM   scripts\build-release.cmd          (release, default)
+REM   scripts\build-release.cmd debug    (debug build)
 
-set MODE=%1
+setlocal enabledelayedexpansion
+
+set MODE=%~1
 if "%MODE%"=="" set MODE=release
 
 REM Корень репо = parent каталога этого .cmd скрипта
@@ -19,11 +24,11 @@ set CREDS_FILE=%REPO_ROOT%\.creds\build-credentials.env
 REM ── Подцепить embedded credentials если файл существует ──
 if exist "%CREDS_FILE%" (
     echo [build] Loading embedded credentials from .creds/build-credentials.env
-    for /f "tokens=1,2 delims==" %%a in (%CREDS_FILE%) do (
-        set %%a=%%b
+    for /f "usebackq tokens=1,2 delims==" %%a in ("%CREDS_FILE%") do (
+        set "%%a=%%b"
     )
 ) else (
-    echo [build] .creds/build-credentials.env not found — exe will be built WITHOUT embedded creds
+    echo [build] .creds/build-credentials.env not found, building WITHOUT embedded creds
 )
 
 call "D:\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
@@ -39,7 +44,8 @@ set PATH=D:\rust\.cargo\bin;%PATH%
 
 cd /d "%REPO_ROOT%"
 
-if "%MODE%"=="release" (
+echo [build] Mode: !MODE!
+if /i "!MODE!"=="release" (
     cargo build --release
 ) else (
     cargo build
