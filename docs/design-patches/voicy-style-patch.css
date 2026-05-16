@@ -1,0 +1,312 @@
+/* ============================================================
+   Voicy — readability patch v3
+   ----------------------------------------------------------------
+   Drop-in CSS for the dark-mode contrast issues across the app.
+   Includes everything from v1 (Recommended, alias chips, QR, online pill)
+   and v2 (metadata badges, active-now state), plus v3:
+
+     • .vy-select  — custom dropdown replacing native <select> on dark
+       theme so it sits on the brand surface, not on Windows' system grey.
+
+   The whole system rests on two rules:
+     SOLID sage fill  →  near-ink text (#0E1614), weight 600+   contrast 9.4
+     SOFT sage fill   →  moss text (#2F4A35), weight 600+       contrast 11.2
+   Pastel-on-pastel is forbidden everywhere.
+   ============================================================ */
+
+:root {
+  /* Brand palette — sage from the logo */
+  --vy-sage:        #A8C8A0;
+  --vy-sage-soft:   #D6E6CF;
+  --vy-sage-deep:   #5E8B62;
+  --vy-moss:        #2F4A35;
+  --vy-ink-on-sage: #0E1614;   /* near-ink — text color on every sage surface */
+
+  --vy-ink-3:       #7A867E;
+  --vy-line-dark:   #243029;
+
+  --vy-menu-bg:     #1B2723;   /* dark sage surface for vy-select menu */
+  --vy-menu-line:   #2F3B34;
+  --vy-menu-hover:  #243029;
+}
+
+
+/* ─── BADGE — Recommended · Active · Beta ─── */
+
+.vy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.vy-badge--solid {                    /* loud — state / callout */
+  background: var(--vy-sage);
+  color: var(--vy-ink-on-sage);
+}
+
+.vy-badge--solid.upper {              /* ALL CAPS variant (e.g. ACTIVE) */
+  text-transform: uppercase;
+}
+
+.vy-badge--soft {                     /* quiet — metadata / taxonomy */
+  background: var(--vy-sage-soft);
+  color: var(--vy-moss);
+  /* slightly larger for icon legibility */
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  gap: 5px;
+}
+
+.vy-badge--soft svg {
+  width: 11px; height: 11px;
+}
+
+.vy-badge--ghost {                    /* outline only — Beta, etc. */
+  background: transparent;
+  color: var(--vy-sage);
+  border: 1px solid var(--vy-sage);
+}
+
+
+/* ─── "active now" — tiny inline state ─── */
+.vy-active-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--vy-sage);
+}
+.vy-active-now::before {
+  content: '';
+  width: 5px; height: 5px; border-radius: 999px;
+  background: var(--vy-sage);
+  box-shadow: 0 0 0 3px rgba(168, 200, 160, 0.18);
+}
+
+
+/* ─── CHIP — alias tags on contact rows ─── */
+
+.vy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1.2 'Onest', system-ui, sans-serif;
+  padding: 4px 4px 4px 10px;
+  border-radius: 999px;
+  background: var(--vy-sage);
+  color: var(--vy-ink-on-sage);
+  max-width: 100%;
+}
+
+.vy-chip__x {
+  width: 16px; height: 16px;
+  border-radius: 999px;
+  display: inline-grid; place-items: center;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 120ms cubic-bezier(.2,.6,.2,1),
+              background 120ms cubic-bezier(.2,.6,.2,1);
+}
+.vy-chip__x:hover { opacity: 1; background: rgba(14, 22, 20, 0.12); }
+.vy-chip__x svg  { width: 9px; height: 9px; }
+
+
+/* ─── PRIMARY BUTTON — QR · из Telegram · etc. ─── */
+
+.vy-btn--primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 13px/1 'Onest', system-ui, sans-serif;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--vy-sage);
+  color: var(--vy-ink-on-sage);
+  border: 0;
+  cursor: pointer;
+  transition: background 120ms cubic-bezier(.2,.6,.2,1),
+              transform   120ms cubic-bezier(.2,.6,.2,1);
+}
+
+.vy-btn--primary:hover    { background: #BAD3B3; }
+.vy-btn--primary:active   { background: #7DA679; transform: translateY(1px); }
+.vy-btn--primary:disabled {
+  background: rgba(168, 200, 160, 0.20);
+  color: var(--vy-ink-3);
+  cursor: not-allowed;
+  transform: none;
+}
+.vy-btn--primary svg { width: 12px; height: 12px; }
+
+
+/* ─── STATUS PILL — online · recording · sent ─── */
+
+.vy-pill--status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1 'Onest', system-ui, sans-serif;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--vy-sage);
+  color: var(--vy-ink-on-sage);
+}
+.vy-pill--status svg { width: 12px; height: 12px; }
+
+
+/* ─── SELECT / DROPDOWN — settings rows (v3) ─────────────────────
+   Replaces native <select> on dark surfaces — system dropdown breaks
+   the brand. Trigger is a real control with sage border on hover/open;
+   menu sits on dark-sage #1B2723 with rounded items, two-line layout
+   (name + meta), and a sage check on the selected row.
+   ───────────────────────────────────────────────────────────── */
+
+.vy-select { position: relative; display: inline-flex; flex-direction: column; }
+
+.vy-select__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 12px;
+  border: 1px solid var(--vy-line-dark);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  color: inherit;
+  font: 500 13px/1 'Onest', system-ui, sans-serif;
+  cursor: pointer;
+  transition: border-color 120ms cubic-bezier(.2,.6,.2,1),
+              background  120ms cubic-bezier(.2,.6,.2,1);
+}
+.vy-select__trigger:hover { border-color: var(--vy-sage-deep); background: rgba(168, 200, 160, 0.05); }
+.vy-select__trigger[aria-expanded="true"],
+.vy-select__trigger.open { border-color: var(--vy-sage); }
+.vy-select__trigger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.vy-select__trigger .chev {
+  width: 14px; height: 14px;
+  color: var(--vy-ink-3);
+  transition: transform 120ms cubic-bezier(.2,.6,.2,1), color 120ms;
+}
+.vy-select__trigger[aria-expanded="true"] .chev,
+.vy-select__trigger.open .chev { transform: rotate(180deg); color: var(--vy-sage); }
+
+.vy-select__trigger .check { display: inline-flex; color: var(--vy-sage); }
+.vy-select__trigger .check svg { width: 13px; height: 13px; }
+
+.vy-select__menu {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 240px;
+  background: var(--vy-menu-bg);
+  border: 1px solid var(--vy-menu-line);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.20), 0 12px 32px -16px rgba(0,0,0,0.50);
+  z-index: 50;
+}
+
+.vy-select__item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms cubic-bezier(.2,.6,.2,1), color 120ms;
+}
+.vy-select__item:hover { background: var(--vy-menu-hover); }
+.vy-select__item--selected,
+.vy-select__item[aria-selected="true"] {
+  background: rgba(168, 200, 160, 0.10);
+  color: var(--vy-sage);
+}
+.vy-select__item .vy-select__meta {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 11px; color: var(--vy-ink-3);
+  display: block; margin-top: 2px;
+}
+.vy-select__item--selected .vy-select__meta,
+.vy-select__item[aria-selected="true"] .vy-select__meta { color: var(--vy-sage-deep); }
+.vy-select__item .check { color: var(--vy-sage); flex: none; }
+.vy-select__item .check svg { width: 14px; height: 14px; }
+
+
+/* ============================================================
+   USAGE CHEATSHEET
+   ----------------------------------------------------------------
+   STATE BADGES (loud — solid sage)
+   <span class="vy-badge vy-badge--solid">Recommended</span>
+   <span class="vy-badge vy-badge--solid upper">Active</span>
+
+   METADATA BADGES (quiet — soft sage)
+   <span class="vy-badge vy-badge--soft">
+     <svg ...><!-- globe --></svg> Multilingual
+   </span>
+   <span class="vy-badge vy-badge--soft">
+     <svg ...><!-- check --></svg> cached
+   </span>
+
+   ALIAS CHIP
+   <span class="vy-chip">
+     тима
+     <span class="vy-chip__x">
+       <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none">
+         <line x1="18" y1="6"  x2="6"  y2="18"/>
+         <line x1="6"  y1="6"  x2="18" y2="18"/>
+       </svg>
+     </span>
+   </span>
+
+   PRIMARY BUTTON
+   <button class="vy-btn--primary">QR</button>
+
+   STATUS PILL
+   <span class="vy-pill--status">
+     <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+       <polyline points="20 6 9 17 4 12"/>
+     </svg>
+     online
+   </span>
+
+   TINY "ACTIVE NOW" INLINE
+   Active <span class="vy-active-now">now</span>
+
+   CUSTOM DROPDOWN (v3)
+   <div class="vy-select">
+     <button class="vy-select__trigger" type="button" aria-expanded="false">
+       Qwen 2.5 0.5B · 400 MB
+       <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+       <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+     </button>
+     <div class="vy-select__menu">
+       <div class="vy-select__item" aria-selected="true">
+         <span>Qwen 2.5 0.5B
+           <span class="vy-select__meta">400 MB</span>
+         </span>
+         <span class="check"><svg ...><polyline points="20 6 9 17 4 12"/></svg></span>
+       </div>
+       <div class="vy-select__item">
+         <span>Llama 3.2 1B
+           <span class="vy-select__meta">800 MB · downloads on select</span>
+         </span>
+       </div>
+     </div>
+   </div>
+
+   ----------------------------------------------------------------
+   THE WHOLE SYSTEM IN ONE SENTENCE
+   Anything with a solid sage fill takes #0E1614 text in weight 600+.
+   Anything with a sage-soft fill takes #2F4A35 text in weight 600.
+   Pastel-on-pastel is forbidden everywhere.
+   ============================================================ */

@@ -555,6 +555,64 @@ main { padding:0; height:100vh; display:flex; }
 .model-dd.open .model-dd-trigger { border-bottom-left-radius:0; border-bottom-right-radius:0; }
 .m-info { flex:1; min-width:0; }
 .m-name { display:block; font-size:14px; font-weight:600; color:var(--ink); }
+/* ─── vy-select — кастомный dropdown (v3 patch) ─────────────────────
+   Native <select> на тёмной теме рисуется системным style'ом (серая
+   подложка + чёрные option'ы), что выпадает из brand palette. Замена —
+   trigger-кнопка + кастомное menu на тёмно-зелёной подложке #1B2723.
+   Используется для AI-model picker'а в General tab. */
+.vy-select { position:relative; display:inline-flex; flex-direction:column; }
+.vy-select__trigger {
+  display:inline-flex; align-items:center; gap:8px;
+  padding:7px 10px 7px 12px;
+  border:1px solid #243029; border-radius:10px;
+  background:rgba(255,255,255,0.02); color:inherit;
+  font:500 13px/1 'Onest', system-ui, sans-serif;
+  cursor:pointer;
+  transition: border-color 120ms cubic-bezier(.2,.6,.2,1),
+              background  120ms cubic-bezier(.2,.6,.2,1);
+}
+.vy-select__trigger:hover { border-color: var(--sage-deep); background: rgba(168,200,160,0.05); }
+.vy-select__trigger[aria-expanded="true"] { border-color: var(--sage); }
+.vy-select__trigger:disabled { opacity:.45; cursor:not-allowed; }
+.vy-select__trigger .chev {
+  width:14px; height:14px; color: var(--ink-3);
+  transition: transform 120ms cubic-bezier(.2,.6,.2,1), color 120ms;
+}
+.vy-select__trigger[aria-expanded="true"] .chev { transform: rotate(180deg); color: var(--sage); }
+.vy-select__trigger .check { display:inline-flex; color: var(--sage); }
+.vy-select__trigger .check svg { width:13px; height:13px; }
+.vy-select__menu {
+  position:absolute; top: calc(100% + 6px); right:0;
+  min-width:280px;
+  background:#1B2723;
+  border:1px solid #2F3B34;
+  border-radius:12px;
+  padding:6px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.20), 0 12px 32px -16px rgba(0,0,0,0.50);
+  z-index:50;
+}
+.vy-select__menu[hidden] { display:none; }
+.vy-select__item {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:8px 10px;
+  border-radius:8px;
+  font-size:13px; color:inherit; cursor:pointer;
+  transition: background 120ms cubic-bezier(.2,.6,.2,1), color 120ms;
+}
+.vy-select__item:hover { background:#243029; }
+.vy-select__item[aria-selected="true"] {
+  background: rgba(168,200,160,0.10);
+  color: var(--sage);
+}
+.vy-select__meta {
+  font-family:'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size:11px; color: var(--ink-3);
+  display:block; margin-top:2px;
+}
+.vy-select__item[aria-selected="true"] .vy-select__meta { color: var(--sage-deep); }
+.vy-select__item .check { color: var(--sage); flex:none; }
+.vy-select__item .check svg { width:14px; height:14px; }
+
 /* «Active now» сабтекст внутри dropdown selector'а активной модели.
    Sage-цвет с маленьким зелёным dot'ом + halo — даёт «live indicator»
    как у online-статусов. Перенесено из .m-sub по spec'у vy-active-now. */
@@ -859,7 +917,16 @@ dialog label {
             <span class="d" data-i18n="ai_model_desc">Local fallback when Gemini is unavailable. Bigger = better quality, more RAM.</span>
           </div>
           <div class="v" style="gap:8px; flex-wrap:wrap;">
-            <select class="nat-select" id="ai-model-select"></select>
+            <div class="vy-select" id="ai-model-select">
+              <button type="button" class="vy-select__trigger" id="ai-model-trigger" aria-expanded="false">
+                <span class="label" id="ai-model-label-text">…</span>
+                <span class="check" id="ai-model-trigger-check" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="vy-select__menu" id="ai-model-menu" hidden></div>
+            </div>
             <span id="ai-model-status" style="font-size:11px; color:var(--ink-3);"></span>
             <button class="link" id="ai-model-download-btn" data-i18n="btn_download">download</button>
           </div>
@@ -1405,22 +1472,44 @@ async function refresh() {
     aiLangSel.value = aiLangRes.language;
   }
 
-  // Local AI model selector
+  // Local AI model selector (vy-select v3 — кастомный dropdown)
   var aiModelRes = await callIpc("ai_model_get");
-  var aiModelSel = document.getElementById("ai-model-select");
+  var aiModelMenu = document.getElementById("ai-model-menu");
+  var aiModelLabel = document.getElementById("ai-model-label-text");
+  var aiModelTrigger = document.getElementById("ai-model-trigger");
+  var aiModelTriggerCheck = document.getElementById("ai-model-trigger-check");
   var aiModelStatusEl = document.getElementById("ai-model-status");
   var aiModelDownloadBtn = document.getElementById("ai-model-download-btn");
-  if (aiModelSel && aiModelRes.ok && aiModelRes.available) {
-    // Перерисовываем опции (имя + RAM)
-    aiModelSel.innerHTML = aiModelRes.available.map(function(m){
-      var ram = m.ram_mb < 1000 ? (m.ram_mb + ' MB') : ((m.ram_mb/1000).toFixed(1) + ' GB');
-      return '<option value="' + m.id + '">' + m.name + ' · ' + ram + (m.cached ? ' ✓' : '') + '</option>';
-    }).join('');
-    aiModelSel.value = aiModelRes.current;
+  if (aiModelMenu && aiModelRes.ok && aiModelRes.available) {
     var current = aiModelRes.available.find(function(m){ return m.id === aiModelRes.current; });
+    var currentRam = current ? (current.ram_mb < 1000 ? (current.ram_mb + ' MB') : ((current.ram_mb/1000).toFixed(1) + ' GB')) : '';
+    if (current && aiModelLabel) aiModelLabel.textContent = current.name + ' · ' + currentRam;
+    if (aiModelTriggerCheck) aiModelTriggerCheck.hidden = !(current && current.cached);
+
+    // Перерисовываем items
+    aiModelMenu.innerHTML = aiModelRes.available.map(function(m){
+      var ram = m.ram_mb < 1000 ? (m.ram_mb + ' MB') : ((m.ram_mb/1000).toFixed(1) + ' GB');
+      var isSel = m.id === aiModelRes.current;
+      var metaSuffix = m.cached ? '' : ' · ' + t('ai_model_not_cached');
+      var checkSvg = isSel
+        ? '<span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
+        : '';
+      return '<div class="vy-select__item" data-id="' + m.id + '"' + (isSel ? ' aria-selected="true"' : '') + '>'
+        + '<span>' + m.name
+          + '<span class="vy-select__meta">' + ram + metaSuffix + '</span>'
+        + '</span>'
+        + checkSvg
+        + '</div>';
+    }).join('');
+
     if (aiModelStatusEl && current) {
-      aiModelStatusEl.textContent = current.cached ? t('ai_model_cached') : t('ai_model_not_cached');
-      aiModelStatusEl.style.color = current.cached ? 'var(--sage-deep)' : 'var(--warn)';
+      if (current.cached) {
+        // Soft sage badge с галочкой — per v3 patch spec
+        aiModelStatusEl.innerHTML = '<span class="lang-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' + t('ai_model_cached') + '</span>';
+      } else {
+        aiModelStatusEl.textContent = t('ai_model_not_cached');
+        aiModelStatusEl.style.color = "var(--warn)";
+      }
     }
     if (aiModelDownloadBtn) {
       aiModelDownloadBtn.style.display = current && current.cached ? 'none' : '';
@@ -2120,19 +2209,48 @@ document.getElementById("ai-language").addEventListener("change", async function
   refresh();
 });
 
-// ai-model select: смена локальной модели
+// ai-model select (vy-select v3 — кастомный dropdown)
 (function() {
-  var sel = document.getElementById("ai-model-select");
-  if (sel) {
-    sel.addEventListener("change", async function(e) {
-      var id = e.target.value;
-      var r = await callIpc("ai_model_set", { id: id });
-      if (r && r.ok) {
-        appendLog("🤖 модель: " + (r.model_name || id));
-      }
-      refresh();
-    });
+  var trigger = document.getElementById("ai-model-trigger");
+  var menu = document.getElementById("ai-model-menu");
+
+  function closeMenu() {
+    if (menu) menu.hidden = true;
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
   }
+  function openMenu() {
+    if (menu) menu.hidden = false;
+    if (trigger) trigger.setAttribute("aria-expanded", "true");
+  }
+  function toggleMenu() {
+    if (!menu) return;
+    if (menu.hidden) openMenu(); else closeMenu();
+  }
+
+  if (trigger) trigger.addEventListener("click", function(e) {
+    e.stopPropagation();
+    toggleMenu();
+  });
+
+  // Клик по item'у → ai_model_set
+  if (menu) menu.addEventListener("click", async function(e) {
+    var item = e.target.closest(".vy-select__item");
+    if (!item) return;
+    var id = item.getAttribute("data-id");
+    closeMenu();
+    var r = await callIpc("ai_model_set", { id: id });
+    if (r && r.ok) appendLog("🤖 модель: " + (r.model_name || id));
+    refresh();
+  });
+
+  // Закрытие по клику вне dropdown'а или по Escape
+  document.addEventListener("click", function(e) {
+    if (!menu || menu.hidden) return;
+    if (!e.target.closest("#ai-model-select")) closeMenu();
+  });
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape" && menu && !menu.hidden) closeMenu();
+  });
   var btn = document.getElementById("ai-model-download-btn");
   if (btn) {
     btn.addEventListener("click", async function() {
