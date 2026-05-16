@@ -316,13 +316,39 @@ fn extract_name_and_message(rest: &str, contacts: &Contacts) -> (String, String)
         }
     }
 
-    // Шаг 2: longest-alias-prefix, LOW→HIGH. Это для случаев когда имя
+    // Шаг 2: declension-guard. Если ПЕРВЫЙ токен сам по себе матчится с
+    // alias-prefix но suffix очень короткий (≤3 chars) — это скорее всего
+    // declension/diminutive формы alias'а («тимке», «тимку», «чинкой»),
+    // а не «alias склеенный с началом message». Не пытаемся splitить;
+    // возвращаем первый токен как имя, fuzzy-match в parse_command найдёт
+    // правильный alias (например «тимке» → «тима» через DL=2 → score 0.58).
+    //
+    // Без этого guard'а «тимке мол как дела» → k=2 glued «тимкемол»
+    // даст split «тим»+«кемол», и в message уехало бы «кемол как дела».
+    const MIN_SPLIT_SUFFIX: usize = 4;
+    let first_glued = tokens[0].to_lowercase();
+    if let Some((_name, suffix)) = longest_alias_prefix(&first_glued, contacts) {
+        if suffix.chars().count() > 0 && suffix.chars().count() < MIN_SPLIT_SUFFIX {
+            // первый токен = alias + короткий declension suffix → не split
+            let first = tokens[0].to_string();
+            let tail = tokens[1..].join(" ");
+            return (first, tail);
+        }
+    }
+
+    // Шаг 3: longest-alias-prefix, LOW→HIGH. Это для случаев когда имя
     // склеено с первым словом сообщения: «чинепривет» (k=1) → «чине»+«привет».
     // Низкое k приоритетнее — иначе мы бы съели в glued куски сообщения,
     // и пробелы в сообщении пропали бы.
+    //
+    // Split разрешён только если suffix ≥ MIN_SPLIT_SUFFIX — short suffix
+    // обработан guard'ом выше.
     for k in 1..=max_k {
         let glued: String = tokens[..k].concat().to_lowercase();
         if let Some((name, suffix)) = longest_alias_prefix(&glued, contacts) {
+            if suffix.chars().count() < MIN_SPLIT_SUFFIX {
+                continue;
+            }
             let tail = if k < tokens.len() { tokens[k..].join(" ") } else { String::new() };
             let message = if suffix.is_empty() {
                 tail
@@ -611,6 +637,37 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши ти ме привет", &c).unwrap();
         assert_eq!(uid, 3003);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn declension_not_split_short_suffix() {
+        // Bug fix: «тимке» не должен жадно сматчиться как «тим»+«ке»
+        // (где «ке» уезжает в сообщение). С MIN_SPLIT_SUFFIX=4 такой
+        // split запрещён, name=тимке, дальше fuzzy найдёт «тима» (DL=2).
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши тимке мол как дела", &c).unwrap();
+        assert_eq!(uid, 3003);  // = тима через fuzzy
+        assert_eq!(msg, "мол как дела");  // НЕ «ке мол как дела»
+    }
+
+    #[test]
+    fn declension_chinkoy() {
+        // Аналогично: «чинкой» (instrumental от «Чинка/Чина») не должен
+        // дать «чин»+«кой».
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши чинкой привет", &c).unwrap();
+        assert_eq!(uid, 1001);  // = чине/чина через fuzzy
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn long_suffix_still_splits() {
+        // «чинепривет»: suffix «привет» = 6 chars ≥ 4 → split разрешён.
+        // Покрывается существующим тестом name_glued_to_message; перепроверяем.
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши чинепривет", &c).unwrap();
+        assert_eq!(uid, 1001);
         assert_eq!(msg, "привет");
     }
 }
