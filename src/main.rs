@@ -144,10 +144,37 @@ fn ask_ai_assistant(
     }
 
     if let Some(ref mut assistant) = *ai_guard {
-        let response = assistant.ask(question)
-            .map_err(|e| anyhow::anyhow!("inference: {}", e))?;
-        info!("[ai] local ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
-        Ok(response.text)
+        // catch_unwind вокруг inference — candelabra/candle/gemm/pulp иногда
+        // panic'ит в SIMD-треде (.expect() в pulp internal). Без catch_unwind
+        // это убивает весь exe (BEX64 в Event Log). С ним — просто возвращаем
+        // ошибку, юзер видит ✗ и может попробовать другую модель или Gemini.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assistant.ask(question)
+        }));
+        match result {
+            Ok(Ok(response)) => {
+                info!("[ai] local ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
+                Ok(response.text)
+            }
+            Ok(Err(e)) => Err(anyhow::anyhow!("inference: {}", e)),
+            Err(panic_payload) => {
+                // Выгружаем кэшированную модель — она в потенциально плохом
+                // состоянии после panic, повторный ask мог бы упасть так же.
+                *ai_guard = None;
+                let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic".into()
+                };
+                warn!("[ai] local LLM panic caught: {}", msg);
+                Err(anyhow::anyhow!(
+                    "локальная модель упала ({}). Попробуй сменить модель в Settings или поставь Gemini API key.",
+                    msg
+                ))
+            }
+        }
     } else {
         Err(anyhow::anyhow!("AI assistant not available"))
     }

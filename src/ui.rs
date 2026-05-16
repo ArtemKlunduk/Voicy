@@ -18,6 +18,8 @@ use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 use tao::window::WindowBuilder;
 use tracing::{info, warn};
 use wry::WebViewBuilder;
+#[cfg(windows)]
+use wry::WebViewBuilderExtWindows;
 
 const UI_HTML: &str = include_str!("ui.html");
 
@@ -240,7 +242,25 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
         });
     };
 
-    let webview = WebViewBuilder::new(&window)
+    // --disable-gpu + GPU compositing: ставим software rendering для WebView2.
+    // WebView2 на нашем стеке (Voicy v0.1.0) крашился через ucrtbase!__fastfail(7)
+    // из d3d12.dll после долгого использования (BEX64 в WER). Хардварная
+    // акселерация в Edge WebView2 имеет известные баги под определёнными
+    // драйверами. Software rendering немного тяжелее CPU, но Settings UI
+    // у нас лёгкий — разницы юзер не почувствует.
+    //
+    // --disable-features=msSmartScreenProtection — отключает SmartScreen-фоновую
+    // проверку (она для нашего custom voicy:// протокола бессмысленна и
+    // только вешает дополнительный network thread).
+    let mut webview_builder = WebViewBuilder::new(&window);
+    #[cfg(windows)]
+    {
+        webview_builder = webview_builder.with_additional_browser_args(
+            "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer \
+             --disable-features=msSmartScreenProtection,RendererCodeIntegrity",
+        );
+    }
+    let webview = webview_builder
         .with_url("voicy://localhost/index.html")
         .with_custom_protocol("voicy".into(), |_req| {
             wry::http::Response::builder()
