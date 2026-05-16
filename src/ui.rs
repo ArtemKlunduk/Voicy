@@ -1314,6 +1314,26 @@ fn cmd_listener_start(
                 return;
             }
 
+            // «Включи N-е видео» — повторно скрейпим последний YouTube-запрос
+            // и открываем /watch?v=…&autoplay=1 для N-го результата.
+            if let Some(idx) = browser::parse_play_nth(&text) {
+                info!("[listener] play-nth-youtube: idx={}", idx);
+                match browser::play_nth_youtube_result(idx) {
+                    Ok(url) => {
+                        push_event(&proxy, "log", &format!("✅ YouTube #{} → {}", idx + 1, url));
+                        push_event(&proxy, "activity", &format!("→ video #{}", idx + 1));
+                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                    }
+                    Err(e) => {
+                        warn!("[listener] play-nth: {}", e);
+                        push_event(&proxy, "log", &format!("✗ play-nth: {}", e));
+                        push_event(&proxy, "activity", "");
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    }
+                }
+                return;
+            }
+
             // In-video команды (громче/тише/пауза/полный экран/перемотка/mute) —
             // через Win32 SendInput горячие клавиши YouTube/Twitch.
             // Активное окно должно быть браузер с открытым видео.

@@ -770,6 +770,17 @@ dialog label {
           </div>
         </div>
 
+        <div class="item">
+          <div class="k" data-i18n="ai_model_label">Local AI model
+            <span class="d" data-i18n="ai_model_desc">Local fallback when Gemini is unavailable. Bigger = better quality, more RAM.</span>
+          </div>
+          <div class="v" style="gap:8px; flex-wrap:wrap;">
+            <select class="nat-select" id="ai-model-select"></select>
+            <span id="ai-model-status" style="font-size:11px; color:var(--ink-3);"></span>
+            <button class="link" id="ai-model-download-btn" data-i18n="btn_download">download</button>
+          </div>
+        </div>
+
         <div class="section-label"><span data-i18n="sec_system">System</span></div>
 
         <div class="item">
@@ -995,7 +1006,9 @@ var locales = {
     ai_assistant: 'Голосовой ассистент', ai_assistant_desc: 'Команда «дай ответ» → задай вопрос голосом → ИИ отвечает голосом. Gemini API — ответы за 1–2 сек. Без ключа — локальная модель (медленнее).',
     gemini_key: 'Ключ Gemini API', gemini_key_desc: 'Google Gemini 2.0 Flash — основной движок ИИ. Быстрые ответы (~1–2 сек), отличный русский. Бесплатный tier: 1500 запросов/день. Без ключа — fallback на локальную модель.',
     ai_language_label: 'Язык ассистента', ai_language_desc: 'Язык, на котором ИИ будет отвечать голосом.',
-    btn_save: 'сохранить', btn_check: 'проверить', btn_change: 'изменить', btn_reset: 'сброс',
+    ai_model_label: 'Локальная ИИ-модель', ai_model_desc: 'Fallback когда Gemini недоступен. Больше = качественнее, больше RAM.',
+    ai_model_cached: '✓ скачана', ai_model_not_cached: 'не скачана', ai_model_downloading: 'скачиваю…',
+    btn_download: 'скачать', btn_save: 'сохранить', btn_check: 'проверить', btn_change: 'изменить', btn_reset: 'сброс',
     gemini_key_ok: '✓ ключ работает', gemini_key_bad: '✗ ключ не работает',
     help_gemini_title: 'Как получить ключ Gemini',
     help_gemini_why: '<b>Зачем?</b> С ключом Gemini ИИ отвечает за 1–2 секунды с отличным качеством. Без ключа используется медленная локальная модель (~30–50 с на ответ).',
@@ -1062,7 +1075,9 @@ var locales = {
     ai_assistant: 'Voice assistant', ai_assistant_desc: 'Say "give answer" → ask a question by voice → AI replies by voice. Gemini API — replies in 1–2 sec. Without key — local model (slower).',
     gemini_key: 'Gemini API key', gemini_key_desc: 'Google Gemini 2.0 Flash — primary AI engine. Fast replies (~1–2 sec), excellent English. Free tier: 1500 requests/day. Without key — fallback to local model.',
     ai_language_label: 'Assistant language', ai_language_desc: 'Language the AI will speak in.',
-    btn_save: 'save', btn_check: 'check', btn_change: 'change', btn_reset: 'reset',
+    ai_model_label: 'Local AI model', ai_model_desc: 'Fallback when Gemini is unavailable. Bigger = better quality, more RAM.',
+    ai_model_cached: '✓ cached', ai_model_not_cached: 'not cached', ai_model_downloading: 'downloading…',
+    btn_download: 'download', btn_save: 'save', btn_check: 'check', btn_change: 'change', btn_reset: 'reset',
     gemini_key_ok: '✓ key valid', gemini_key_bad: '✗ key invalid',
     help_gemini_title: 'How to get a Gemini key',
     help_gemini_why: '<b>Why?</b> With a Gemini key the AI answers in 1–2 seconds with excellent quality. Without a key it falls back to a slow local model (~30–50 s per answer).',
@@ -1142,7 +1157,7 @@ function applyLanguage() {
 // ── IPC core ──
 var _cb = {};
 // Долгие команды (download/диалоги) получают свой увеличенный таймаут.
-var LONG_TIMEOUT_CMDS = { model_download: 1800000, telegram_dialogs: 180000 };
+var LONG_TIMEOUT_CMDS = { model_download: 1800000, ai_model_download: 1800000, telegram_dialogs: 180000 };
 function callIpc(cmd, payload) {
   return new Promise(function (resolve) {
     var id = Math.random().toString(36).slice(2);
@@ -1286,6 +1301,28 @@ async function refresh() {
   var aiLangSel = document.getElementById("ai-language");
   if (aiLangSel && aiLangRes.ok && aiLangRes.language) {
     aiLangSel.value = aiLangRes.language;
+  }
+
+  // Local AI model selector
+  var aiModelRes = await callIpc("ai_model_get");
+  var aiModelSel = document.getElementById("ai-model-select");
+  var aiModelStatusEl = document.getElementById("ai-model-status");
+  var aiModelDownloadBtn = document.getElementById("ai-model-download-btn");
+  if (aiModelSel && aiModelRes.ok && aiModelRes.available) {
+    // Перерисовываем опции (имя + RAM)
+    aiModelSel.innerHTML = aiModelRes.available.map(function(m){
+      var ram = m.ram_mb < 1000 ? (m.ram_mb + ' МБ') : ((m.ram_mb/1000).toFixed(1) + ' ГБ');
+      return '<option value="' + m.id + '">' + m.name + ' · ' + ram + (m.cached ? ' ✓' : '') + '</option>';
+    }).join('');
+    aiModelSel.value = aiModelRes.current;
+    var current = aiModelRes.available.find(function(m){ return m.id === aiModelRes.current; });
+    if (aiModelStatusEl && current) {
+      aiModelStatusEl.textContent = current.cached ? t('ai_model_cached') : t('ai_model_not_cached');
+      aiModelStatusEl.style.color = current.cached ? 'var(--sage-deep)' : 'var(--warn)';
+    }
+    if (aiModelDownloadBtn) {
+      aiModelDownloadBtn.style.display = current && current.cached ? 'none' : '';
+    }
   }
 
   // Gemini API key
@@ -1944,6 +1981,41 @@ document.getElementById("ai-language").addEventListener("change", async function
   await callIpc("ai_language_set", { language: v });
   refresh();
 });
+
+// ai-model select: смена локальной модели
+(function() {
+  var sel = document.getElementById("ai-model-select");
+  if (sel) {
+    sel.addEventListener("change", async function(e) {
+      var id = e.target.value;
+      var r = await callIpc("ai_model_set", { id: id });
+      if (r && r.ok) {
+        appendLog("🤖 модель: " + (r.model_name || id));
+      }
+      refresh();
+    });
+  }
+  var btn = document.getElementById("ai-model-download-btn");
+  if (btn) {
+    btn.addEventListener("click", async function() {
+      btn.disabled = true;
+      var statusEl = document.getElementById("ai-model-status");
+      if (statusEl) {
+        statusEl.textContent = t('ai_model_downloading');
+        statusEl.style.color = "var(--ink-3)";
+      }
+      appendLog("⬇ скачиваю локальную модель ИИ…");
+      var r = await callIpc("ai_model_download", {});
+      btn.disabled = false;
+      if (r && r.ok) {
+        appendLog("✅ модель скачана");
+      } else {
+        appendLog("✗ скачивание: " + (r && r.error ? r.error : "fail"));
+      }
+      refresh();
+    });
+  }
+})();
 
 refresh();
 setInterval(refresh, 5000);
