@@ -405,8 +405,10 @@ fn dispatch(
         "preload_set" => cmd_preload_set(cfg, cfg_path, &msg.payload),
         "ai_assistant_get" => cmd_ai_assistant_get(cfg),
         "ai_assistant_set" => cmd_ai_assistant_set(cfg, cfg_path, &msg.payload),
-        "ai_model_status" => cmd_ai_model_status(),
-        "ai_model_download" => cmd_ai_model_download(),
+        "ai_model_status" => cmd_ai_model_status(cfg),
+        "ai_model_download" => cmd_ai_model_download(cfg),
+        "ai_model_get" => cmd_ai_model_get(cfg),
+        "ai_model_set" => cmd_ai_model_set(cfg, cfg_path, &msg.payload),
         "gemini_key_get" => cmd_gemini_key_get(cfg),
         "gemini_key_set" => cmd_gemini_key_set(cfg, cfg_path, &msg.payload),
         "gemini_key_check" => cmd_gemini_key_check(cfg),
@@ -517,10 +519,14 @@ fn cmd_preload_set(
 
 fn cmd_ai_assistant_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
     let c = cfg.lock();
+    let kind = ai_assistant::AiModel::from_config_str(&c.ai_model);
     serde_json::json!({
         "ok": true,
         "enabled": c.ai_assistant_enabled,
-        "model_cached": ai_assistant::AiAssistant::is_model_cached(),
+        "model_cached": ai_assistant::AiAssistant::is_model_cached(kind),
+        "model_id": kind.id(),
+        "model_name": kind.display_name(),
+        "model_ram_mb": kind.approx_ram_mb(),
     })
 }
 
@@ -539,13 +545,65 @@ fn cmd_ai_assistant_set(
     serde_json::json!({ "ok": true, "enabled": val })
 }
 
-fn cmd_ai_model_status() -> serde_json::Value {
+fn cmd_ai_model_status(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    let kind = ai_assistant::AiModel::from_config_str(&c.ai_model);
     serde_json::json!({
         "ok": true,
-        "cached": ai_assistant::AiAssistant::is_model_cached(),
-        "model_name": "Local fallback model",
-        "model_size": "~350 MB (downloaded on first use)",
+        "cached": ai_assistant::AiAssistant::is_model_cached(kind),
+        "model_id": kind.id(),
+        "model_name": kind.display_name(),
+        "model_ram_mb": kind.approx_ram_mb(),
     })
+}
+
+/// Получить/выбрать локальную модель.
+fn cmd_ai_model_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    let kind = ai_assistant::AiModel::from_config_str(&c.ai_model);
+    serde_json::json!({
+        "ok": true,
+        "current": kind.id(),
+        "available": [
+            {
+                "id": "qwen-0.5b",
+                "name": ai_assistant::AiModel::Qwen05B.display_name(),
+                "ram_mb": ai_assistant::AiModel::Qwen05B.approx_ram_mb(),
+                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Qwen05B),
+            },
+            {
+                "id": "llama-3.2-1b",
+                "name": ai_assistant::AiModel::Llama32_1B.display_name(),
+                "ram_mb": ai_assistant::AiModel::Llama32_1B.approx_ram_mb(),
+                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Llama32_1B),
+            },
+            {
+                "id": "gemma-2-2b",
+                "name": ai_assistant::AiModel::Gemma2_2B.display_name(),
+                "ram_mb": ai_assistant::AiModel::Gemma2_2B.approx_ram_mb(),
+                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Gemma2_2B),
+            },
+        ],
+    })
+}
+
+fn cmd_ai_model_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let id = match payload.get("id").and_then(|v| v.as_str()) {
+        Some(s) => s.to_string(),
+        None => return err("payload.id (string) required"),
+    };
+    let kind = ai_assistant::AiModel::from_config_str(&id);
+    let mut c = cfg.lock();
+    c.ai_model = kind.id().to_string();
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] ai_model set → {}", kind.id());
+    serde_json::json!({ "ok": true, "model_id": kind.id(), "model_name": kind.display_name() })
 }
 
 fn cmd_gemini_key_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
@@ -678,17 +736,18 @@ fn cmd_language_set(
     serde_json::json!({ "ok": true, "language": val })
 }
 
-fn cmd_ai_model_download() -> serde_json::Value {
-    if ai_assistant::AiAssistant::is_model_cached() {
-        return serde_json::json!({ "ok": true, "cached": true });
+fn cmd_ai_model_download(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let kind = ai_assistant::AiModel::from_config_str(&cfg.lock().ai_model);
+    if ai_assistant::AiAssistant::is_model_cached(kind) {
+        return serde_json::json!({ "ok": true, "cached": true, "model_id": kind.id() });
     }
-    match ai_assistant::AiAssistant::download_model_sync() {
+    match ai_assistant::AiAssistant::download_model_sync(kind) {
         Ok(path) => {
-            info!("[ui] AI model downloaded: {}", path.display());
-            serde_json::json!({ "ok": true, "path": path.display().to_string() })
+            info!("[ui] AI model {} downloaded: {}", kind.id(), path.display());
+            serde_json::json!({ "ok": true, "path": path.display().to_string(), "model_id": kind.id() })
         }
         Err(e) => {
-            warn!("[ui] AI model download failed: {}", e);
+            warn!("[ui] AI model {} download failed: {}", kind.id(), e);
             err(format!("download: {}", e))
         }
     }
@@ -1255,6 +1314,18 @@ fn cmd_listener_start(
                 return;
             }
 
+            // In-video команды (громче/тише/пауза/полный экран/перемотка/mute) —
+            // через Win32 SendInput горячие клавиши YouTube/Twitch.
+            // Активное окно должно быть браузер с открытым видео.
+            if let Some(action) = crate::browser_action::parse(&text) {
+                info!("[listener] browser-action: {:?}", action);
+                crate::browser_action::dispatch(action.clone());
+                push_event(&proxy, "log", &format!("🎮 {:?}", action));
+                push_event(&proxy, "activity", "→ player");
+                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                return;
+            }
+
             // --- ИИ-ассистент ---
             if cfg.ai_assistant_enabled {
                 let ai_trigger = ["дай ответ", "ответь", "вопрос", "спроси"];
@@ -1279,11 +1350,18 @@ fn cmd_listener_start(
                     push_event(&proxy, "log", &format!("🤖 вопрос: {}", question));
                     let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
 
+                    let ai_kind = ai_assistant::AiModel::from_config_str(&cfg.ai_model);
                     let mut ai_guard = ai_slot.lock();
+                    // Сменили модель в конфиге — выкинуть старую из слота.
+                    if let Some(ref a) = *ai_guard {
+                        if a.kind() != ai_kind {
+                            *ai_guard = None;
+                        }
+                    }
                     if ai_guard.is_none() {
-                        if !ai_assistant::AiAssistant::is_model_cached() {
-                            push_event(&proxy, "log", "🤖 загрузка модели ИИ...");
-                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync() {
+                        if !ai_assistant::AiAssistant::is_model_cached(ai_kind) {
+                            push_event(&proxy, "log", &format!("🤖 загрузка модели {}…", ai_kind.display_name()));
+                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync(ai_kind) {
                                 warn!("[ai] download failed: {}", e);
                                 push_event(&proxy, "log", &format!("✗ ИИ загрузка: {}", e));
                                 push_event(&proxy, "activity", "");
@@ -1291,7 +1369,7 @@ fn cmd_listener_start(
                                 return;
                             }
                         }
-                        match ai_assistant::AiAssistant::load_if_cached() {
+                        match ai_assistant::AiAssistant::load_if_cached(ai_kind) {
                             Ok(Some(a)) => { *ai_guard = Some(a); }
                             Ok(None) => {
                                 push_event(&proxy, "log", "✗ ИИ модель не загрузилась");
@@ -1338,11 +1416,18 @@ fn cmd_listener_start(
                     push_event(&proxy, "log", &format!("🤖 вопрос: {}", text));
                     let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
 
+                    let ai_kind = ai_assistant::AiModel::from_config_str(&cfg.ai_model);
                     let mut ai_guard = ai_slot.lock();
+                    // Сменили модель в конфиге — выкинуть старую из слота.
+                    if let Some(ref a) = *ai_guard {
+                        if a.kind() != ai_kind {
+                            *ai_guard = None;
+                        }
+                    }
                     if ai_guard.is_none() {
-                        if !ai_assistant::AiAssistant::is_model_cached() {
-                            push_event(&proxy, "log", "🤖 загрузка модели ИИ...");
-                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync() {
+                        if !ai_assistant::AiAssistant::is_model_cached(ai_kind) {
+                            push_event(&proxy, "log", &format!("🤖 загрузка модели {}…", ai_kind.display_name()));
+                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync(ai_kind) {
                                 warn!("[ai] download failed: {}", e);
                                 push_event(&proxy, "log", &format!("✗ ИИ загрузка: {}", e));
                                 push_event(&proxy, "activity", "");
@@ -1350,7 +1435,7 @@ fn cmd_listener_start(
                                 return;
                             }
                         }
-                        match ai_assistant::AiAssistant::load_if_cached() {
+                        match ai_assistant::AiAssistant::load_if_cached(ai_kind) {
                             Ok(Some(a)) => { *ai_guard = Some(a); }
                             Ok(None) => {
                                 push_event(&proxy, "log", "✗ ИИ модель не загрузилась");

@@ -40,6 +40,10 @@ pub struct Config {
     /// Язык голосового ассистента: "ru" | "en".
     #[serde(default = "default_ai_language")]
     pub ai_language: String,
+    /// Локальная ИИ-модель: "qwen-0.5b" | "llama-3.2-1b" | "gemma-2-2b".
+    /// Дефолт — qwen-0.5b (минимальный RAM-overhead ~400 МБ).
+    #[serde(default = "default_ai_model")]
+    pub ai_model: String,
 }
 
 fn default_theme() -> String { "light".into() }
@@ -49,6 +53,7 @@ fn default_ai_preload() -> bool { false }
 fn default_startup_launch() -> bool { false }
 fn default_language() -> String { "en".into() }
 fn default_ai_language() -> String { "en".into() }
+fn default_ai_model() -> String { "qwen-0.5b".into() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -81,6 +86,7 @@ impl Default for Config {
             language: "en".into(),
             gemini_api_key: String::new(),
             ai_language: "en".into(),
+            ai_model: "qwen-0.5b".into(),
         }
     }
 }

@@ -17,6 +17,7 @@ mod asr;
 mod gemini;
 mod audio;
 mod browser;
+mod browser_action;
 mod config;
 mod contacts;
 mod hotkey;
@@ -117,14 +118,22 @@ fn ask_ai_assistant(
     }
 
     // 2. Fallback: локальная модель через candelabra (офлайн, ~30–50 с на ответ)
+    let kind = ai_assistant::AiModel::from_config_str(&cfg.ai_model);
     let mut ai_guard = ai_slot.lock();
+    // Если в слоте лежит ДРУГАЯ модель (юзер сменил в конфиге) — выкидываем её.
+    if let Some(ref a) = *ai_guard {
+        if a.kind() != kind {
+            info!("[ai] config changed: {} → {}, reloading", a.kind().id(), kind.id());
+            *ai_guard = None;
+        }
+    }
     if ai_guard.is_none() {
-        if !ai_assistant::AiAssistant::is_model_cached() {
-            info!("[ai] локальная модель не найдена, скачиваем…");
-            ai_assistant::AiAssistant::download_model_sync()
+        if !ai_assistant::AiAssistant::is_model_cached(kind) {
+            info!("[ai] локальная модель {} не найдена, скачиваем…", kind.id());
+            ai_assistant::AiAssistant::download_model_sync(kind)
                 .map_err(|e| anyhow::anyhow!("download: {}", e))?;
         }
-        let assistant = ai_assistant::AiAssistant::load_if_cached()
+        let assistant = ai_assistant::AiAssistant::load_if_cached(kind)
             .map_err(|e| anyhow::anyhow!("load: {}", e))?
             .ok_or_else(|| anyhow::anyhow!("model not available after download"))?;
         *ai_guard = Some(assistant);
