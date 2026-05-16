@@ -866,11 +866,13 @@ dialog label {
             <span class="d" data-i18n="recog_lang_desc">Whisper recognition language. Auto-detection is not yet supported.</span>
           </div>
           <div class="v">
-            <select class="nat-select" id="rec-lang">
-              <option value="en" data-i18n="option_en">English</option>
-              <option value="ru" data-i18n="option_ru">Русский</option>
-              <option value="auto">Auto</option>
-            </select>
+            <div class="vy-select" id="rec-lang-select" data-vy-select="rec-lang">
+              <button type="button" class="vy-select__trigger" aria-expanded="false">
+                <span class="label">…</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="vy-select__menu" hidden></div>
+            </div>
           </div>
         </div>
 
@@ -905,10 +907,13 @@ dialog label {
             <span class="d" data-i18n="ai_language_desc">Language the AI will speak in.</span>
           </div>
           <div class="v">
-            <select class="nat-select" id="ai-language">
-              <option value="en" data-i18n="option_en">English</option>
-              <option value="ru" data-i18n="option_ru">Русский</option>
-            </select>
+            <div class="vy-select" id="ai-language-select" data-vy-select="ai-language">
+              <button type="button" class="vy-select__trigger" aria-expanded="false">
+                <span class="label">…</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="vy-select__menu" hidden></div>
+            </div>
           </div>
         </div>
 
@@ -949,10 +954,13 @@ dialog label {
             <span class="d" data-i18n="lang_desc">Application interface language.</span>
           </div>
           <div class="v">
-            <select class="nat-select" id="ui-lang">
-              <option value="en" data-i18n="option_en">English</option>
-              <option value="ru" data-i18n="option_ru">Русский</option>
-            </select>
+            <div class="vy-select" id="ui-lang-select" data-vy-select="ui-lang">
+              <button type="button" class="vy-select__trigger" aria-expanded="false">
+                <span class="label">…</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="vy-select__menu" hidden></div>
+            </div>
           </div>
         </div>
 
@@ -1341,6 +1349,78 @@ function setActivity(text) {
   if (el) el.textContent = text || "—";
 }
 function escapeAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
+
+// ── vy-select helper: монтирует кастомный dropdown поверх контейнера.
+// rootId  — id корневого <div class="vy-select">
+// options — [{value, label}]
+// current — текущее value
+// onChange — async (newValue) => {} (refresh() будет вызван автоматически)
+function mountVySelect(rootId, options, current, onChange) {
+  var root = document.getElementById(rootId);
+  if (!root) return;
+  var trigger = root.querySelector('.vy-select__trigger');
+  var label = trigger && trigger.querySelector('.label');
+  var menu = root.querySelector('.vy-select__menu');
+  if (!trigger || !menu) return;
+
+  var sel = options.find(function(o){ return o.value === current; }) || options[0];
+  if (label && sel) label.textContent = sel.label;
+
+  menu.innerHTML = options.map(function(o){
+    var isSel = o.value === current;
+    var check = isSel ? '<span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' : '';
+    return '<div class="vy-select__item" data-value="' + escapeAttr(o.value) + '"' + (isSel ? ' aria-selected="true"' : '') + '>'
+      + '<span>' + escapeAttr(o.label) + '</span>'
+      + check
+      + '</div>';
+  }).join('');
+
+  // Cache onChange — handler внутри замыкания читает свежий каждый раз
+  root._vyOnChange = onChange;
+
+  // Биндим события один раз
+  if (!root.dataset.vyBound) {
+    root.dataset.vyBound = '1';
+    trigger.addEventListener('click', function(e) {
+      e.stopPropagation();
+      // Закрыть все остальные открытые vy-select меню
+      document.querySelectorAll('.vy-select__menu').forEach(function(m){
+        if (m !== menu) { m.hidden = true; var t = m.parentElement.querySelector('.vy-select__trigger'); if (t) t.setAttribute('aria-expanded', 'false'); }
+      });
+      var open = trigger.getAttribute('aria-expanded') === 'true';
+      menu.hidden = open;
+      trigger.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+    menu.addEventListener('click', async function(e) {
+      var item = e.target.closest('.vy-select__item');
+      if (!item) return;
+      var v = item.getAttribute('data-value');
+      menu.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      if (root._vyOnChange) await root._vyOnChange(v);
+    });
+  }
+}
+
+// Global: клик мимо vy-select закрывает все открытые меню; Escape тоже
+document.addEventListener('click', function(e) {
+  if (e.target.closest('.vy-select')) return;
+  document.querySelectorAll('.vy-select__menu').forEach(function(m){
+    m.hidden = true;
+    var t = m.parentElement.querySelector('.vy-select__trigger');
+    if (t) t.setAttribute('aria-expanded', 'false');
+  });
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.vy-select__menu').forEach(function(m){
+    if (!m.hidden) {
+      m.hidden = true;
+      var t = m.parentElement.querySelector('.vy-select__trigger');
+      if (t) t.setAttribute('aria-expanded', 'false');
+    }
+  });
+});
 function flashOK(text) {
   var el = document.getElementById("flash");
   el.textContent = text || t('saved');
@@ -1418,17 +1498,23 @@ async function refresh() {
   var langRes = await callIpc("language_get");
   if (langRes.ok && langRes.language) {
     _lang = langRes.language;
-    var langSel = document.getElementById("ui-lang");
-    if (langSel) langSel.value = _lang;
     applyLanguage();
   }
+  // UI lang vy-select (English / Русский)
+  mountVySelect("ui-lang-select",
+    [{value:"en", label:"English"}, {value:"ru", label:"Русский"}],
+    _lang,
+    async function(v){ await callIpc("language_set", { language: v }); refresh(); }
+  );
 
-  // recognition language (rec-lang dropdown) — раньше не подтягивалось,
-  // на старте всегда показывалось English независимо от сохранённого значения.
+  // recognition language vy-select (English / Русский / Auto)
   var recLangRes = await callIpc("rec_lang_get");
-  var recLangSel = document.getElementById("rec-lang");
-  if (recLangSel && recLangRes.ok && recLangRes.language) {
-    recLangSel.value = recLangRes.language;
+  if (recLangRes.ok) {
+    mountVySelect("rec-lang-select",
+      [{value:"en", label:"English"}, {value:"ru", label:"Русский"}, {value:"auto", label:"Auto"}],
+      recLangRes.language || "en",
+      async function(v){ await callIpc("rec_lang_set", { language: v }); refresh(); }
+    );
   }
 
   // theme — синхронизируем кнопки sun/moon с сохранённым в конфиге значением.
@@ -1465,11 +1551,14 @@ async function refresh() {
     }
   }
 
-  // AI assistant language
+  // AI assistant language vy-select
   var aiLangRes = await callIpc("ai_language_get");
-  var aiLangSel = document.getElementById("ai-language");
-  if (aiLangSel && aiLangRes.ok && aiLangRes.language) {
-    aiLangSel.value = aiLangRes.language;
+  if (aiLangRes.ok) {
+    mountVySelect("ai-language-select",
+      [{value:"en", label:"English"}, {value:"ru", label:"Русский"}],
+      aiLangRes.language || "en",
+      async function(v){ await callIpc("ai_language_set", { language: v }); refresh(); }
+    );
   }
 
   // Local AI model selector (vy-select v3 — кастомный dropdown)
@@ -2190,24 +2279,8 @@ function renderDialogList(filter) {
   });
 })();
 
-// language select
-document.getElementById("ui-lang").addEventListener("change", async function(e) {
-  var v = e.target.value;
-  await callIpc("language_set", { language: v });
-  refresh();
-});
-// rec-lang select
-document.getElementById("rec-lang").addEventListener("change", async function(e) {
-  var v = e.target.value;
-  await callIpc("rec_lang_set", { language: v });
-  refresh();
-});
-// ai-language select
-document.getElementById("ai-language").addEventListener("change", async function(e) {
-  var v = e.target.value;
-  await callIpc("ai_language_set", { language: v });
-  refresh();
-});
+// ui-lang / rec-lang / ai-language теперь vy-select — биндятся через
+// mountVySelect() внутри refresh(), отдельные change-handler'ы не нужны.
 
 // ai-model select (vy-select v3 — кастомный dropdown)
 (function() {
