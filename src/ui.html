@@ -1270,6 +1270,24 @@ async function refresh() {
     applyLanguage();
   }
 
+  // recognition language (rec-lang dropdown) — раньше не подтягивалось,
+  // на старте всегда показывалось English независимо от сохранённого значения.
+  var recLangRes = await callIpc("rec_lang_get");
+  var recLangSel = document.getElementById("rec-lang");
+  if (recLangSel && recLangRes.ok && recLangRes.language) {
+    recLangSel.value = recLangRes.language;
+  }
+
+  // theme — синхронизируем кнопки sun/moon с сохранённым в конфиге значением.
+  var themeRes = await callIpc("theme_get");
+  if (themeRes.ok && themeRes.theme) {
+    var savedTheme = themeRes.theme;
+    var curTheme = document.documentElement.getAttribute("data-theme");
+    if (curTheme !== savedTheme) {
+      applyTheme(savedTheme);
+    }
+  }
+
   // preload toggle
   var preloadRes = await callIpc("preload_get");
   var preloadToggle = document.getElementById("preload-toggle");

@@ -417,6 +417,8 @@ fn dispatch(
         "startup_get" => cmd_startup_get(cfg),
         "startup_set" => cmd_startup_set(cfg, cfg_path, &msg.payload),
         "rec_lang_set" => cmd_rec_lang_set(cfg, cfg_path, &msg.payload),
+        "rec_lang_get" => cmd_rec_lang_get(cfg),
+        "theme_get" => cmd_theme_get(cfg),
         "language_get" => cmd_language_get(cfg),
         "language_set" => cmd_language_set(cfg, cfg_path, &msg.payload),
         "_window_close" => {
@@ -714,6 +716,16 @@ fn cmd_rec_lang_set(
     }
     info!("[ui] recognition_language updated: {}", val);
     serde_json::json!({ "ok": true, "language": val })
+}
+
+fn cmd_rec_lang_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({ "ok": true, "language": c.recognition_language })
+}
+
+fn cmd_theme_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({ "ok": true, "theme": c.ui_theme })
 }
 
 fn cmd_language_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
