@@ -695,17 +695,6 @@ dialog label {
       </div>
 
       <div class="list">
-        <div class="item">
-          <div class="k">Listener
-            <span class="d" id="listener-hint">…</span>
-          </div>
-          <div class="v" id="listener-meta-wrap">
-            <span id="listener-meta"><span class="badge" data-i18n="listener_checking">checking…</span></span>
-            <button class="link" id="btn-listen-start">Start</button>
-            <button class="ghost-action hidden" id="btn-listen-stop">Stop</button>
-          </div>
-        </div>
-
         <div class="section-label"><span data-i18n="sec_input">Input</span></div>
 
         <div class="item">
@@ -1378,19 +1367,8 @@ async function refresh() {
       appendLog("⚠ auto-start: " + ar.error);
     }
   }
-  var listenerMeta = document.getElementById("listener-meta");
-  var hint = document.getElementById("listener-hint");
-  var startBtn = document.getElementById("btn-listen-start");
-  var stopBtn = document.getElementById("btn-listen-stop");
-  if (lst.running) {
-    listenerMeta.innerHTML = '<span class="badge active"><span class="dot"></span>' + t('listener_listening') + '</span>';
-    hint.innerHTML = t('listener_hint_hold') + ' <span class="kbd">' + info.hotkey + '</span> ' + t('listener_hint_say');
-    startBtn.classList.add("hidden"); stopBtn.classList.remove("hidden");
-  } else {
-    listenerMeta.innerHTML = '<span class="badge">' + t('listener_stopped') + '</span>';
-    hint.textContent = info.signed_in ? t('listener_autostart_fail') : t('listener_login_first');
-    startBtn.classList.remove("hidden"); stopBtn.classList.add("hidden");
-  }
+  // Listener-секция убрана из UI — auto-start всё ещё работает,
+  // просто не показываем бейдж/кнопки. lst.running дальше нигде не нужен.
 
   _modelsCache = (await callIpc("models_list")).models || [];
   renderModelDropdown();
@@ -1724,12 +1702,7 @@ document.addEventListener("click", async function (e) {
     }
     return;
   }
-  // listener
-  if (t.id === "btn-listen-start") {
-    t.disabled = true; var rs = await callIpc("listener_start");
-    if (!rs.ok) alert(rs.error || "fail"); refresh(); return;
-  }
-  if (t.id === "btn-listen-stop") { await callIpc("listener_stop"); refresh(); return; }
+  // listener — раздел убран из UI, кнопок больше нет; auto-start в refresh()
   // hotkey
   if (t.id === "btn-record-hotkey") { startHotkeyCapture(); return; }
   if (t.id === "btn-reset-hotkey") { await callIpc("hotkey_set", { modifiers:["alt"], key:"x" }); refresh(); return; }
