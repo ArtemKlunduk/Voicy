@@ -319,10 +319,19 @@ main { padding:0; height:100vh; display:flex; }
 .ghost-action:hover { color:var(--warn); }
 .recommended-badge {
   display:inline-flex; align-items:center; gap:4px;
-  font-family:var(--sans); font-size:11px; letter-spacing:0;
-  text-transform:none; color:#fff; background:var(--moss);
-  padding:3px 9px; border-radius:999px; font-weight:600;
+  font-family:var(--sans); font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; color:#fff; background:var(--accent);
+  padding:3px 8px 2px; border-radius:999px; font-weight:600;
   margin-left:8px; vertical-align:1px;
+}
+/* В тёмной теме светло-зелёный бейдж сливался с фоном карточки —
+   добавляем обводку и лёгкое свечение для отделения. */
+[data-theme="dark"] .recommended-badge {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.35) inset,
+    0 1px 0 rgba(0,0,0,.4),
+    0 0 8px rgba(168,200,160,.35);
+  text-shadow: 0 1px 0 rgba(0,0,0,.4);
 }
 .help-icon {
   display:inline-flex; align-items:center; justify-content:center;
@@ -1036,7 +1045,7 @@ var locales = {
     quality_hint_fallback: 'ℹ Активна <b>{{model}}</b> (только веса). Inference идёт через скачанный Whisper.',
     no_contacts: 'Контактов нет. Жми «+ добавить» или импортируй из Telegram.',
     contact_name_placeholder: 'Имя', contact_alias_placeholder: 'алиас + Enter…',
-    title_delete: 'удалить', header_recommended: 'Рекомендуемая', badge_recommended: 'Рекомендуется',
+    title_delete: 'удалить', header_recommended: 'Рекомендуемая', badge_recommended: 'рекомендуется',
     press_combo: 'нажми сочетание…', need_modifier: 'нужен модификатор',
     error_download: 'Ошибка загрузки: ', confirm_logout: 'Выйти из Telegram?',
     prompt_user_id: 'Telegram user id (число):', new_contact: 'Новый',
@@ -1105,7 +1114,7 @@ var locales = {
     quality_hint_fallback: 'ℹ Active <b>{{model}}</b> (weights only). Inference runs through the downloaded Whisper.',
     no_contacts: 'No contacts. Tap "+ add" or import from Telegram.',
     contact_name_placeholder: 'Name', contact_alias_placeholder: 'alias + Enter…',
-    title_delete: 'delete', header_recommended: 'Recommended', badge_recommended: 'Recommended',
+    title_delete: 'delete', header_recommended: 'Recommended', badge_recommended: 'recommended',
     press_combo: 'press combination…', need_modifier: 'modifier required',
     error_download: 'Download error: ', confirm_logout: 'Sign out of Telegram?',
     prompt_user_id: 'Telegram user id (number):', new_contact: 'New',
