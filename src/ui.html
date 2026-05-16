@@ -424,10 +424,19 @@ main { padding:0; height:100vh; display:flex; }
 
 /* ── contacts editor ── */
 .contact-row {
-  display:grid; grid-template-columns: minmax(0,140px) minmax(0,1fr) auto auto;
+  display:grid; grid-template-columns: 36px minmax(0,140px) minmax(0,1fr) auto auto;
   gap:8px; align-items:center; padding:8px 0;
   border-bottom:1px solid var(--hair-soft);
 }
+.contact-avatar {
+  width:32px; height:32px; border-radius:999px;
+  background:var(--sage-soft); color:var(--moss);
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--sans); font-size:11px; font-weight:700;
+  overflow:hidden; user-select:none;
+  border:1px solid color-mix(in oklab, var(--sage-deep) 30%, transparent);
+}
+.contact-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 .contact-row:last-child { border-bottom:0; }
 .contact-name-inp {
   padding:6px 9px; height:30px; font-size:12.5px;
@@ -460,21 +469,25 @@ main { padding:0; height:100vh; display:flex; }
   transition:border-color .12s, box-shadow .12s;
 }
 .tag-input:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-ring); }
+/* Дроп-ин из voicy-style-patch.css → .vy-chip: solid sage + near-ink текст,
+   читается на любой подложке (paper / sage-soft / moss) с контрастом ~9. */
 .tag {
-  display:inline-flex; align-items:center; gap:2px;
-  background:var(--accent-bg); color:var(--accent-deep);
-  padding:2px 3px 2px 9px; border-radius:999px;
-  font-family:var(--sans); font-size:11.5px; font-weight:500;
+  display:inline-flex; align-items:center; gap:6px;
+  background:#A8C8A0; color:#0E1614;
+  padding:4px 4px 4px 10px; border-radius:999px;
+  font:600 12px/1.2 'Onest', system-ui, sans-serif;
   animation:tag-pop .2s cubic-bezier(.34,1.56,.64,1);
 }
 .tag-x {
-  width:15px; height:15px; min-width:15px;
-  border-radius:50%; border:0; background:transparent;
-  color:var(--accent-deep); cursor:pointer;
-  display:inline-flex; align-items:center; justify-content:center;
-  font-size:12px; line-height:1; padding:0; margin:0 0 0 1px;
+  width:16px; height:16px; min-width:16px;
+  border-radius:999px; border:0; background:transparent;
+  color:inherit; opacity:.55; cursor:pointer;
+  display:inline-grid; place-items:center;
+  font-size:12px; line-height:1; padding:0;
+  transition: opacity 120ms cubic-bezier(.2,.6,.2,1),
+              background 120ms cubic-bezier(.2,.6,.2,1);
 }
-.tag-x:hover { background:var(--accent-soft); color:var(--ink); }
+.tag-x:hover { opacity:1; background:rgba(14,22,20,.12); }
 .tag-bare {
   flex:1; min-width:80px;
   border:0; outline:0; background:transparent;
@@ -591,9 +604,11 @@ dialog label {
 .dlg-list-item.added { opacity:.55; pointer-events:none; }
 .dlg-list-avatar {
   width:28px; height:28px; border-radius:50%;
-  background:linear-gradient(135deg,var(--accent),var(--accent-deep));
-  color:#fff; display:grid; place-items:center; font-weight:600; font-size:11px;
+  background:var(--sage-soft); color:var(--moss);
+  display:grid; place-items:center; font-weight:700; font-size:11px;
+  overflow:hidden; user-select:none; flex-shrink:0;
 }
+.dlg-list-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 .dlg-list-name { flex:1; min-width:0; }
 .dlg-list-name b { font-size:13px; font-weight:500; }
 .dlg-list-name small { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-3); }
@@ -1460,6 +1475,7 @@ function renderContacts() {
     return;
   }
   var html = "";
+  var uidsToFetch = [];
   for (var i = 0; i < _contacts.length; i++) {
     var c = _contacts[i];
     var aliases = c.aliases || [];
@@ -1469,8 +1485,14 @@ function renderContacts() {
         '<span>' + escapeAttr(aliases[k]) + '</span>' +
         '<button class="tag-x" data-idx="' + i + '" data-pos="' + k + '">×</button></span>';
     }
+    var initials = (c.name || "?").trim().split(/\s+/).map(function(w){return w[0]||"";}).join("").slice(0,2).toUpperCase();
+    var avatarInner = _avatarCache[c.uid]
+      ? '<img src="' + _avatarCache[c.uid] + '" alt="" />'
+      : initials;
+    if (!_avatarCache.hasOwnProperty(c.uid)) uidsToFetch.push(c.uid);
     html +=
       '<div class="contact-row" data-idx="' + i + '">' +
+        '<div class="contact-avatar" data-uid="' + c.uid + '">' + avatarInner + '</div>' +
         '<input class="contact-name-inp name-input" data-idx="' + i + '" value="' + escapeAttr(c.name) + '" placeholder="' + t('contact_name_placeholder') + '" />' +
         '<div class="tag-input" data-idx="' + i + '">' + tags +
           '<input class="tag-bare" data-idx="' + i + '" placeholder="' + t('contact_alias_placeholder') + '" /></div>' +
@@ -1479,6 +1501,35 @@ function renderContacts() {
       '</div>';
   }
   box.innerHTML = html;
+  if (uidsToFetch.length) loadAvatarsFor(uidsToFetch);
+}
+
+/// Кэш Telegram-аватарок в памяти. uid → data URL ('data:image/jpeg;base64,...')
+/// или null если у юзера нет фото. Не дублируем сетевые запросы.
+var _avatarCache = {};
+
+/// Подтянуть аватарки для списка UID через IPC и пропатчить уже отрендеренные
+/// .contact-avatar / .dlg-list-avatar с соответствующим data-uid.
+async function loadAvatarsFor(uids) {
+  if (!uids || !uids.length) return;
+  // Берём только те что ещё не в кэше (на случай дублей)
+  var fresh = uids.filter(function(u){ return !_avatarCache.hasOwnProperty(u); });
+  if (!fresh.length) return;
+  // Помечаем как «в процессе» чтобы повторные renderContacts не дублировали запрос
+  fresh.forEach(function(u){ _avatarCache[u] = null; });
+
+  var r = await callIpc("avatars_get", { uids: fresh });
+  if (!r || !r.ok || !r.avatars) return;
+  Object.keys(r.avatars).forEach(function(uid){
+    var url = r.avatars[uid];
+    _avatarCache[uid] = url;
+    // Найти все слоты с этим uid и подставить <img>
+    document.querySelectorAll('[data-uid="' + uid + '"]').forEach(function(el){
+      if (el.classList.contains('contact-avatar') || el.classList.contains('dlg-list-avatar')) {
+        el.innerHTML = '<img src="' + url + '" alt="" />';
+      }
+    });
+  });
 }
 function scheduleSave() {
   clearTimeout(_saveTimer);
@@ -1900,23 +1951,28 @@ function renderDialogList(filter) {
   var f = (filter||"").toLowerCase();
   var existing = {}; for (var k = 0; k < _contacts.length; k++) existing[_contacts[k].uid] = true;
   var any = false;
+  var uidsToFetch = [];
   for (var i = 0; i < _dialogs.length; i++) {
     var d = _dialogs[i];
     if (f && d.name.toLowerCase().indexOf(f) < 0 && (!d.username || d.username.toLowerCase().indexOf(f) < 0)) continue;
     any = true;
     var ini = (d.name || "?").trim().split(/\s+/).map(function(w){return w[0]||"";}).join("").slice(0,2).toUpperCase();
     var added = !!existing[d.uid];
+    var avatarInner = _avatarCache[d.uid] ? '<img src="' + _avatarCache[d.uid] + '" alt="" />' : ini;
+    if (!_avatarCache.hasOwnProperty(d.uid)) uidsToFetch.push(d.uid);
     var item = document.createElement("div");
     item.className = "dlg-list-item" + (added ? " added" : "");
     item.setAttribute("data-uid", String(d.uid));
     item.setAttribute("data-name", d.name);
+    // Avatar тоже несёт data-uid — loadAvatarsFor по этому селектору патчит <img>.
     item.innerHTML =
-      '<div class="dlg-list-avatar">' + ini + '</div>' +
+      '<div class="dlg-list-avatar" data-uid="' + d.uid + '">' + avatarInner + '</div>' +
       '<div class="dlg-list-name"><b>' + escapeAttr(d.name) + '</b><small>' + (d.username ? "@"+d.username+" · " : "") + d.uid + '</small></div>' +
       '<span class="dlg-list-add">' + (added ? "added" : "add") + '</span>';
     list.appendChild(item);
   }
   if (!any) list.innerHTML = '<div class="contact-empty" style="border:0;background:transparent;">' + t('nothing_found') + '</div>';
+  if (uidsToFetch.length) loadAvatarsFor(uidsToFetch);
 }
 
 // ── modal help ──

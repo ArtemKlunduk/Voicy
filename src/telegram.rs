@@ -242,6 +242,62 @@ pub struct DialogInfo {
     pub kind: &'static str, // "user" | "group" | "channel"
 }
 
+/// Каталог где кэшируем avatar JPEG'и: `%APPDATA%/voicy/avatars/<uid>.jpg`.
+pub fn avatar_cache_dir() -> PathBuf {
+    let base = dirs::data_dir()
+        .map(|d| d.join("voicy"))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let dir = base.join("avatars");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+pub fn avatar_cache_path(uid: i64) -> PathBuf {
+    avatar_cache_dir().join(format!("{}.jpg", uid))
+}
+
+/// Скачать аватар пользователя в кэш. Возвращает Path к файлу или None если
+/// у пользователя нет аватара / не получилось скачать. Идемпотентно — если
+/// файл уже есть и не пустой, ничего не делаем.
+///
+/// Использует PackedChat из DIALOG_CACHE — то есть юзер должен быть в кэше
+/// диалогов (warm_dialog_cache вызывается на старте).
+pub async fn fetch_avatar(client: &Client, uid: i64) -> Option<PathBuf> {
+    let path = avatar_cache_path(uid);
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > 0 {
+            return Some(path);
+        }
+    }
+    let packed = cache().lock().get(&uid).copied()?;
+    // Чтобы получить photo_downloadable, нужен полный Chat. Достанем через
+    // resolve_to_packed → unpack. Самый простой путь: invoke users.getUsers
+    // напрямую через grammers-client API.
+    let chat = match client.unpack_chat(packed).await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("[avatar] unpack_chat({}): {}", uid, e);
+            return None;
+        }
+    };
+    let dl = chat.photo_downloadable(false)?; // small (~51x51)
+    match client.download_media(&dl, &path).await {
+        Ok(_) => {
+            if let Ok(meta) = std::fs::metadata(&path) {
+                if meta.len() > 0 {
+                    return Some(path);
+                }
+            }
+            None
+        }
+        Err(e) => {
+            warn!("[avatar] download {}: {}", uid, e);
+            let _ = std::fs::remove_file(&path);
+            None
+        }
+    }
+}
+
 /// Перечислить недавние диалоги — только люди (для импорта в контакты).
 /// Возвращает до `limit` юзеров. Параллельно прогревает `DIALOG_CACHE`.
 pub async fn list_dialogs(client: &Client, limit: usize) -> Result<Vec<DialogInfo>> {

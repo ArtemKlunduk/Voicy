@@ -419,6 +419,7 @@ fn dispatch(
         "rec_lang_set" => cmd_rec_lang_set(cfg, cfg_path, &msg.payload),
         "rec_lang_get" => cmd_rec_lang_get(cfg),
         "theme_get" => cmd_theme_get(cfg),
+        "avatars_get" => cmd_avatars_get(rt, client, &msg.payload),
         "language_get" => cmd_language_get(cfg),
         "language_set" => cmd_language_set(cfg, cfg_path, &msg.payload),
         "_window_close" => {
@@ -726,6 +727,52 @@ fn cmd_rec_lang_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
 fn cmd_theme_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
     let c = cfg.lock();
     serde_json::json!({ "ok": true, "theme": c.ui_theme })
+}
+
+/// Получить avatar'ы для списка UID. Возвращает `{uid: data_url}` для тех,
+/// у кого есть аватарка (или уже в кэше, или скачали сейчас). Отсутствующие
+/// просто не попадают в ответ.
+///
+/// Кэшируется на диске в %APPDATA%/voicy/avatars/<uid>.jpg — повторные вызовы
+/// мгновенные. Первый вызов на холодный кэш — может занимать секунды.
+fn cmd_avatars_get(
+    rt: &Arc<tokio::runtime::Runtime>,
+    client: &Arc<Mutex<Option<Client>>>,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let uids: Vec<i64> = match payload.get("uids").and_then(|v| v.as_array()) {
+        Some(arr) => arr.iter().filter_map(|v| v.as_i64()).collect(),
+        None => return err("payload.uids (array) required"),
+    };
+    let client_opt = client.lock().as_ref().cloned();
+    let Some(client) = client_opt else {
+        return err("not signed in");
+    };
+
+    let mut result = serde_json::Map::new();
+    for uid in uids {
+        // Сначала смотрим кэш — это быстро (нет сети).
+        let cached = telegram::avatar_cache_path(uid);
+        let path_opt = if cached.exists()
+            && std::fs::metadata(&cached).map(|m| m.len() > 0).unwrap_or(false)
+        {
+            Some(cached)
+        } else {
+            // Холодный кэш — качаем синхронно из tokio.
+            rt.block_on(telegram::fetch_avatar(&client, uid))
+        };
+        if let Some(path) = path_opt {
+            if let Ok(bytes) = std::fs::read(&path) {
+                use base64::Engine;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                result.insert(
+                    uid.to_string(),
+                    serde_json::Value::String(format!("data:image/jpeg;base64,{}", b64)),
+                );
+            }
+        }
+    }
+    serde_json::json!({ "ok": true, "avatars": result })
 }
 
 fn cmd_language_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
