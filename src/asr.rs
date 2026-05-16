@@ -107,34 +107,34 @@ pub const MODELS: &[ModelMeta] = &[
     // ── NVIDIA Parakeet (main) ───────────────────────────────────────
     // Используем ONNX int8 конверсии istupakov — те же что в Handy.
     // .nemo (оригинал NVIDIA) требует Python+PyTorch, не катит для Rust.
-    ModelMeta { name: "parakeet-v3", family: "Parakeet", variant: "V3", display: "Parakeet V3", size: "612 MB", engine: "nemo", lang: "multi", desc: "NVIDIA NeMo. Быстрая и точная многоязычная.", hf_repo: Some("istupakov/parakeet-tdt-0.6b-v3-onnx"), recommended: true },
-    ModelMeta { name: "parakeet-v2", family: "Parakeet", variant: "V2", display: "Parakeet V2", size: "451 MB", engine: "nemo", lang: "en",    desc: "NVIDIA NeMo. Лучшая для англоговорящих.", hf_repo: Some("istupakov/parakeet-tdt-0.6b-v2-onnx"), recommended: false },
+    ModelMeta { name: "parakeet-v3", family: "Parakeet", variant: "V3", display: "Parakeet V3", size: "612 MB", engine: "nemo", lang: "multi", desc: "NVIDIA NeMo. Fast and accurate, multilingual.", hf_repo: Some("istupakov/parakeet-tdt-0.6b-v3-onnx"), recommended: true },
+    ModelMeta { name: "parakeet-v2", family: "Parakeet", variant: "V2", display: "Parakeet V2", size: "451 MB", engine: "nemo", lang: "en",    desc: "NVIDIA NeMo. Best for English speakers.", hf_repo: Some("istupakov/parakeet-tdt-0.6b-v2-onnx"), recommended: false },
 
-    // ── Whisper (реальный inference через whisper.cpp) ───────────────
-    ModelMeta { name: "tiny",     family: "Whisper", variant: "Tiny",     display: "Whisper Tiny",      size: "75 MB",  engine: "whisper", lang: "multi", desc: "Самая быстрая, базовое качество.", hf_repo: None, recommended: false },
-    ModelMeta { name: "base",     family: "Whisper", variant: "Base",     display: "Whisper Base",      size: "142 MB", engine: "whisper", lang: "multi", desc: "Сбалансированная. Стандарт для коротких фраз.", hf_repo: None, recommended: false },
-    ModelMeta { name: "small",    family: "Whisper", variant: "Small",    display: "Whisper Small",     size: "466 MB", engine: "whisper", lang: "multi", desc: "Заметно точнее. Чуть медленнее.", hf_repo: None, recommended: false },
-    ModelMeta { name: "medium",   family: "Whisper", variant: "Medium",   display: "Whisper Medium",    size: "1.5 GB", engine: "whisper", lang: "multi", desc: "Высокая точность на длинных/шумных записях.", hf_repo: None, recommended: false },
-    ModelMeta { name: "large-v3", family: "Whisper", variant: "Large v3", display: "Whisper Large v3",  size: "3.0 GB", engine: "whisper", lang: "multi", desc: "Максимум. Долго грузится, точнее всех.", hf_repo: None, recommended: false },
-    ModelMeta { name: "turbo",    family: "Whisper", variant: "Turbo",    display: "Whisper Turbo",     size: "1.5 GB", engine: "whisper", lang: "multi", desc: "Быстрый large. Хороший баланс.", hf_repo: None, recommended: false },
+    // ── Whisper (real inference via whisper.cpp) ─────────────────────
+    ModelMeta { name: "tiny",     family: "Whisper", variant: "Tiny",     display: "Whisper Tiny",      size: "75 MB",  engine: "whisper", lang: "multi", desc: "Fastest, baseline quality.", hf_repo: None, recommended: false },
+    ModelMeta { name: "base",     family: "Whisper", variant: "Base",     display: "Whisper Base",      size: "142 MB", engine: "whisper", lang: "multi", desc: "Balanced. Standard for short phrases.", hf_repo: None, recommended: false },
+    ModelMeta { name: "small",    family: "Whisper", variant: "Small",    display: "Whisper Small",     size: "466 MB", engine: "whisper", lang: "multi", desc: "Noticeably more accurate. A bit slower.", hf_repo: None, recommended: false },
+    ModelMeta { name: "medium",   family: "Whisper", variant: "Medium",   display: "Whisper Medium",    size: "1.5 GB", engine: "whisper", lang: "multi", desc: "High accuracy on long/noisy recordings.", hf_repo: None, recommended: false },
+    ModelMeta { name: "large-v3", family: "Whisper", variant: "Large v3", display: "Whisper Large v3",  size: "3.0 GB", engine: "whisper", lang: "multi", desc: "Top accuracy. Slow to load.", hf_repo: None, recommended: false },
+    ModelMeta { name: "turbo",    family: "Whisper", variant: "Turbo",    display: "Whisper Turbo",     size: "1.5 GB", engine: "whisper", lang: "multi", desc: "Fast large. Good balance.", hf_repo: None, recommended: false },
 
     // ── NVIDIA Canary ────────────────────────────────────────────────
-    ModelMeta { name: "canary-180m",  family: "Canary", variant: "180M Flash", display: "Canary 180M Flash", size: "364 MB", engine: "nemo", lang: "multi", desc: "EN, DE, ES, FR. Поддержка перевода.", hf_repo: Some("nvidia/canary-180m-flash"), recommended: false },
-    ModelMeta { name: "canary-1b-v2", family: "Canary", variant: "1B v2",      display: "Canary 1B v2",       size: "691 MB", engine: "nemo", lang: "multi", desc: "Точная многоязычная. 25 EU языков.", hf_repo: Some("nvidia/canary-1b-v2"), recommended: false },
+    ModelMeta { name: "canary-180m",  family: "Canary", variant: "180M Flash", display: "Canary 180M Flash", size: "364 MB", engine: "nemo", lang: "multi", desc: "EN, DE, ES, FR. Translation support.", hf_repo: Some("nvidia/canary-180m-flash"), recommended: false },
+    ModelMeta { name: "canary-1b-v2", family: "Canary", variant: "1B v2",      display: "Canary 1B v2",       size: "691 MB", engine: "nemo", lang: "multi", desc: "Accurate multilingual. 25 EU languages.", hf_repo: Some("nvidia/canary-1b-v2"), recommended: false },
 
-    // ── Сбер GigaAM (русский) ────────────────────────────────────────
-    ModelMeta { name: "gigaam-v3", family: "GigaAM", variant: "v3", display: "GigaAM v3", size: "1.9 GB", engine: "salutespeech", lang: "ru", desc: "Сбер. Распознавание русской речи. Быстро и точно.", hf_repo: Some("salute-developers/GigaAM"), recommended: false },
+    // ── Sber GigaAM (Russian) ────────────────────────────────────────
+    ModelMeta { name: "gigaam-v3", family: "GigaAM", variant: "v3", display: "GigaAM v3", size: "1.9 GB", engine: "salutespeech", lang: "ru", desc: "Sber. Russian speech recognition. Fast and accurate.", hf_repo: Some("salute-developers/GigaAM"), recommended: false },
 
     // ── Moonshine (Useful Sensors, EN) ───────────────────────────────
-    ModelMeta { name: "moonshine-tiny",   family: "Moonshine", variant: "Tiny",   display: "Moonshine Tiny",   size: "31 MB",  engine: "moonshine", lang: "en", desc: "Сверхбыстрая, английский.", hf_repo: Some("UsefulSensors/moonshine-tiny"), recommended: false },
-    ModelMeta { name: "moonshine-base",   family: "Moonshine", variant: "Base",   display: "Moonshine Base",   size: "55 MB",  engine: "moonshine", lang: "en", desc: "Очень быстрая. Хорошо с акцентами.", hf_repo: Some("UsefulSensors/moonshine-base"), recommended: false },
-    ModelMeta { name: "moonshine-small",  family: "Moonshine", variant: "Small",  display: "Moonshine Small",  size: "99 MB",  engine: "moonshine", lang: "en", desc: "Баланс скорости и точности.", hf_repo: Some("UsefulSensors/moonshine-small"), recommended: false },
-    ModelMeta { name: "moonshine-medium", family: "Moonshine", variant: "Medium", display: "Moonshine Medium", size: "192 MB", engine: "moonshine", lang: "en", desc: "Только английский. Высокое качество.", hf_repo: Some("UsefulSensors/moonshine-medium"), recommended: false },
+    ModelMeta { name: "moonshine-tiny",   family: "Moonshine", variant: "Tiny",   display: "Moonshine Tiny",   size: "31 MB",  engine: "moonshine", lang: "en", desc: "Super fast, English.", hf_repo: Some("UsefulSensors/moonshine-tiny"), recommended: false },
+    ModelMeta { name: "moonshine-base",   family: "Moonshine", variant: "Base",   display: "Moonshine Base",   size: "55 MB",  engine: "moonshine", lang: "en", desc: "Very fast. Handles accents well.", hf_repo: Some("UsefulSensors/moonshine-base"), recommended: false },
+    ModelMeta { name: "moonshine-small",  family: "Moonshine", variant: "Small",  display: "Moonshine Small",  size: "99 MB",  engine: "moonshine", lang: "en", desc: "Balanced speed and accuracy.", hf_repo: Some("UsefulSensors/moonshine-small"), recommended: false },
+    ModelMeta { name: "moonshine-medium", family: "Moonshine", variant: "Medium", display: "Moonshine Medium", size: "192 MB", engine: "moonshine", lang: "en", desc: "English only. High quality.", hf_repo: Some("UsefulSensors/moonshine-medium"), recommended: false },
 
-    // ── Прочие (по одному варианту) ──────────────────────────────────
-    ModelMeta { name: "sense-voice", family: "SenseVoice", variant: "Small", display: "SenseVoice Small", size: "152 MB", engine: "funasr",       lang: "multi", desc: "Очень быстрая. ZH, EN, JA, KO, кантонский.", hf_repo: Some("FunAudioLLM/SenseVoiceSmall"), recommended: false },
-    ModelMeta { name: "breeze-asr",  family: "Breeze ASR", variant: "25",    display: "Breeze ASR 25",    size: "320 MB", engine: "transformers", lang: "multi", desc: "Оптимизирована для тайваньского мандаринского.", hf_repo: Some("MediaTek-Research/Breeze-ASR-25"), recommended: false },
-    ModelMeta { name: "cohere-aya",  family: "Cohere Aya", variant: "8B",    display: "Cohere Aya 8B",    size: "1.7 GB", engine: "cohere",       lang: "multi", desc: "Большая, медленная, но очень точная.", hf_repo: Some("CohereLabs/aya-expanse-8b"), recommended: false },
+    // ── Other (single variants) ──────────────────────────────────────
+    ModelMeta { name: "sense-voice", family: "SenseVoice", variant: "Small", display: "SenseVoice Small", size: "152 MB", engine: "funasr",       lang: "multi", desc: "Very fast. ZH, EN, JA, KO, Cantonese.", hf_repo: Some("FunAudioLLM/SenseVoiceSmall"), recommended: false },
+    ModelMeta { name: "breeze-asr",  family: "Breeze ASR", variant: "25",    display: "Breeze ASR 25",    size: "320 MB", engine: "transformers", lang: "multi", desc: "Optimized for Taiwanese Mandarin.", hf_repo: Some("MediaTek-Research/Breeze-ASR-25"), recommended: false },
+    ModelMeta { name: "cohere-aya",  family: "Cohere Aya", variant: "8B",    display: "Cohere Aya 8B",    size: "1.7 GB", engine: "cohere",       lang: "multi", desc: "Large, slow, but very accurate.", hf_repo: Some("CohereLabs/aya-expanse-8b"), recommended: false },
 ];
 
 pub fn model_meta(name: &str) -> Option<&'static ModelMeta> {

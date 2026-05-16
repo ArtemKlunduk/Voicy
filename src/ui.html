@@ -1387,7 +1387,7 @@ async function refresh() {
   if (aiModelSel && aiModelRes.ok && aiModelRes.available) {
     // Перерисовываем опции (имя + RAM)
     aiModelSel.innerHTML = aiModelRes.available.map(function(m){
-      var ram = m.ram_mb < 1000 ? (m.ram_mb + ' МБ') : ((m.ram_mb/1000).toFixed(1) + ' ГБ');
+      var ram = m.ram_mb < 1000 ? (m.ram_mb + ' MB') : ((m.ram_mb/1000).toFixed(1) + ' GB');
       return '<option value="' + m.id + '">' + m.name + ' · ' + ram + (m.cached ? ' ✓' : '') + '</option>';
     }).join('');
     aiModelSel.value = aiModelRes.current;
