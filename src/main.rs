@@ -5,6 +5,10 @@
 //!   voicy info       — показать конфиг и устройства
 //!   voicy            — то же что info
 
+// В release-сборке отключаем консольное окно — иначе при двойном клике
+// по .exe всплывает чёрный CMD. В debug оставляем чтобы видеть tracing-логи.
+#![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
+
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use std::path::PathBuf;
@@ -603,13 +607,38 @@ fn init_logging() {
     use tracing_subscriber::EnvFilter;
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("voicy=info,info"));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .compact()
-        .init();
 
-    // Глобальный panic-hook → дамп в `<exe_dir>/voicy_panic.log`.
+    // В release с windows_subsystem="windows" stderr ниоткуда не виден.
+    // Поэтому всегда дублируем логи в файл `<appdata>/voicy/voicy.log`.
+    // В debug logs идут в обычный stderr.
+    let log_path = log_file_path();
+    let file_writer = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .ok();
+
+    if let Some(f) = file_writer {
+        let f = std::sync::Mutex::new(f);
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .compact()
+            .with_writer(move || -> Box<dyn std::io::Write + Send> {
+                Box::new(MutexWriter(f.lock().unwrap().try_clone().unwrap()))
+            })
+            .init();
+        eprintln!("[boot] logging to: {}", log_path.display());
+    } else {
+        // fallback: stderr (для debug-сборок).
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .compact()
+            .init();
+    }
+
+    // Глобальный panic-hook → дамп в `<appdata>/voicy/voicy_panic.log`.
     // Чтобы при следующем краше осталась полная трасса для разбора.
     std::panic::set_hook(Box::new(|info| {
         use std::io::Write;
@@ -620,17 +649,41 @@ fn init_logging() {
             .unwrap_or(0);
         let msg = format!("[ts={}] PANIC: {}\nbacktrace:\n{}\n\n", ts, info, bt);
         eprintln!("{}", msg);
-        if let Some(path) = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("voicy_panic.log")))
-        {
+        // Пишем в %APPDATA%/voicy/voicy_panic.log (приоритет) и рядом с exe (fallback).
+        let paths = [
+            dirs::data_dir().map(|d| d.join("voicy").join("voicy_panic.log")),
+            std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("voicy_panic.log"))),
+        ];
+        for p in paths.into_iter().flatten() {
+            if let Some(parent) = p.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
             if let Ok(mut f) = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(&path)
+                .open(&p)
             {
                 let _ = f.write_all(msg.as_bytes());
+                break;
             }
         }
     }));
+}
+
+/// Путь к лог-файлу: %APPDATA%/voicy/voicy.log (fallback — рядом с exe).
+fn log_file_path() -> PathBuf {
+    let dir = dirs::data_dir()
+        .map(|d| d.join("voicy"))
+        .or_else(|| std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("voicy.log")
+}
+
+/// Тонкий wrapper над `File` чтобы trait `MakeWriter` мог дать новые
+/// handle'ы на каждый write — мы клонируем дескриптор через `try_clone`.
+struct MutexWriter(std::fs::File);
+impl std::io::Write for MutexWriter {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.write(b) }
+    fn flush(&mut self) -> std::io::Result<()> { self.0.flush() }
 }
