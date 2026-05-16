@@ -6,7 +6,7 @@
 
 **Hold a key. Speak. Your message is sent.**
 
-Voice-to-Telegram for Windows. No typing, no opening apps — just a hotkey and your voice.
+Voice-to-action for Windows. No typing, no opening apps — just a hotkey and your voice.
 
 [Download](https://github.com/ArtemKlunduk/Voicy/releases) · [Install guide](docs/INSTALL.md) · [Telegram setup](docs/TELEGRAM_SETUP.md) · [Commands](docs/USAGE.md)
 
@@ -40,7 +40,7 @@ Full step-by-step: [INSTALL.md](docs/INSTALL.md)
 
 After setup, press and hold `Alt+X` and say:
 
-> *"Write Chine — running late, will be there in 10."*
+> *"Write Josh — running late, will be there in 10."*
 
 Release. Done. Message in your friend's Telegram inbox.
 
