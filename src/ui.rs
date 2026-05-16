@@ -1413,6 +1413,27 @@ fn cmd_listener_start(
                 return;
             }
 
+            // «Включи <часть названия>» — точное матчевание по title из
+            // последнего YouTube-поиска. Спасает от A/B вариаций ranking'а
+            // (когда «второе видео» каждый раз новое).
+            if let Some(kws) = browser::parse_play_by_title(&text) {
+                info!("[listener] play-by-title: {:?}", kws);
+                match browser::play_youtube_by_title(&kws) {
+                    Ok(url) => {
+                        push_event(&proxy, "log", &format!("✅ YouTube «{}» → {}", kws.join(" "), url));
+                        push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
+                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                    }
+                    Err(e) => {
+                        warn!("[listener] play-by-title: {}", e);
+                        push_event(&proxy, "log", &format!("✗ play-by-title: {}", e));
+                        push_event(&proxy, "activity", "");
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    }
+                }
+                return;
+            }
+
             // In-video команды (громче/тише/пауза/полный экран/перемотка/mute) —
             // через Win32 SendInput горячие клавиши YouTube/Twitch.
             // Активное окно должно быть браузер с открытым видео.

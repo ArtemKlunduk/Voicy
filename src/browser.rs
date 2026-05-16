@@ -158,12 +158,110 @@ pub fn parse_play_nth(text: &str) -> Option<usize> {
     None
 }
 
+/// Парс «включи [видео] X Y Z» / «найди [видео] X Y Z» — где X Y Z это
+/// часть названия видео для disambiguation. Возвращает Vec<keyword>.
+///
+/// Полезно когда ordinal'ы ненадёжны: YouTube ranking меняется между
+/// запросами (A/B), и «второе видео» может оказаться разным. Если юзер
+/// помнит часть названия — «включи асмр одноклассница» точно найдёт.
+///
+/// Триггер: «включи/запусти/проиграй/плей/найди» + слово «видео» опционально.
+/// НЕ матчится если в тексте есть ordinal (тогда parse_play_nth справится).
+pub fn parse_play_by_title(text: &str) -> Option<Vec<String>> {
+    let t: String = text
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // Если уже распарсилось как ordinal — не лезем
+    if parse_play_nth(text).is_some() {
+        return None;
+    }
+
+    let triggers = ["включи", "запусти", "проиграй", "плей", "найди"];
+    let mut trigger_pos = None;
+    let mut trigger_len = 0;
+    for &tr in &triggers {
+        if let Some(p) = t.find(tr) {
+            if trigger_pos.is_none() || p < trigger_pos.unwrap() {
+                trigger_pos = Some(p);
+                trigger_len = tr.len();
+            }
+        }
+    }
+    let Some(tp) = trigger_pos else { return None };
+    let after = t[tp + trigger_len..].trim();
+
+    // Убираем слова «видео»/«ролик» если есть — они не часть title
+    let kws: Vec<String> = after
+        .split_whitespace()
+        .filter(|w| !matches!(*w, "видео" | "ролик" | "это" | "то" | "на" | "ютубе"))
+        .map(|s| s.to_string())
+        .collect();
+
+    if kws.is_empty() || kws.iter().all(|k| k.chars().count() < 2) {
+        return None;
+    }
+    Some(kws)
+}
+
 const YT_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                              (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+                              (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+
+/// Один результат поиска: videoId + title для title-based matching.
+#[derive(Debug, Clone)]
+pub struct YtResult {
+    pub video_id: String,
+    pub title: String,
+}
 
 /// Открыть N-е (0-based) видео из последнего YouTube-поиска.
 /// Скрейпит результаты повторно, достаёт videoId, открывает /watch?v=ID&autoplay=1.
 pub fn play_nth_youtube_result(n: usize) -> Result<String> {
+    let results = fetch_youtube_results()?;
+    if results.is_empty() {
+        return Err(anyhow!("YouTube не вернул ни одного видео (антибот?)"));
+    }
+    let item = results.get(n).ok_or_else(|| {
+        anyhow!("результат №{} не найден (всего {})", n + 1, results.len())
+    })?;
+    let watch_url = format!("https://www.youtube.com/watch?v={}&autoplay=1", item.video_id);
+    open(&watch_url)?;
+    Ok(watch_url)
+}
+
+/// Найти первое видео, у которого title содержит все слова из `keywords`
+/// (case-insensitive). Возвращает watch-URL.
+///
+/// Это спасает от «random selector» проблемы с ordinal'ами: ranking
+/// YouTube'а меняется между запросами (A/B testing), и «второе» сегодня
+/// может оказаться другим видео чем «второе» 5 минут назад. Если юзер
+/// помнит часть названия — «включи асмр одноклассница» найдёт правильное.
+pub fn play_youtube_by_title(keywords: &[String]) -> Result<String> {
+    let results = fetch_youtube_results()?;
+    if results.is_empty() {
+        return Err(anyhow!("YouTube не вернул ни одного видео"));
+    }
+    let kws_lower: Vec<String> = keywords.iter().map(|s| s.to_lowercase()).collect();
+    let item = results.iter().find(|r| {
+        let title_lower = r.title.to_lowercase();
+        kws_lower.iter().all(|kw| title_lower.contains(kw))
+    });
+    let item = item.ok_or_else(|| anyhow!(
+        "не нашёл видео с «{}» в первых {} результатах",
+        keywords.join(" "), results.len()
+    ))?;
+    let watch_url = format!("https://www.youtube.com/watch?v={}&autoplay=1", item.video_id);
+    open(&watch_url)?;
+    Ok(watch_url)
+}
+
+/// Общий хелпер: фетчит результаты последнего YouTube-запроса.
+fn fetch_youtube_results() -> Result<Vec<YtResult>> {
     let query = last_youtube_query()
         .ok_or_else(|| anyhow!("нет предыдущего YouTube-запроса — скажи сначала «открой ютуб <запрос>»"))?;
     let encoded: String = url::form_urlencoded::byte_serialize(query.as_bytes()).collect();
@@ -171,48 +269,86 @@ pub fn play_nth_youtube_result(n: usize) -> Result<String> {
 
     let html = ureq::get(&search_url)
         .set("User-Agent", YT_USER_AGENT)
+        .set("Accept-Language", "en-US,en;q=0.9,ru;q=0.8")
+        .set("Cookie", "CONSENT=YES+cb.20210328-17-p0.en+FX+555")
         .timeout(Duration::from_secs(10))
         .call()
         .context("youtube search")?
         .into_string()
         .context("read body")?;
 
-    let ids = extract_video_ids(&html);
-    if ids.is_empty() {
-        return Err(anyhow!("YouTube не вернул ни одного видео (антибот?)"));
-    }
-    let id = ids.get(n).ok_or_else(|| {
-        anyhow!(
-            "результат №{} не найден (всего {})",
-            n + 1,
-            ids.len()
-        )
-    })?;
-    let watch_url = format!("https://www.youtube.com/watch?v={}&autoplay=1", id);
-    open(&watch_url)?;
-    Ok(watch_url)
+    Ok(extract_organic_results(&html))
 }
 
-/// Найти videoId-ы органических результатов в HTML страницы поиска YouTube.
-/// Ищем pattern `"videoRenderer":{"videoId":"XXX"` — это даёт topические видео,
-/// не рекламу и не «people also watched».
-fn extract_video_ids(html: &str) -> Vec<String> {
-    let needle = r#""videoRenderer":{"videoId":""#;
-    let mut out = Vec::new();
-    let mut pos = 0;
-    while let Some(idx) = html[pos..].find(needle) {
-        let abs = pos + idx + needle.len();
-        // videoId — 11 chars: a-zA-Z0-9_-
-        let slice: String = html[abs..]
-            .chars()
-            .take(11)
-            .collect();
-        if slice.len() == 11 && slice.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-            if !out.contains(&slice) {
-                out.push(slice);
-            }
+/// Достать организические результаты поиска из ytInitialData.
+/// Парсим JSON правильно (а не regex по всему HTML) — это игнорирует
+/// Mix/Shorts/Music-карусели и другой не-search контент.
+///
+/// JSON path: `contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents[*].itemSectionRenderer.contents[*].videoRenderer`
+fn extract_organic_results(html: &str) -> Vec<YtResult> {
+    // Найти `var ytInitialData = {...};` или `ytInitialData = {...};`
+    let needle_a = "var ytInitialData = ";
+    let needle_b = "ytInitialData = ";
+    let start = html.find(needle_a).map(|p| p + needle_a.len())
+        .or_else(|| html.find(needle_b).map(|p| p + needle_b.len()));
+    let Some(start) = start else { return Vec::new() };
+
+    // Найти конец JSON — балансируя фигурные скобки.
+    let bytes = html.as_bytes();
+    if bytes.get(start) != Some(&b'{') { return Vec::new(); }
+    let mut depth: i32 = 0;
+    let mut in_str = false;
+    let mut escape = false;
+    let mut end = start;
+    for (i, &b) in bytes[start..].iter().enumerate() {
+        if escape { escape = false; continue; }
+        if in_str {
+            if b == b'\\' { escape = true; }
+            else if b == b'"' { in_str = false; }
+            continue;
         }
-        pos = abs + 11;
+        match b {
+            b'"' => in_str = true,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 { end = start + i + 1; break; }
+            }
+            _ => {}
+        }
+    }
+    if end == start { return Vec::new(); }
+
+    let json_str = &html[start..end];
+    let value: serde_json::Value = match serde_json::from_str(json_str) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+
+    // Walk: contents → twoColumnSearchResultsRenderer → primaryContents
+    //       → sectionListRenderer → contents[*] → itemSectionRenderer
+    //       → contents[*] → videoRenderer
+    let sections = value.pointer(
+        "/contents/twoColumnSearchResultsRenderer/primaryContents/sectionListRenderer/contents"
+    );
+    let Some(sections) = sections.and_then(|s| s.as_array()) else { return Vec::new() };
+
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for sec in sections {
+        let Some(items) = sec.pointer("/itemSectionRenderer/contents").and_then(|c| c.as_array()) else { continue };
+        for it in items {
+            let Some(vr) = it.get("videoRenderer") else { continue };
+            let Some(vid) = vr.get("videoId").and_then(|v| v.as_str()) else { continue };
+            if !seen.insert(vid.to_string()) { continue }
+            // Title: либо runs[0].text, либо simpleText.
+            let title = vr.pointer("/title/runs/0/text")
+                .or_else(|| vr.pointer("/title/simpleText"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            out.push(YtResult { video_id: vid.to_string(), title });
+        }
     }
     out
 }
@@ -251,11 +387,63 @@ mod tests {
     }
 
     #[test]
-    fn extract_ids_simple() {
-        let html = r#"prelude "videoRenderer":{"videoId":"abc12345678","title":...
-                      ad blob "videoRenderer":{"videoId":"DEFghijklmn","title":...
-                      "promotedVideoRenderer":{"videoId":"shouldskip0","title""#;
-        let ids = extract_video_ids(html);
-        assert_eq!(ids, vec!["abc12345678", "DEFghijklmn"]);
+    fn extract_organic_from_minimal_json() {
+        // Минимальный валидный ytInitialData с одним organic + одним
+        // мусором в неправильном path (должно быть проигнорировано).
+        let html = r#"<script nonce>var ytInitialData = {
+            "contents": {
+              "twoColumnSearchResultsRenderer": {
+                "primaryContents": {
+                  "sectionListRenderer": {
+                    "contents": [
+                      {
+                        "itemSectionRenderer": {
+                          "contents": [
+                            {"videoRenderer": {"videoId": "abc12345678", "title": {"runs": [{"text": "First Video"}]}}},
+                            {"shelfRenderer": {"videoId": "shouldSkip00", "title": {"simpleText": "Mix carousel"}}},
+                            {"videoRenderer": {"videoId": "DEFghijklmn", "title": {"simpleText": "Second Video"}}}
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          };</script>"#;
+        let results = extract_organic_results(html);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].video_id, "abc12345678");
+        assert_eq!(results[0].title, "First Video");
+        assert_eq!(results[1].video_id, "DEFghijklmn");
+        assert_eq!(results[1].title, "Second Video");
+    }
+
+    #[test]
+    fn extract_returns_empty_on_missing_data() {
+        assert!(extract_organic_results("<html>no data here</html>").is_empty());
+    }
+
+    #[test]
+    fn title_parser_basic() {
+        let kws = parse_play_by_title("включи асмр одноклассница").unwrap();
+        assert_eq!(kws, vec!["асмр", "одноклассница"]);
+    }
+
+    #[test]
+    fn title_parser_strips_filler() {
+        let kws = parse_play_by_title("найди видео про котиков").unwrap();
+        assert_eq!(kws, vec!["про", "котиков"]);
+    }
+
+    #[test]
+    fn title_parser_skips_when_ordinal_present() {
+        // Если есть «первое» + «видео» — это работа для parse_play_nth, не title
+        assert_eq!(parse_play_by_title("включи первое видео асмр"), None);
+    }
+
+    #[test]
+    fn title_parser_requires_trigger() {
+        assert_eq!(parse_play_by_title("асмр одноклассница"), None);
     }
 }
