@@ -26,7 +26,7 @@ C:\Voicy\
 
 ### 3. Run
 
-Double-click `voicy.exe`. Telegram API credentials are pre-embedded, no setup file needed.
+Double-click `voicy.exe`. 
 
 First run:
 - Settings UI opens
