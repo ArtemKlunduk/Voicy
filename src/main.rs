@@ -25,6 +25,7 @@ mod browser_action;
 mod config;
 mod contacts;
 mod hotkey;
+mod intent_ai;
 #[cfg(windows)]
 mod native_overlay;
 mod parakeet;

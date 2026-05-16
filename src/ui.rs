@@ -1611,7 +1611,151 @@ fn cmd_listener_start(
             }
 
             let contacts = cts::load(&cts::default_path());
-            let (uid, message) = match cts::parse_command(&text, &contacts) {
+
+            // ── AI-fallback (Gemini) для фуззи-команд которые rule-based не понял.
+            // Срабатывает только если есть Gemini API key. Возвращает структурный
+            // Intent — диспатчим прямо в существующие обработчики.
+            //
+            // Для SendTelegram резолвим contact-имя в uid через тот же contacts
+            // map (точное совпадение + русский стем) и продолжаем по обычному
+            // TG-флоу. Для всех остальных Intent'ов исполняем inline и return.
+            let mut tg_intent_resolved: Option<(i64, String)> = None;
+            let gemini_key = cfg.gemini_api_key.clone();
+            if !gemini_key.trim().is_empty() {
+                let ai_ctx = crate::intent_ai::AiContext {
+                    contact_names: contacts.keys()
+                        .filter(|k| k.chars().count() >= 2)
+                        .take(40)  // лимит чтобы не раздувать промпт
+                        .cloned()
+                        .collect(),
+                    has_recent_youtube: browser::last_youtube_query().is_some(),
+                };
+                match crate::intent_ai::classify(&gemini_key, &text, &ai_ctx) {
+                    Ok(intent) => {
+                        info!("[ai-intent] {:?}", intent);
+                        match intent {
+                            crate::intent_ai::Intent::VolumeUp { n } => {
+                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::VolumeUp(n));
+                                push_event(&proxy, "log", &format!("🤖→🎮 volume +{}", n));
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                return;
+                            }
+                            crate::intent_ai::Intent::VolumeDown { n } => {
+                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::VolumeDown(n));
+                                push_event(&proxy, "log", &format!("🤖→🎮 volume −{}", n));
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                return;
+                            }
+                            crate::intent_ai::Intent::Fullscreen => {
+                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::Fullscreen);
+                                push_event(&proxy, "log", "🤖→🎮 fullscreen");
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                return;
+                            }
+                            crate::intent_ai::Intent::PlayPause => {
+                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::PlayPause);
+                                push_event(&proxy, "log", "🤖→🎮 play/pause");
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                return;
+                            }
+                            crate::intent_ai::Intent::SeekForward { n } => {
+                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::SeekForward(n));
+                                push_event(&proxy, "log", &format!("🤖→🎮 +{}s", n * 5));
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                return;
+                            }
+                            crate::intent_ai::Intent::SeekBackward { n } => {
+                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::SeekBackward(n));
+                                push_event(&proxy, "log", &format!("🤖→🎮 −{}s", n * 5));
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                return;
+                            }
+                            crate::intent_ai::Intent::Mute => {
+                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::Mute);
+                                push_event(&proxy, "log", "🤖→🎮 mute");
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                return;
+                            }
+                            crate::intent_ai::Intent::OpenUrl { provider, query } => {
+                                let fake_text = format!("открой {} {}", provider, query);
+                                if let Some(cmd) = browser::parse(&fake_text) {
+                                    if let Err(e) = browser::open(&cmd.url) {
+                                        push_event(&proxy, "log", &format!("✗ AI-open: {}", e));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                    } else {
+                                        push_event(&proxy, "log", &format!("🤖→{} «{}»", cmd.provider, cmd.query));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                    }
+                                } else {
+                                    push_event(&proxy, "log", &format!("✗ AI: неизвестный провайдер «{}»", provider));
+                                    flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                }
+                                return;
+                            }
+                            crate::intent_ai::Intent::PlayNth { index } => {
+                                match browser::play_nth_youtube_result(index) {
+                                    Ok(url) => {
+                                        push_event(&proxy, "log", &format!("🤖→YT #{} → {}", index + 1, url));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                    }
+                                    Err(e) => {
+                                        push_event(&proxy, "log", &format!("✗ AI play-nth: {}", e));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                    }
+                                }
+                                return;
+                            }
+                            crate::intent_ai::Intent::PlayByTitle { keywords } => {
+                                match browser::play_youtube_by_title(&keywords) {
+                                    Ok(url) => {
+                                        push_event(&proxy, "log", &format!("🤖→YT «{}» → {}", keywords.join(" "), url));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                    }
+                                    Err(e) => {
+                                        push_event(&proxy, "log", &format!("✗ AI play-title: {}", e));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                    }
+                                }
+                                return;
+                            }
+                            crate::intent_ai::Intent::SendTelegram { contact, message } => {
+                                let key = contact.to_lowercase();
+                                let uid = contacts.get(&key)
+                                    .or_else(|| contacts.get(&cts::russian_stem(&key)))
+                                    .copied();
+                                if let Some(uid) = uid {
+                                    info!("[ai-intent] tg → contact «{}» = uid {}", contact, uid);
+                                    tg_intent_resolved = Some((uid, message));
+                                    // Не return — продолжаем по существующему TG-флоу ниже
+                                } else {
+                                    push_event(&proxy, "log", &format!("✗ AI: контакт «{}» не найден", contact));
+                                    flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                    return;
+                                }
+                            }
+                            crate::intent_ai::Intent::AskAi { question: _ } => {
+                                // AI-ассистент уже отрабатывает по «дай ответ» триггеру выше.
+                                // Если он сюда дошёл — значит юзер не сказал триггер, но
+                                // Gemini классифицировал. Не лезем — пусть юзер скажет «дай ответ».
+                                push_event(&proxy, "log", "🤖 для вопроса AI скажи «дай ответ <вопрос>»");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                            crate::intent_ai::Intent::Unknown => {
+                                // Fall through к contacts::parse_command — может оно поймёт
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[ai-intent] {}", e);
+                        // Fall through к contacts::parse_command
+                    }
+                }
+            }
+
+            let (uid, message) = match tg_intent_resolved {
+                Some(x) => x,
+                None => match cts::parse_command(&text, &contacts) {
                 Ok(x) => x,
                 Err(e) => {
                     warn!("[listener] {}", e);
@@ -1632,6 +1776,7 @@ fn cmd_listener_start(
                     flash_overlay(&proxy, UiLoopEvent::OverlayError);
                     return;
                 }
+                },
             };
             if message.is_empty() {
                 warn!("[listener] пустое сообщение");
