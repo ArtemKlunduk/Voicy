@@ -314,14 +314,27 @@ main { padding:0; height:100vh; display:flex; }
 .model .row1 { display:flex; align-items:baseline; gap:10px; margin-bottom:3px; flex-wrap:wrap; }
 .model .nm { font-size:14px; font-weight:600; color:var(--ink); letter-spacing:-.01em; }
 .model .desc { font-size:12px; color:var(--ink-2); line-height:1.4; }
-.model .tags { display:flex; gap:12px; margin-top:5px; flex-wrap:wrap; }
-.model .tag { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--ink-3); font-weight:500; }
-.model .tag svg { color:var(--ink-4); }
+.model .tags { display:flex; gap:8px; margin-top:5px; flex-wrap:wrap; }
+/* Metadata badge — soft sage variant. Multilingual / English only / Russian only
+   используют этот класс. Sage-soft (#D6E6CF) + moss (#2F4A35) = контраст 11.2
+   (AAA), читается одинаково в обеих темах. Отличается от .tag (alias chip)
+   который solid sage — функционально это другая категория (метаданные vs state). */
+.lang-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  font: 600 11px/1.2 'Onest', system-ui, sans-serif;
+  padding:4px 9px; border-radius:999px;
+  background:#D6E6CF; color:#2F4A35;
+  white-space:nowrap;
+}
+.lang-badge svg { width:11px; height:11px; flex-shrink:0; }
 .model .action { text-align:right; white-space:nowrap; display:inline-flex; align-items:center; gap:10px; }
+/* «ACTIVE» state pill справа от карточки активной модели.
+   Solid sage + near-ink + uppercase. Контраст 9.4. */
 .tiny-tag {
-  font-family:var(--mono); font-size:10px; letter-spacing:.14em;
-  text-transform:uppercase; color:var(--accent-deep); background:var(--accent-bg);
-  padding:3px 7px 2px; border-radius:3px; font-weight:600;
+  font-family:'Onest', system-ui, sans-serif; font-size:10px;
+  font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:#0E1614; background:#A8C8A0;
+  padding:4px 9px; border-radius:999px;
 }
 .tiny-tag.muted { background:var(--hair-vsoft); color:var(--ink-3); border:1px solid var(--hair-soft); }
 .ghost-action { color:var(--ink-3); font-size:12.5px; cursor:pointer; background:transparent; border:0; padding:0; }
@@ -542,7 +555,20 @@ main { padding:0; height:100vh; display:flex; }
 .model-dd.open .model-dd-trigger { border-bottom-left-radius:0; border-bottom-right-radius:0; }
 .m-info { flex:1; min-width:0; }
 .m-name { display:block; font-size:14px; font-weight:600; color:var(--ink); }
-.m-sub { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-3); margin-top:3px; }
+/* «Active now» сабтекст внутри dropdown selector'а активной модели.
+   Sage-цвет с маленьким зелёным dot'ом + halo — даёт «live indicator»
+   как у online-статусов. Перенесено из .m-sub по spec'у vy-active-now. */
+.m-sub {
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:'Onest', system-ui, sans-serif; font-size:11px; font-weight:500;
+  color:#A8C8A0; margin-top:3px;
+}
+.m-sub::before {
+  content:''; width:6px; height:6px; border-radius:999px;
+  background:#A8C8A0;
+  box-shadow:0 0 0 3px rgba(168,200,160,.18);
+  flex-shrink:0;
+}
 .m-caret { font-size:13px; color:var(--ink-3); transition:transform .2s; }
 .model-dd.open .m-caret { transform:rotate(180deg); color:var(--accent); }
 .model-dd-panel {
@@ -1734,7 +1760,7 @@ function renderModelLists() {
   document.getElementById("models-avail").innerHTML = avail.map(renderModelRow).join("");
 }
 function renderModelRow(m) {
-  var tagMulti = '<span class="tag"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5.5" cy="5.5" r="4"/><path d="M1.5 5.5h8"/><path d="M5.5 1.5C7 3 7.5 4.5 7.5 5.5S7 8 5.5 9.5"/><path d="M5.5 1.5C4 3 3.5 4.5 3.5 5.5S4 8 5.5 9.5"/></svg><span>' + (m.lang === "multi" ? "Multilingual" : m.lang === "ru" ? "Russian only" : "English only") + '</span></span>';
+  var tagMulti = '<span class="lang-badge"><svg viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5.5" cy="5.5" r="4"/><path d="M1.5 5.5h8"/><path d="M5.5 1.5C7 3 7.5 4.5 7.5 5.5S7 8 5.5 9.5"/><path d="M5.5 1.5C4 3 3.5 4.5 3.5 5.5S4 8 5.5 9.5"/></svg><span>' + (m.lang === "multi" ? "Multilingual" : m.lang === "ru" ? "Russian only" : "English only") + '</span></span>';
   var recBadge = m.recommended ? '<span class="recommended-badge">' + t('badge_recommended') + '</span>' : '';
   var action;
   if (m.active && !m.downloaded) action = '<button class="sz-action" data-act="download" data-name="' + m.name + '"><svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 1.5v6M3 5l2.5 2.5L8 5M2 9.5h7"/></svg>' + m.size + '</button>';
