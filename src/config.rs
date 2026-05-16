@@ -1,12 +1,33 @@
 //! Конфиг приложения: hotkey, активная whisper-модель, креды Telegram,
 //! путь к session-файлу, контакты. Хранится в `voicy.toml` рядом с .exe.
+//!
+//! # Telegram API credentials
+//!
+//! `api_id` / `api_hash` — это идентификатор клиентского приложения на
+//! my.telegram.org. Раньше они были захардкожены в исходниках, но это
+//! security issue — публичный репо палит креды, любой может писать клиент
+//! от имени «Voicy» и спровоцировать бан приложения.
+//!
+//! Теперь источник: ENV vars > voicy.toml. Никаких дефолтов в коде.
+//! Если ни там, ни там нет — Voicy fатально валится с понятной ошибкой.
+//!
+//! ```text
+//! Способ 1 (рекомендуется для разработки):
+//!     setx VOICY_TG_API_ID 12345678
+//!     setx VOICY_TG_API_HASH abcdef0123456789...
+//!
+//! Способ 2 (для конечных пользователей):
+//!     voicy.toml рядом с exe, секция [telegram]:
+//!         api_id = 12345678
+//!         api_hash = "abcdef0123..."
+//! ```
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-const DEFAULT_API_ID: i32 = 32_825_589;
-const DEFAULT_API_HASH: &str = "3886c6500e7c4a3628d4743671c24804";
+const ENV_API_ID: &str = "VOICY_TG_API_ID";
+const ENV_API_HASH: &str = "VOICY_TG_API_HASH";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -103,19 +124,59 @@ impl Default for Hotkey {
 impl Default for Telegram {
     fn default() -> Self {
         Self {
-            api_id: DEFAULT_API_ID,
-            api_hash: DEFAULT_API_HASH.into(),
+            api_id: 0,                  // 0 → «не задано»; load() ругнётся
+            api_hash: String::new(),    // пусто → load() ругнётся
             session: "voicy_session".into(),
         }
     }
 }
 
 impl Config {
+    /// Прочитать TOML-конфиг и наложить ENV var'ы поверх. ENV побеждает
+    /// если задан — это позволяет dev-окружению переопределять без правки
+    /// voicy.toml.
+    ///
+    /// Валидацию credentials НЕ делаем — UI должен запуститься и без них,
+    /// чтобы юзер мог их вписать в настройках. Проверяет `has_telegram_credentials()`
+    /// тот код, кто реально пытается коннектиться (telegram::connect).
     pub fn load(path: &Path) -> Result<Self> {
         let txt = std::fs::read_to_string(path)
             .with_context(|| format!("read config: {}", path.display()))?;
-        let cfg: Config = toml::from_str(&txt).context("parse TOML")?;
+        let mut cfg: Config = toml::from_str(&txt).context("parse TOML")?;
+        cfg.apply_env_overrides();
         Ok(cfg)
+    }
+
+    /// Подцепить ENV var'ы поверх уже распаршенного конфига.
+    pub fn apply_env_overrides(&mut self) {
+        if let Ok(v) = std::env::var(ENV_API_ID) {
+            if let Ok(n) = v.parse::<i32>() {
+                self.telegram.api_id = n;
+            }
+        }
+        if let Ok(v) = std::env::var(ENV_API_HASH) {
+            if !v.trim().is_empty() {
+                self.telegram.api_hash = v;
+            }
+        }
+    }
+
+    /// Готовы ли мы коннектиться к Telegram. Если нет — связываемся-через-сеть
+    /// смысла не имеет, юзеру надо сначала вписать api_id/hash в UI.
+    pub fn has_telegram_credentials(&self) -> bool {
+        self.telegram.api_id > 0 && !self.telegram.api_hash.trim().is_empty()
+    }
+
+    /// Человекочитаемая инструкция «как задать credentials» — для error-сообщений.
+    pub fn credentials_setup_hint() -> String {
+        format!(
+            "Telegram API credentials не заданы.\n\
+             1) Зарегистрируй приложение на https://my.telegram.org → API development\n\
+             2) Скопируй api_id и api_hash. Задай одним из способов:\n   \
+                ENV vars (для разработки):  {ENV_API_ID}=..., {ENV_API_HASH}=...\n   \
+                voicy.toml (для пользователей):\n      \
+                  [telegram]\n      api_id = <число>\n      api_hash = \"<строка>\""
+        )
     }
 
     #[allow(dead_code)]

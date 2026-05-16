@@ -180,9 +180,16 @@ fn main() -> Result<()> {
         Ok(c) => c,
         Err(e) => {
             warn!("config load fail ({}): using defaults", e);
-            config::Config::default()
+            let mut c = config::Config::default();
+            // ENV vars применяются и к fresh-defaults — иначе CI/первый запуск
+            // не сможет передать api_id без файла.
+            c.apply_env_overrides();
+            c
         }
     };
+    if !cfg.has_telegram_credentials() {
+        warn!("⚠ {}", config::Config::credentials_setup_hint());
+    }
 
     #[cfg(windows)]
     startup::sync_with_config(cfg.startup_launch);
