@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Voicy — Hold. Speak. Send.</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --paper:        #F7F8F3;
+  --ink:          #0E1614;
+  --ink-2:        #2A3A33;
+  --ink-3:        #7A867E;
+  --ink-on-sage:  #0E1614;
+  --sage:         #A8C8A0;
+  --sage-soft:    #D6E6CF;
+  --sage-deep:    #5E8B62;
+  --moss:         #2F4A35;
+  --bg:           #0A0E0C;
+  --bg-2:         #0F1411;
+  --bg-3:         #141B17;
+  --line:         #1F2A24;
+  --danger:       #C97560;
+  --ease:         cubic-bezier(.2,.6,.2,1);
+  --ease-out:     cubic-bezier(.16,1,.3,1);
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-font-smoothing:antialiased; }
+html, body {
+  background: var(--bg);
+  color: var(--paper);
+  font-family: 'Onest', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+::selection { background: var(--sage); color: var(--ink); }
+
+/* ============== reveal-on-scroll ============== */
+.reveal { opacity: 0; transform: translateY(40px); transition: opacity .9s var(--ease-out), transform .9s var(--ease-out); }
+.reveal.is-in { opacity: 1; transform: translateY(0); }
+.reveal-1 { transition-delay: .05s; }
+.reveal-2 { transition-delay: .15s; }
+.reveal-3 { transition-delay: .25s; }
+.reveal-4 { transition-delay: .35s; }
+.reveal-5 { transition-delay: .45s; }
+
+/* ============== generic ============== */
+section {
+  min-height: 100vh;
+  display: grid; place-items: center;
+  padding: 80px 6vw;
+  position: relative;
+}
+.eyebrow {
+  font-size: 13px; font-weight: 600;
+  color: var(--sage); letter-spacing: .14em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+h1, h2, h3 { font-weight: 700; letter-spacing: -.025em; line-height: 1.02; }
+.muted { color: var(--ink-3); }
+.accent { color: var(--sage); }
+.deep { color: var(--sage-deep); }
+
+/* ============== hero ============== */
+.hero {
+  background: radial-gradient(1200px 600px at 50% 35%, rgba(94,139,98,.35), transparent 70%),
+              radial-gradient(900px 500px at 50% 80%, rgba(168,200,160,.12), transparent 70%),
+              var(--bg);
+  text-align: center;
+}
+.hero .stage {
+  position: relative;
+  display: grid; place-items: center;
+  width: 100%;
+}
+.hero h1 {
+  font-size: clamp(80px, 14vw, 220px);
+  font-weight: 800;
+  letter-spacing: -.04em;
+  background: linear-gradient(180deg, #fff 0%, #B8C9C0 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 6px;
+}
+.hero .sub {
+  font-size: clamp(22px, 2.6vw, 38px);
+  font-weight: 500;
+  color: var(--paper);
+  opacity: .85;
+  margin-bottom: 56px;
+}
+.hero .sub .pop {
+  background: linear-gradient(90deg, var(--sage), #D6E6CF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+}
+.hero .scroll-hint {
+  position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink-3); animation: float 2s ease-in-out infinite;
+}
+@keyframes float { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(6px); } }
+
+/* halo rings */
+.orb-stage {
+  position: relative;
+  width: 320px; height: 320px;
+  display: grid; place-items: center;
+  margin: 40px auto 12px;
+}
+.orb {
+  width: 120px; height: 120px; border-radius: 999px;
+  background: var(--sage-soft); color: var(--moss);
+  display: grid; place-items: center;
+  position: relative; z-index: 2;
+  box-shadow: 0 20px 60px -20px rgba(168,200,160,.7);
+}
+.orb svg { width: 46px; height: 46px; }
+.ring {
+  position: absolute;
+  width: 120px; height: 120px;
+  border-radius: 999px;
+  border: 1.5px solid var(--sage);
+  opacity: 0;
+  animation: vy-ring 2.4s var(--ease) infinite;
+}
+.ring:nth-of-type(2) { animation-delay: .8s; }
+.ring:nth-of-type(3) { animation-delay: 1.6s; }
+@keyframes vy-ring {
+  0%   { transform: scale(.55); opacity: 0; }
+  20%  { opacity: .8; }
+  100% { transform: scale(2.0);  opacity: 0; }
+}
+
+/* ============== big-statement sections ============== */
+.statement {
+  text-align: center;
+  max-width: 1400px;
+}
+.statement h2 {
+  font-size: clamp(56px, 9vw, 140px);
+  font-weight: 800;
+  letter-spacing: -.035em;
+  line-height: 1.02;
+}
+.statement h2 .em {
+  color: var(--sage);
+  background: linear-gradient(90deg, #A8C8A0, #D6E6CF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.statement .lede {
+  margin-top: 36px;
+  font-size: clamp(20px, 2.3vw, 30px);
+  color: var(--paper);
+  opacity: .7;
+  max-width: 820px;
+  margin-left: auto; margin-right: auto;
+  font-weight: 400;
+}
+
+/* ============== flow section ============== */
+.flow {
+  background: var(--bg-2);
+  text-align: center;
+}
+.flow .steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  width: min(1280px, 100%);
+  margin-top: 80px;
+}
+.flow .step {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  padding: 56px 36px;
+  text-align: left;
+  position: relative;
+  transition: border-color .4s var(--ease), transform .4s var(--ease);
+}
+.flow .step:hover { border-color: var(--sage-deep); transform: translateY(-4px); }
+.flow .step .n {
+  position: absolute; top: 36px; right: 36px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px; color: var(--sage); letter-spacing: .1em;
+}
+.flow .step .ico {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: linear-gradient(135deg, var(--sage), var(--sage-deep));
+  display: grid; place-items: center; margin-bottom: 32px;
+  color: var(--ink);
+}
+.flow .step .ico svg { width: 28px; height: 28px; }
+.flow .step h3 {
+  font-size: 30px; font-weight: 700; letter-spacing: -.015em;
+  margin-bottom: 14px;
+}
+.flow .step p {
+  font-size: 16px; color: var(--ink-3); line-height: 1.55;
+}
+@media (max-width: 900px) {
+  .flow .steps { grid-template-columns: 1fr; }
+}
+
+/* ============== contacts mock ============== */
+.contacts-sec {
+  background: var(--bg);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 80px;
+  align-items: center; padding: 120px 8vw;
+  max-width: 1600px; margin: 0 auto;
+}
+.contacts-sec h2 { font-size: clamp(48px, 6vw, 88px); line-height: 1.04; }
+.contacts-sec p {
+  margin-top: 28px;
+  font-size: clamp(17px, 1.6vw, 22px);
+  color: var(--ink-3); line-height: 1.5;
+  max-width: 480px;
+}
+.contact-mock {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 28px;
+  display: grid; gap: 16px;
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,.6),
+              0 0 0 1px rgba(168,200,160,.08);
+}
+.contact-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0,140px) 1fr auto;
+  align-items: center; gap: 14px;
+  padding: 8px 4px;
+}
+.contact-row + .contact-row { border-top: 1px solid var(--line); padding-top: 16px; }
+.av {
+  width: 44px; height: 44px; border-radius: 999px;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 14px;
+  background: var(--sage-soft); color: var(--moss);
+  overflow: hidden; flex-shrink: 0;
+}
+.av.a1 { background: linear-gradient(135deg, #E8C8B0, #C08B6C); color: #fff; }
+.av.a2 { background: linear-gradient(135deg, #B0C8E8, #6C8BC0); color: #fff; }
+.av.a3 { background: linear-gradient(135deg, #C8E8B0, #6CC08B); color: #fff; }
+.av.a4 { background: linear-gradient(135deg, #E8B0C8, #C06C8B); color: #fff; }
+.cname { font-weight: 600; font-size: 14.5px; color: var(--paper); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #A8C8A0; color: #0E1614;
+  padding: 4px 10px; border-radius: 999px;
+  font: 600 12px/1.2 'Onest', system-ui, sans-serif;
+}
+.uid { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+@media (max-width: 900px) {
+  .contacts-sec { grid-template-columns: 1fr; }
+}
+
+/* ============== ASR magic ============== */
+.asr-sec {
+  background: var(--bg-2);
+  text-align: center;
+  padding: 140px 6vw;
+}
+.asr-sec h2 { font-size: clamp(48px, 7vw, 110px); }
+.asr-grid {
+  margin-top: 80px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  max-width: 1200px; margin-left: auto; margin-right: auto;
+}
+.asr-card {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 40px 32px;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+.asr-card .said {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--ink-3);
+  letter-spacing: .04em;
+  margin-bottom: 12px;
+}
+.asr-card .heard {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--paper);
+  letter-spacing: -.01em;
+  margin-bottom: 18px;
+  min-height: 60px;
+}
+.asr-card .arrow {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--sage); font-size: 18px;
+  margin-bottom: 14px;
+}
+.asr-card .result {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--sage);
+  background: rgba(168,200,160,.08);
+  border: 1px solid rgba(168,200,160,.2);
+  padding: 14px 18px; border-radius: 12px;
+  display: flex; gap: 10px; align-items: center;
+}
+.asr-card .result svg { width: 16px; height: 16px; flex-shrink: 0; }
+@media (max-width: 900px) {
+  .asr-grid { grid-template-columns: 1fr; }
+}
+
+/* ============== browser control ============== */
+.browser-sec {
+  background: var(--bg);
+  padding: 140px 6vw;
+  text-align: center;
+}
+.cmd-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px; max-width: 1200px;
+  margin: 80px auto 0;
+}
+.cmd-card {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 28px 24px;
+  text-align: left;
+  transition: border-color .4s var(--ease), transform .4s var(--ease);
+}
+.cmd-card:hover { border-color: var(--sage-deep); transform: translateY(-4px); }
+.cmd-card .said {
+  font-size: 18px; font-weight: 600;
+  color: var(--paper);
+  margin-bottom: 8px;
+}
+.cmd-card .action {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  color: var(--sage);
+  letter-spacing: .04em;
+}
+@media (max-width: 900px) {
+  .cmd-row { grid-template-columns: 1fr; }
+}
+
+/* ============== AI section ============== */
+.ai-sec {
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  padding: 160px 6vw;
+  text-align: center;
+}
+.ai-stack {
+  display: grid; gap: 20px;
+  max-width: 720px; margin: 80px auto 0;
+}
+.ai-bubble {
+  padding: 22px 28px;
+  border-radius: 22px;
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 500;
+  display: flex; gap: 14px; align-items: flex-start;
+}
+.ai-bubble.q {
+  background: var(--sage); color: var(--ink-on-sage);
+  margin-right: 80px;
+  align-self: flex-start;
+}
+.ai-bubble.a {
+  background: var(--bg-3); color: var(--paper);
+  margin-left: 80px;
+  border: 1px solid var(--line);
+}
+.ai-bubble .who {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  opacity: .55;
+  flex-shrink: 0;
+  margin-top: 6px;
+  min-width: 36px;
+}
+
+/* ============== overlay-orb closeup ============== */
+.orb-sec {
+  background: var(--bg-2);
+  padding: 160px 6vw;
+  text-align: center;
+}
+.orb-sec h2 { font-size: clamp(56px, 8vw, 120px); }
+.orb-sec .orb-stage { width: 480px; height: 480px; margin: 100px auto 40px; }
+.orb-sec .orb { width: 160px; height: 160px; }
+.orb-sec .orb svg { width: 64px; height: 64px; }
+.orb-sec .ring { width: 160px; height: 160px; }
+.orb-sec .caption {
+  font-size: 18px; color: var(--ink-3);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: .06em;
+}
+
+/* ============== specs / technical ============== */
+.specs {
+  background: var(--bg);
+  padding: 160px 6vw 200px;
+  text-align: center;
+}
+.specs h2 { font-size: clamp(48px, 6vw, 88px); margin-bottom: 24px; }
+.specs .lede { color: var(--ink-3); font-size: 20px; max-width: 640px; margin: 0 auto 80px; }
+.specs-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 18px; max-width: 1200px; margin: 0 auto;
+}
+.spec {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 36px 24px;
+  text-align: center;
+}
+.spec .big {
+  font-size: clamp(40px, 5vw, 72px);
+  font-weight: 800;
+  letter-spacing: -.03em;
+  background: linear-gradient(180deg, var(--paper) 0%, var(--sage-deep) 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 8px;
+  font-feature-settings: 'tnum';
+}
+.spec .label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--ink-3);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+@media (max-width: 900px) { .specs-grid { grid-template-columns: 1fr 1fr; } }
+
+/* ============== cta ============== */
+.cta {
+  background: radial-gradient(800px 400px at 50% 50%, rgba(94,139,98,.4), transparent 70%), var(--bg);
+  text-align: center;
+  padding: 160px 6vw;
+}
+.cta h2 {
+  font-size: clamp(64px, 10vw, 160px);
+  font-weight: 800;
+  letter-spacing: -.04em;
+  background: linear-gradient(180deg, #fff 0%, var(--sage) 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 32px;
+}
+.cta .sub { color: var(--ink-3); font-size: 22px; margin-bottom: 56px; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 12px;
+  background: var(--sage); color: var(--ink-on-sage);
+  font: 700 17px/1 'Onest', sans-serif;
+  padding: 18px 32px; border-radius: 999px;
+  text-decoration: none; transition: background .2s var(--ease), transform .2s var(--ease);
+}
+.btn-primary:hover { background: #BAD3B3; transform: translateY(-2px); }
+.btn-primary svg { width: 18px; height: 18px; }
+.cta .links { margin-top: 36px; display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+.cta .links a { color: var(--ink-3); text-decoration: none; font-size: 14px; font-family: 'JetBrains Mono', monospace; }
+.cta .links a:hover { color: var(--sage); }
+
+footer {
+  padding: 40px 6vw;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  border-top: 1px solid var(--line);
+}
+
+/* ============== kbd ============== */
+.kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .82em; font-weight: 600;
+  background: var(--bg-3); color: var(--paper);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  margin: 0 2px;
+}
+</style>
+</head>
+<body>
+
+<!-- ============== HERO ============== -->
+<section class="hero">
+  <div class="stage">
+    <div class="orb-stage">
+      <div class="ring"></div><div class="ring"></div><div class="ring"></div>
+      <div class="orb">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+          <path d="M12 18v3"/>
+        </svg>
+      </div>
+    </div>
+    <h1>Voicy</h1>
+    <p class="sub">Hold a key. <span class="pop">Speak.</span> It's sent.</p>
+  </div>
+  <div class="scroll-hint">scroll</div>
+</section>
+
+<!-- ============== FLOW ============== -->
+<section class="flow">
+  <div style="max-width:1400px;width:100%;">
+    <div class="eyebrow reveal">The flow</div>
+    <h2 class="reveal reveal-1" style="font-size:clamp(48px,7vw,110px); font-weight:800; letter-spacing:-.03em;">
+      Three seconds. <span style="color:var(--sage);">Zero typing.</span>
+    </h2>
+
+    <div class="steps">
+      <div class="step reveal reveal-2">
+        <div class="n">01</div>
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6" width="18" height="12" rx="3"/>
+            <path d="M8 10v4M12 8v8M16 10v4"/>
+          </svg>
+        </div>
+        <h3>Hold <span class="kbd" style="background:rgba(168,200,160,.15);color:var(--sage);">Alt</span>+<span class="kbd" style="background:rgba(168,200,160,.15);color:var(--sage);">X</span></h3>
+        <p>One global hotkey, anywhere on Windows. Voice capture starts the moment you press, even from a fullscreen game.</p>
+      </div>
+
+      <div class="step reveal reveal-3">
+        <div class="n">02</div>
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+            <path d="M12 18v3"/>
+          </svg>
+        </div>
+        <h3>Just speak</h3>
+        <p>"Write Chine on my way home." Speak like you're talking to a friend. Parakeet V3 transcribes locally — no cloud, no latency.</p>
+      </div>
+
+      <div class="step reveal reveal-4">
+        <div class="n">03</div>
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 2L11 13"/>
+            <path d="M22 2L15 22l-4-9-9-4z"/>
+          </svg>
+        </div>
+        <h3>Release. Sent.</h3>
+        <p>Your contact gets the message in Telegram. You never opened the app, never typed a thing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== Contacts ============== -->
+<div class="contacts-sec">
+  <div class="reveal">
+    <div class="eyebrow">Contacts</div>
+    <h2>Real people.<br/><span class="accent">Real photos.</span><br/>Voice aliases.</h2>
+    <p>Pulled straight from your Telegram. Add a couple of voice nicknames per person — "Chine", "Tim", "mom" — and Voicy hears them even when your speech slurs.</p>
+  </div>
+  <div class="contact-mock reveal reveal-2">
+    <div class="contact-row">
+      <div class="av a1">CH</div>
+      <div class="cname">Chine</div>
+      <div class="chips">
+        <span class="chip">chine</span>
+        <span class="chip">chinochka</span>
+      </div>
+      <div class="uid">·609101832</div>
+    </div>
+    <div class="contact-row">
+      <div class="av a2">TM</div>
+      <div class="cname">Timofey</div>
+      <div class="chips">
+        <span class="chip">tim</span>
+        <span class="chip">tima</span>
+        <span class="chip">timka</span>
+      </div>
+      <div class="uid">·420389172</div>
+    </div>
+    <div class="contact-row">
+      <div class="av a3">MS</div>
+      <div class="cname">Masha</div>
+      <div class="chips">
+        <span class="chip">mash</span>
+        <span class="chip">masha</span>
+      </div>
+      <div class="uid">·301829112</div>
+    </div>
+    <div class="contact-row">
+      <div class="av a4">AR</div>
+      <div class="cname">Artem</div>
+      <div class="chips">
+        <span class="chip">artem</span>
+        <span class="chip">tema</span>
+      </div>
+      <div class="uid">·512908311</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== ASR Magic ============== -->
+<section class="asr-sec">
+  <div class="statement reveal">
+    <div class="eyebrow">Understanding</div>
+    <h2>It hears you,<br/><span class="em">even when you mumble.</span></h2>
+    <p class="lede" style="margin-top:40px;">Voice recognition splits and slurs words constantly. Voicy's parser glues them back together — across <strong style="color:var(--sage);">three tokens</strong> and twelve trigger variants.</p>
+  </div>
+
+  <div class="asr-grid">
+    <div class="asr-card reveal reveal-1">
+      <div class="said">You said</div>
+      <div class="heard">"Write Chine hi"</div>
+      <div class="arrow">↓</div>
+      <div class="result">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Chine → "hi"
+      </div>
+    </div>
+    <div class="asr-card reveal reveal-2">
+      <div class="said">ASR slurred it</div>
+      <div class="heard">"writechinehi"</div>
+      <div class="arrow">↓</div>
+      <div class="result">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Chine → "hi"
+      </div>
+    </div>
+    <div class="asr-card reveal reveal-3">
+      <div class="said">Split across tokens</div>
+      <div class="heard">"write chi ne hi"</div>
+      <div class="arrow">↓</div>
+      <div class="result">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Chine → "hi"
+      </div>
+    </div>
+    <div class="asr-card reveal reveal-4">
+      <div class="said">Wrong trigger</div>
+      <div class="heard">"send tim how are you"</div>
+      <div class="arrow">↓</div>
+      <div class="result">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Timofey → "how are you"
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== Browser control ============== -->
+<section class="browser-sec">
+  <div class="statement reveal">
+    <div class="eyebrow">Browser control</div>
+    <h2>Your voice is<br/><span class="em">the controller.</span></h2>
+    <p class="lede" style="margin-top:36px;">Open YouTube, play the first video, set volume, go fullscreen, skip ahead. All without touching the mouse.</p>
+  </div>
+
+  <div class="cmd-row">
+    <div class="cmd-card reveal reveal-1">
+      <div class="said">"Open YouTube lo-fi beats"</div>
+      <div class="action">→ search YouTube</div>
+    </div>
+    <div class="cmd-card reveal reveal-2">
+      <div class="said">"Play the first video"</div>
+      <div class="action">→ auto-loads /watch?v=…</div>
+    </div>
+    <div class="cmd-card reveal reveal-3">
+      <div class="said">"Volume up twenty percent"</div>
+      <div class="action">→ ↑ × 4</div>
+    </div>
+    <div class="cmd-card reveal reveal-4">
+      <div class="said">"Fullscreen"</div>
+      <div class="action">→ press F</div>
+    </div>
+    <div class="cmd-card reveal reveal-5">
+      <div class="said">"Skip forward thirty seconds"</div>
+      <div class="action">→ → × 6</div>
+    </div>
+    <div class="cmd-card reveal reveal-5">
+      <div class="said">"Pause"</div>
+      <div class="action">→ space</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== AI ============== -->
+<section class="ai-sec">
+  <div class="statement reveal">
+    <div class="eyebrow">AI assistant</div>
+    <h2>Ask anything.<br/><span class="em">Get answered.</span></h2>
+    <p class="lede">Say "give answer" before your question. Voicy routes it through Gemini for speed, or a local 400 MB LLM if you'd rather stay offline.</p>
+  </div>
+
+  <div class="ai-stack">
+    <div class="ai-bubble q reveal reveal-1">
+      <span class="who">you</span>
+      <span>Give answer — what's the capital of Mongolia?</span>
+    </div>
+    <div class="ai-bubble a reveal reveal-2">
+      <span class="who">ai</span>
+      <span>Ulaanbaatar. Coldest capital city in the world.</span>
+    </div>
+    <div class="ai-bubble q reveal reveal-3">
+      <span class="who">you</span>
+      <span>Give answer — convert 200 fahrenheit to celsius</span>
+    </div>
+    <div class="ai-bubble a reveal reveal-4">
+      <span class="who">ai</span>
+      <span>About 93.3°C. Just below boiling water.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============== Orb closeup ============== -->
+<section class="orb-sec">
+  <div class="statement reveal">
+    <div class="eyebrow">The orb</div>
+    <h2>One look<br/><span class="em">and you know.</span></h2>
+  </div>
+
+  <div class="orb-stage">
+    <div class="ring"></div><div class="ring"></div><div class="ring"></div>
+    <div class="orb">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+        <path d="M12 18v3"/>
+      </svg>
+    </div>
+  </div>
+  <p class="caption reveal reveal-1">Native per-pixel alpha · No frame · Above everything</p>
+</section>
+
+<!-- ============== Specs ============== -->
+<section class="specs">
+  <div class="reveal">
+    <div class="eyebrow">Built right</div>
+    <h2>Tiny. Fast. <span class="accent">Yours.</span></h2>
+    <p class="lede">Pure Rust. No Electron, no Python, no telemetry. Runs entirely on your machine.</p>
+  </div>
+
+  <div class="specs-grid">
+    <div class="spec reveal reveal-1">
+      <div class="big">3<span style="font-size:.45em;">MB</span></div>
+      <div class="label">Binary size</div>
+    </div>
+    <div class="spec reveal reveal-2">
+      <div class="big">100<span style="font-size:.45em;">%</span></div>
+      <div class="label">Offline ASR</div>
+    </div>
+    <div class="spec reveal reveal-3">
+      <div class="big">14<span style="font-size:.45em;">×</span></div>
+      <div class="label">Realtime transcription</div>
+    </div>
+    <div class="spec reveal reveal-4">
+      <div class="big">0<span style="font-size:.45em;">$</span></div>
+      <div class="label">Open source · forever</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== CTA ============== -->
+<section class="cta">
+  <div class="reveal">
+    <h2>Speak it.<br/>Send it.</h2>
+    <p class="sub">Voicy is free, open source, and ready to install.</p>
+    <a href="https://github.com/ArtemKlunduk/Voicy" class="btn-primary">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.7-5.5 6 .5.4.9 1.2.9 2.3v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+      Get it on GitHub
+    </a>
+    <div class="links">
+      <a href="https://github.com/ArtemKlunduk/Voicy/blob/main/README.md">README</a>
+      <a href="https://github.com/ArtemKlunduk/Voicy/releases">Releases</a>
+      <a href="https://github.com/ArtemKlunduk/Voicy/blob/main/CONTRIBUTING.md">Contributing</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Voicy · Made with Rust · MIT license · 2026
+</footer>
+
+<script>
+  // Reveal-on-scroll via IntersectionObserver
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('is-in');
+        io.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -10% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // Hero parallax — subtle scale-up of orb on scroll
+  const heroOrb = document.querySelector('.hero .orb-stage');
+  window.addEventListener('scroll', () => {
+    const y = Math.min(window.scrollY, window.innerHeight);
+    const k = y / window.innerHeight;
+    if (heroOrb) {
+      heroOrb.style.transform = `scale(${1 + k * 0.3}) translateY(${-k * 40}px)`;
+      heroOrb.style.opacity = 1 - k * 0.6;
+    }
+  }, { passive: true });
+</script>
+
+</body>
+</html>
