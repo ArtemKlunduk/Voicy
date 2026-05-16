@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="design/system/assets/logo-mark.svg" width="80" alt="Voicy"/>
+<img src="logo.svg" width="80" alt="Voicy"/>
 
 # Voicy
 
@@ -84,7 +84,6 @@ voicy/
 ├── assets/           Bundled DLLs + icon
 ├── docs/             User documentation
 ├── scripts/          Build & release scripts
-├── design/           Design system, mockups, launch presentation
 ├── Cargo.toml        Dependencies
 └── README.md
 ```
