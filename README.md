@@ -1,93 +1,99 @@
-# voicy (Rust port)
+<div align="center">
 
-Полная замена `D:\claude\Cheen\` на Rust. **3 МБ exe** vs **120 МБ** Python.
+<img src="design/system/assets/logo-mark.svg" width="80" alt="Voicy"/>
 
-## Build
+# Voicy
 
-```
-$env:CARGO_HOME = "D:\rust\.cargo"
-$env:Path = "D:\llvm-mingw\bin;D:\rust\.cargo\bin;$env:Path"
-$env:CARGO_TARGET_DIR = "D:\rust\target_voicy"
-cargo build --release
-```
+**Hold a key. Speak. Your message is sent.**
 
-`voicy.exe` появится в `D:\rust\target_voicy\release\`.
+Voice-to-Telegram for Windows. No typing, no opening apps — just a hotkey and your voice.
 
-## Файлы рядом с exe
+[Download](https://github.com/ArtemKlunduk/Voicy/releases) · [Install guide](docs/INSTALL.md) · [Telegram setup](docs/TELEGRAM_SETUP.md) · [Commands](docs/USAGE.md)
 
-| Файл | Назначение |
+</div>
+
+---
+
+## What it does
+
+- 🎙️ **Push-to-talk** — hold `Alt+X`, speak, release
+- 🚀 **Auto-send** — message lands in Telegram in 3 seconds
+- 🧠 **Smart parser** — handles slurred speech, split words, wrong triggers
+- 🤖 **AI assistant** — say "give answer" + question → Voicy responds aloud
+- 📺 **Browser control** — voice volume/fullscreen/play/pause for YouTube
+- 👤 **Real contacts** — pulled from your Telegram with avatars
+- 🪶 **3 MB binary** — pure Rust, no Electron, runs offline
+
+## Quick install
+
+1. **Download** the latest release: [Releases page](https://github.com/ArtemKlunduk/Voicy/releases)
+2. **Unzip** anywhere (e.g. `C:\Voicy\`)
+3. **Set up Telegram credentials** — get free at https://my.telegram.org (see [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md))
+4. **Run** `voicy.exe`
+
+Full step-by-step: [INSTALL.md](docs/INSTALL.md)
+
+## Quick demo
+
+After setup, press and hold `Alt+X` and say:
+
+> *"Write Chine — running late, will be there in 10."*
+
+Release. Done. Message in your friend's Telegram inbox.
+
+## Voice commands
+
+| Say | What happens |
 |---|---|
-| `voicy.exe` | сам бинарь (3 МБ) |
-| `voicy.toml` | конфиг: hotkey / модель / api_id |
-| `voicy_session.session` | сохранённая Telegram-сессия |
-| `contacts.txt` | контакты: `uid - имя1, имя2` |
-| `whisper/whisper-cli.exe` | бинарь whisper.cpp (~5 МБ + DLL для BLAS) |
-| `whisper/ggml-<model>.bin` | веса (tiny=75 МБ, base=140 МБ и т.д.) |
-| `voicy_capture.wav` | временный файл записи |
+| `write <name> <message>` | Send Telegram message |
+| `open YouTube <query>` | Open YouTube search |
+| `play first video` | Open first search result |
+| `volume up 20 percent` | YouTube volume +20% |
+| `fullscreen` | Toggle fullscreen |
+| `pause` / `play` | Play/pause video |
+| `give answer <question>` | AI assistant replies aloud |
 
-## First-time setup
+Full list: [USAGE.md](docs/USAGE.md)
 
-```
-voicy.exe model setup            # скачивает whisper.cpp (~16 МБ)
-voicy.exe model download tiny    # или base / small / medium / large-v3
-voicy.exe setup                  # интерактивный Telegram login (phone+code)
-```
+## Build from source
 
-## Running
-
-```
-voicy.exe run                    # фоновый листенер Alt+X
+```powershell
+git clone git@github.com:ArtemKlunduk/Voicy.git
+cd Voicy
+scripts\build-release.cmd
 ```
 
-Скажи «**напиши <имя> <текст>**» зажав Alt+X — отправится в Telegram.
+Requires Rust 1.75+ with MSVC target and Visual Studio Build Tools. Details: [INSTALL.md → Building from source](docs/INSTALL.md#building-from-source).
 
-## CLI commands
+## Tech
 
-- `voicy ui` — окно настроек (wry webview, login/hotkey/model/contacts)
-- `voicy run` — фоновый hotkey-listener + overlay
-- `voicy info` — показать конфиг
-- `voicy record <sec>` — записать тест в `test_capture.wav`
-- `voicy transcribe <wav>` — прогнать WAV через whisper
-- `voicy send <uid> <text>` — отправить сообщение напрямую (для отладки)
-- `voicy model setup` — скачать whisper.cpp бинарь
-- `voicy model download <name>` — скачать модель
-- `voicy setup` — Telegram login (CLI вариант, для серверов без GUI)
+- **Language:** Rust 1.95 with MSVC target
+- **ASR:** [Parakeet V3](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) (NeMo, ONNX int8) or whisper.cpp
+- **MTProto:** [grammers-client](https://github.com/Lonami/grammers)
+- **AI:** Google Gemini API + local LLM via [candelabra](https://github.com/alan13367/candelabra) (Qwen / Llama / Gemma)
+- **UI:** [wry](https://github.com/tauri-apps/wry) (WebView2) + native Win32 overlay (per-pixel alpha via `UpdateLayeredWindow`)
 
-## Build deps на машине разработчика
+## Project layout
 
-- `D:\rust\.cargo\bin\cargo.exe` — Rust 1.95 GNU
-- `D:\llvm-mingw\bin\` — LLVM-MinGW 22 (clang + lld + dlltool)
-- `D:\cmake\bin\cmake.exe` — CMake 4.3 (нужен крейтам, что компилируют C-код)
-- `LIBCLANG_PATH` → `C:\...\Python313\Lib\site-packages\clang\native` (нужен bindgen)
+```
+voicy/
+├── src/              Rust source
+├── assets/           Bundled DLLs + icon
+├── docs/             User documentation
+├── scripts/          Build & release scripts
+├── design/           Design system, mockups, launch presentation
+├── Cargo.toml        Dependencies
+└── README.md
+```
 
-Env vars зашиты в User profile.
+## Contributing
 
-## Размер vs Python
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-| | Python | Rust |
-|---|---|---|
-| `voicy.exe` | 119.6 МБ | **3.58 МБ** (33×) |
-| Startup | 2–3 сек | мгновенно |
-| Whisper subprocess | 6–26 сек первый запуск | 0.5–1 сек (persistent через mmap) |
-| Зависимости | bundled Python | системные DLL + WebView2 |
+This project is being built by two people:
+- [@ArtemKlunduk](https://github.com/ArtemKlunduk) — Telegram, UI, AI integration
+- [@tuwulalo](https://github.com/tuwulalo) — ASR, native overlay, build
 
-## Полный паритет ✓
+## License
 
-| фича | python | rust |
-|---|---|---|
-| QR/phone Telegram login | ✓ | ✓ (phone-code в UI) |
-| Hotkey listener | ✓ | ✓ |
-| Запись + whisper | ✓ | ✓ |
-| Парсер «напиши имя текст» + fuzzy | ✓ | ✓ |
-| Overlay-эквалайзер | ✓ | ✓ |
-| Settings webview | ✓ | ✓ |
-| Скачивание моделей | ✓ | ✓ |
-| Switch active model | ✓ | ✓ |
-| Авто-restart whisper-сервиса | n/a (нет сервиса) | n/a |
-| QR-login | ✓ | ✗ (только phone-code пока) |
-
-## TODO (опциональное)
-
-- [ ] QR-login для Telegram (grammers поддерживает через `request_login_code`+ QR)
-- [ ] Trigger words / алиасы редактирование из UI
-- [ ] Tray-икона
+MIT — see [LICENSE](LICENSE).
