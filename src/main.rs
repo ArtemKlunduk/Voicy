@@ -468,7 +468,7 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                             info!("[ai] ответ: {}", response);
                             #[cfg(windows)]
                             native_overlay::send(native_overlay::State::Success);
-                            if let Err(e) = tts::speak(&response) {
+                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
                                 warn!("[ai] tts error: {}", e);
                             }
                             schedule_hide();
@@ -493,7 +493,7 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                             info!("[ai] ответ: {}", response);
                             #[cfg(windows)]
                             native_overlay::send(native_overlay::State::Success);
-                            if let Err(e) = tts::speak(&response) {
+                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
                                 warn!("[ai] tts error: {}", e);
                             }
                             schedule_hide();

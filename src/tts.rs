@@ -1,24 +1,83 @@
 use anyhow::{anyhow, Result};
 use std::io::Cursor;
+use std::process::{Command, Stdio};
 
-/// Озвучивает текст. Порядок: Windows OneCore → Google Translate TTS fallback.
+/// Озвучивает текст.
+/// Приоритет: Edge TTS (Azure neural, ~натуральный) → Windows OneCore (SAPI,
+/// «телефонный») → Google Translate TTS fallback (network).
+///
+/// `lang`: "ru" | "en" — определяет какой голос выбрать.
 pub fn speak(text: &str) -> Result<()> {
+    speak_with_lang(text, "ru")
+}
+
+pub fn speak_with_lang(text: &str, lang: &str) -> Result<()> {
     if text.trim().is_empty() {
         return Ok(());
     }
-    let text = if text.len() > 4000 {
-        &text[..4000]
-    } else {
-        text
-    };
+    let text = if text.len() > 4000 { &text[..4000] } else { text };
 
-    // Пробуем Windows OneCore
+    // 1) Edge TTS (Azure neural) — высокое качество, нужен python+edge-tts
+    if let Ok(()) = speak_edge_tts(text, lang) {
+        return Ok(());
+    }
+
+    // 2) Windows OneCore (SAPI 5 локально, всегда есть)
     if let Ok(()) = speak_windows(text) {
         return Ok(());
     }
 
-    // Fallback: Google Translate TTS
+    // 3) Google Translate TTS (network fallback)
     speak_gtts(text)
+}
+
+// ── Edge TTS via Python edge-tts ─────────────────────────────────────────
+fn speak_edge_tts(text: &str, lang: &str) -> Result<()> {
+    let voice = match lang {
+        "en" => "en-US-AvaMultilingualNeural",
+        _ => "ru-RU-SvetlanaNeural",  // ru default — женский, тёплый
+    };
+
+    // Скрипт лежит в scripts/edge_tts_speak.py относительно exe parent.
+    // На dev машине exe в D:\rust\target_voicy\..., скрипт в D:\claude\voicy_rs\scripts\.
+    // Поэтому ищем в нескольких местах.
+    let script = locate_edge_script()?;
+
+    let output = Command::new("python")
+        .arg(&script)
+        .arg(voice)
+        .arg(text)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| anyhow!("python spawn: {}", e))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("edge_tts.py exit {}: {}", output.status, err.trim()));
+    }
+    if output.stdout.len() < 100 {
+        return Err(anyhow!("edge_tts.py returned empty audio"));
+    }
+    tracing::info!("[tts] edge-tts ok: {} bytes ({})", output.stdout.len(), voice);
+    play_audio(&output.stdout)
+}
+
+fn locate_edge_script() -> Result<std::path::PathBuf> {
+    let exe = std::env::current_exe().map_err(|e| anyhow!("current_exe: {}", e))?;
+    let exe_dir = exe.parent().ok_or_else(|| anyhow!("exe has no parent"))?;
+    let candidates = [
+        exe_dir.join("scripts").join("edge_tts_speak.py"),
+        exe_dir.join("edge_tts_speak.py"),
+        // dev-машина: src в репо
+        std::path::PathBuf::from("D:/claude/voicy_rs/scripts/edge_tts_speak.py"),
+    ];
+    for c in &candidates {
+        if c.exists() {
+            return Ok(c.clone());
+        }
+    }
+    Err(anyhow!("edge_tts_speak.py not found in {:?}", candidates))
 }
 
 // ── Windows OneCore SpeechSynthesizer ──
