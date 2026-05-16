@@ -199,3 +199,36 @@ a:hover { color: var(--moss); }
   background: var(--sage-soft);
   color: var(--ink);
 }
+
+/* =============================================================
+   Badges
+   Pill-shape labels. Modifiers: --solid (primary call-out),
+   --soft (informational), --ghost (subtle/secondary).
+   ============================================================= */
+.vy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+  font: 700 10px/1 var(--font-sans);
+  letter-spacing: 0.08em;
+  padding: 4px 9px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  /* default = solid */
+  background: var(--sage);
+  color: var(--ink-on-sage);
+}
+.vy-badge--solid {
+  background: var(--sage);
+  color: var(--ink-on-sage);
+}
+.vy-badge--soft {
+  background: var(--sage-soft);
+  color: var(--moss);
+}
+.vy-badge--ghost {
+  background: transparent;
+  color: var(--fg-muted);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
