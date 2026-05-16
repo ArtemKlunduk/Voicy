@@ -1,13 +1,17 @@
-# Telegram API setup
+# Telegram API setup (optional)
 
-Voicy talks to Telegram through MTProto and needs your own free **API credentials**. This is a one-time 2-minute process.
+> **TL;DR — you don't need this for normal use.** Voicy ships with built-in Telegram credentials. Just run `voicy.exe` and log in.
+>
+> This document is for people who want to use their **own** Telegram app credentials instead — either for privacy, or because the shipped ones got banned/rotated.
 
-## Why your own credentials?
+## Why have your own credentials?
 
-Telegram tracks abuse per-application. If we shared one set of credentials across all Voicy users, one spammer could get our entire app banned. With your own credentials:
+Telegram tracks abuse per-application. The credentials shipped with Voicy are shared across all users — if someone abuses the API through their own client masquerading as "Voicy", Telegram might ban our `api_id` and everyone's install temporarily breaks until we rotate.
 
+With your own credentials:
 - You control your own quota
-- One user's misuse never affects others
+- Telegram can't bulk-ban you with other Voicy users
+- Privacy: Telegram can't correlate your app traffic with other Voicy users
 - Free, no payment, no limit on legitimate use
 
 ## Step-by-step

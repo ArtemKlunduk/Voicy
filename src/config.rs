@@ -4,30 +4,43 @@
 //! # Telegram API credentials
 //!
 //! `api_id` / `api_hash` — это идентификатор клиентского приложения на
-//! my.telegram.org. Раньше они были захардкожены в исходниках, но это
-//! security issue — публичный репо палит креды, любой может писать клиент
-//! от имени «Voicy» и спровоцировать бан приложения.
+//! my.telegram.org. Источники в порядке приоритета:
 //!
-//! Теперь источник: ENV vars > voicy.toml. Никаких дефолтов в коде.
-//! Если ни там, ни там нет — Voicy fатально валится с понятной ошибкой.
+//!   1. **Runtime ENV vars** — `VOICY_TG_API_ID` / `VOICY_TG_API_HASH`.
+//!      Перебивает всё. Для CI и dev-окружений.
 //!
-//! ```text
-//! Способ 1 (рекомендуется для разработки):
-//!     setx VOICY_TG_API_ID 12345678
-//!     setx VOICY_TG_API_HASH abcdef0123456789...
+//!   2. **voicy.toml** — `[telegram] api_id / api_hash`. Для пользователей,
+//!      которые хотят свои собственные credentials (например параноики или
+//!      когда мы получили ban и публикуем новую версию не успеваем).
 //!
-//! Способ 2 (для конечных пользователей):
-//!     voicy.toml рядом с exe, секция [telegram]:
-//!         api_id = 12345678
-//!         api_hash = "abcdef0123..."
-//! ```
+//!   3. **Embedded в release-build** — захардкожены compile-time через
+//!      `option_env!()`. Заливаются `scripts/build-release.cmd` из
+//!      `.creds/build-credentials.env` (gitignored, локально только).
+//!      Юзер получает zero-setup install: скачал → запустил → работает.
+//!
+//! Если ни одного источника нет — Voicy показывает в UI понятную ошибку
+//! с инструкцией как заполнить.
+//!
+//! **Security**: исходники на GitHub НЕ содержат credentials никогда.
+//! Embedded creds попадают в бинарь только при release-build с локальным
+//! `.creds/` файлом. При `cargo build` напрямую без cmd-скрипта — exe
+//! собирается без embedded creds.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 const ENV_API_ID: &str = "VOICY_TG_API_ID";
 const ENV_API_HASH: &str = "VOICY_TG_API_HASH";
+
+/// Compile-time embedded credentials. Если build.rs не получил VOICY_BUILD_*
+/// env vars — здесь будут None.
+fn embedded_api_id() -> Option<i32> {
+    option_env!("VOICY_EMBEDDED_API_ID").and_then(|s| s.parse::<i32>().ok())
+}
+fn embedded_api_hash() -> Option<&'static str> {
+    option_env!("VOICY_EMBEDDED_API_HASH").filter(|s| !s.trim().is_empty())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -123,28 +136,50 @@ impl Default for Hotkey {
 
 impl Default for Telegram {
     fn default() -> Self {
+        // Embedded creds (если есть, baked при release-build) идут как fallback —
+        // юзер получает «zero-setup» install. Если embedded нет — пустые поля,
+        // юзер должен либо вписать в voicy.toml, либо задать ENV vars.
         Self {
-            api_id: 0,                  // 0 → «не задано»; load() ругнётся
-            api_hash: String::new(),    // пусто → load() ругнётся
+            api_id: embedded_api_id().unwrap_or(0),
+            api_hash: embedded_api_hash().map(|s| s.to_string()).unwrap_or_default(),
             session: "voicy_session".into(),
         }
     }
 }
 
 impl Config {
-    /// Прочитать TOML-конфиг и наложить ENV var'ы поверх. ENV побеждает
-    /// если задан — это позволяет dev-окружению переопределять без правки
-    /// voicy.toml.
+    /// Прочитать TOML-конфиг с подстановкой embedded creds и ENV vars.
+    /// Порядок (low → high priority):
+    ///   1. embedded в exe (option_env!)
+    ///   2. voicy.toml [telegram]
+    ///   3. ENV vars VOICY_TG_API_ID / VOICY_TG_API_HASH
     ///
-    /// Валидацию credentials НЕ делаем — UI должен запуститься и без них,
-    /// чтобы юзер мог их вписать в настройках. Проверяет `has_telegram_credentials()`
-    /// тот код, кто реально пытается коннектиться (telegram::connect).
+    /// Валидацию credentials НЕ делаем здесь — UI должен запуститься и
+    /// без них, чтобы юзер мог их вписать в настройках. Проверяет
+    /// `has_telegram_credentials()` тот код, кто реально пытается коннектиться.
     pub fn load(path: &Path) -> Result<Self> {
         let txt = std::fs::read_to_string(path)
             .with_context(|| format!("read config: {}", path.display()))?;
         let mut cfg: Config = toml::from_str(&txt).context("parse TOML")?;
+        cfg.fill_embedded_credentials();
         cfg.apply_env_overrides();
         Ok(cfg)
+    }
+
+    /// Если в TOML api_id/hash пустые (0 / ""), подставляем embedded из exe.
+    /// Это даёт юзеру zero-setup install: скачал, запустил, не трогая
+    /// voicy.toml.
+    fn fill_embedded_credentials(&mut self) {
+        if self.telegram.api_id == 0 {
+            if let Some(id) = embedded_api_id() {
+                self.telegram.api_id = id;
+            }
+        }
+        if self.telegram.api_hash.trim().is_empty() {
+            if let Some(h) = embedded_api_hash() {
+                self.telegram.api_hash = h.to_string();
+            }
+        }
     }
 
     /// Подцепить ENV var'ы поверх уже распаршенного конфига.

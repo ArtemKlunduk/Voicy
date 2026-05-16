@@ -28,8 +28,11 @@ Voice-to-Telegram for Windows. No typing, no opening apps — just a hotkey and 
 
 1. **Download** the latest release: [Releases page](https://github.com/ArtemKlunduk/Voicy/releases)
 2. **Unzip** anywhere (e.g. `C:\Voicy\`)
-3. **Set up Telegram credentials** — get free at https://my.telegram.org (see [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md))
-4. **Run** `voicy.exe`
+3. **Run** `voicy.exe` — that's it. Telegram credentials are pre-embedded.
+4. On the **Telegram** tab → click **QR** → scan with your phone (Telegram → Settings → Devices → Link Desktop).
+5. Hold `Alt+X` and say "write `<contact>` hi" to test.
+
+> **Privacy-conscious?** Want to use your own Telegram app instead of ours? See [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md).
 
 Full step-by-step: [INSTALL.md](docs/INSTALL.md)
 

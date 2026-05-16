@@ -31,6 +31,27 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=build.rs");
 
+    // ── Embed Telegram API credentials ──────────────────────────────────
+    // Если build запущен с VOICY_BUILD_API_ID / VOICY_BUILD_API_HASH (через
+    // scripts/build-release.cmd, который читает .creds/build-credentials.env),
+    // мы emit'им их как cargo:rustc-env → option_env! в config.rs подхватит
+    // их через embedded_credentials().
+    //
+    // Без этих env vars (например при `cargo build` напрямую без cmd-скрипта)
+    // exe собирается без embedded creds — юзеру придётся вписать в voicy.toml.
+    println!("cargo:rerun-if-env-changed=VOICY_BUILD_API_ID");
+    println!("cargo:rerun-if-env-changed=VOICY_BUILD_API_HASH");
+    if let Ok(api_id) = env::var("VOICY_BUILD_API_ID") {
+        if !api_id.trim().is_empty() {
+            println!("cargo:rustc-env=VOICY_EMBEDDED_API_ID={}", api_id);
+        }
+    }
+    if let Ok(api_hash) = env::var("VOICY_BUILD_API_HASH") {
+        if !api_hash.trim().is_empty() {
+            println!("cargo:rustc-env=VOICY_EMBEDDED_API_HASH={}", api_hash);
+        }
+    }
+
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     if target_os != "windows" || target_arch != "x86_64" {

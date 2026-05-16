@@ -2,7 +2,7 @@
 
 Two ways to install Voicy: ready-to-run binary (recommended), or build from source.
 
-## Option A — Pre-built binary (5 minutes)
+## Option A — Pre-built binary (3 minutes)
 
 ### 1. Download
 
@@ -24,43 +24,23 @@ C:\Voicy\
   └── README.txt
 ```
 
-### 3. Telegram credentials
+### 3. Run
 
-Voicy needs free Telegram API credentials. Takes 2 minutes — full guide: **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)**.
+Double-click `voicy.exe`. Telegram API credentials are pre-embedded, no setup file needed.
 
-TL;DR: go to https://my.telegram.org → API development tools → Create application → copy `api_id` + `api_hash`.
-
-### 4. Create voicy.toml
-
-Rename `voicy.toml.example` to `voicy.toml` and fill in your credentials:
-
-```toml
-model = "parakeet-v3"
-recognition_language = "en"
-ui_theme = "dark"
-language = "en"
-
-[hotkey]
-modifiers = ["alt"]
-key = "x"
-
-[telegram]
-api_id = 12345678                       # ← from my.telegram.org
-api_hash = "your_32_char_hash_here"     # ← from my.telegram.org
-session = "voicy_session"
-```
-
-### 5. Run
-
-Double-click `voicy.exe`. First run:
+First run:
 - Settings UI opens
 - On the **Telegram** tab → click **QR** → scan with your phone (Telegram → Settings → Devices → Link Desktop Device)
 - Voicy downloads Parakeet ASR model (~670 MB, one-time)
 - Hold `Alt+X` and say "write <contact> hi" to test
 
-### 6. Optional — Run at startup
+### 4. (Optional) Run at startup
 
 Settings → System → toggle **Run at startup**. Voicy will launch in background every time you log in.
+
+### 5. (Optional) Use your own Telegram app credentials
+
+The shipped credentials are shared across all Voicy users — fine for most cases, but if you want isolation (e.g. privacy, or you don't trust upstream rotation), see **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)**. 2 minutes to register your own app at my.telegram.org and override via `voicy.toml`.
 
 ---
 

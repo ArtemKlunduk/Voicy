@@ -14,6 +14,10 @@ contacts.txt
 /build
 *.spec
 
+# Local maintainer secrets — embedded Telegram API creds for release builds.
+# NEVER commit this directory.
+/.creds/
+
 # IDE/OS
 .vscode/
 .idea/
