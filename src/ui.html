@@ -401,25 +401,48 @@ main { padding:0; height:100vh; display:flex; }
 }
 .account-avatar {
   width:38px; height:38px; border-radius:50%;
-  background:linear-gradient(135deg, var(--accent), var(--accent-deep));
-  color:#fff; display:grid; place-items:center;
-  font-weight:600; font-size:13px;
+  background:var(--sage-soft); color:var(--moss);
+  display:grid; place-items:center;
+  font-weight:700; font-size:13px;
+  overflow:hidden; user-select:none; flex-shrink:0;
+  border:1px solid color-mix(in oklab, var(--sage-deep) 30%, transparent);
 }
+.account-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 .account-info .name { font-size:14px; font-weight:600; color:var(--ink); }
 .account-info .handle { font-family:var(--mono); font-size:11.5px; color:var(--ink-3); margin-top:2px; }
 .account-actions { display:flex; gap:6px; }
+/* Spec из voicy-style-patch.css → solid sage + near-ink, контраст ~9.4.
+   Применяется ко ВСЕМ primary-кнопкам (QR, ↓ из Telegram, и т.д.).
+   Ghost — для secondary действий (Phone, + добавить) — outline + ink. */
 .btn {
-  font-family:var(--sans); font-size:12.5px; font-weight:500;
-  padding:7px 12px; border-radius:6px; cursor:pointer;
+  font: 600 13px/1 'Onest', system-ui, sans-serif;
+  padding:7px 12px; border-radius:8px; cursor:pointer;
   display:inline-flex; align-items:center; gap:6px;
-  border:1px solid transparent; line-height:1.2;
-  transition:all .12s;
+  border:1px solid transparent; line-height:1;
+  transition: background 120ms cubic-bezier(.2,.6,.2,1),
+              transform 120ms cubic-bezier(.2,.6,.2,1),
+              border-color 120ms cubic-bezier(.2,.6,.2,1);
 }
-.btn-primary { background:var(--accent); color:#fff; }
-.btn-primary:hover { background:var(--accent-deep); }
-.btn-ghost { background:transparent; color:var(--ink-2); border-color:var(--hair); }
+.btn-primary {
+  background:#A8C8A0;      /* solid sage, не pastel @ low alpha */
+  color:#0E1614;           /* near-ink, не sage-on-sage */
+  border-color:transparent;
+}
+.btn-primary:hover  { background:#BAD3B3; }
+.btn-primary:active { background:#7DA679; transform:translateY(1px); }
+.btn-primary:disabled {
+  background:rgba(168,200,160,.20);
+  color:#7A867E; cursor:not-allowed; transform:none;
+}
+.btn-ghost {
+  background:transparent; color:var(--ink-2);
+  border-color:var(--hair); font-weight:600;
+}
 .btn-ghost:hover { background:var(--hair-vsoft); color:var(--ink); }
-.btn-danger { background:transparent; color:var(--warn); border-color:var(--warn-bg); }
+.btn-danger {
+  background:transparent; color:var(--warn);
+  border-color:var(--warn); font-weight:600;
+}
 .btn-danger:hover { background:var(--warn-bg); }
 
 /* ── contacts editor ── */
@@ -552,12 +575,13 @@ main { padding:0; height:100vh; display:flex; }
 
 /* ── badge (login state) ── */
 .badge {
-  display:inline-flex; align-items:center; gap:5px;
-  padding:3px 9px; border-radius:999px;
-  font-size:11.5px; font-weight:500;
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 12px; border-radius:999px;
+  font: 600 12px/1 'Onest', system-ui, sans-serif;
   background:var(--hair-vsoft); color:var(--ink-2);
 }
-.badge.active { background:var(--accent); color:#fff; }
+/* Solid sage + near-ink — spec из voicy-style-patch.css (.vy-pill--status) */
+.badge.active { background:#A8C8A0; color:#0E1614; }
 .badge.warn { background:var(--warn-bg); color:var(--warn); }
 .badge .dot { width:6px; height:6px; border-radius:50%; background:currentColor; animation:pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
@@ -1384,13 +1408,24 @@ async function refresh() {
     var label = info.username ? "@" + info.username : "id:" + info.user_id;
     name.textContent = info.username ? info.username : ("Telegram " + info.user_id);
     handle.textContent = label;
-    avatar.textContent = (info.username || "U").substring(0,2).toUpperCase();
+    // Аватарка юзера — сначала инициалы, потом подменим на реальное фото из Telegram.
+    var initials = (info.username || "U").substring(0,2).toUpperCase();
+    if (info.user_id && _avatarCache[info.user_id]) {
+      avatar.innerHTML = '<img src="' + _avatarCache[info.user_id] + '" alt="" />';
+    } else {
+      avatar.textContent = initials;
+      if (info.user_id) {
+        avatar.setAttribute('data-uid', info.user_id);
+        loadAvatarsFor([info.user_id]);
+      }
+    }
     logoutBtn.classList.remove("hidden");
-    tgMeta.innerHTML = '<span class="badge active">✓ online</span>';
+    tgMeta.innerHTML = '<span class="badge active"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>online</span>';
   } else {
     name.textContent = t('not_logged_in');
     handle.textContent = t('login_to_send');
     avatar.textContent = "?";
+    avatar.removeAttribute('data-uid');
     logoutBtn.classList.add("hidden");
     tgMeta.innerHTML = '<span class="badge warn">offline</span>';
   }

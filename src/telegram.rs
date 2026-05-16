@@ -269,15 +269,33 @@ pub async fn fetch_avatar(client: &Client, uid: i64) -> Option<PathBuf> {
             return Some(path);
         }
     }
-    let packed = cache().lock().get(&uid).copied()?;
-    // Чтобы получить photo_downloadable, нужен полный Chat. Достанем через
-    // resolve_to_packed → unpack. Самый простой путь: invoke users.getUsers
-    // напрямую через grammers-client API.
-    let chat = match client.unpack_chat(packed).await {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("[avatar] unpack_chat({}): {}", uid, e);
-            return None;
+    // Сначала ищем PackedChat в DIALOG_CACHE. Если не нашли — может это сам юзер,
+    // который не появляется в iter_dialogs. Тогда fallback на client.get_me().
+    let packed = cache().lock().get(&uid).copied();
+    let chat = match packed {
+        Some(p) => match client.unpack_chat(p).await {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("[avatar] unpack_chat({}): {}", uid, e);
+                return None;
+            }
+        },
+        None => {
+            // Пробуем get_me — может это собственный uid
+            match client.get_me().await {
+                Ok(me) if me.id() == uid => {
+                    cache().lock().insert(uid, me.pack());
+                    grammers_client::types::Chat::User(me)
+                }
+                Ok(_) => {
+                    warn!("[avatar] uid {} not in dialog cache and not self", uid);
+                    return None;
+                }
+                Err(e) => {
+                    warn!("[avatar] get_me fallback for {}: {}", uid, e);
+                    return None;
+                }
+            }
         }
     };
     let dl = chat.photo_downloadable(false)?; // small (~51x51)
