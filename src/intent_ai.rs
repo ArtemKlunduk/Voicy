@@ -42,6 +42,8 @@ pub enum Intent {
     PlayNth { index: usize },
     /// Включить видео содержащее эти слова в title.
     PlayByTitle { keywords: Vec<String> },
+    /// Перейти на канал автора текущего видео.
+    GoToChannel,
     /// Отправить сообщение в Telegram. contact — имя или alias.
     SendTelegram { contact: String, message: String },
     /// Задать вопрос AI-ассистенту.
@@ -72,6 +74,7 @@ ACTIONS:
 - {"action":"open_url","provider":"youtube|google|tiktok|twitch","query":"..."}
 - {"action":"play_nth","index":N}    — open Nth video in last YouTube search (0-based!)
 - {"action":"play_by_title","keywords":["w1","w2"]} — find video by title words
+- {"action":"go_to_channel"}         — navigate to current video's uploader channel
 - {"action":"send_telegram","contact":"name","message":"..."}
 - {"action":"ask_ai","question":"..."}  — user wants AI to answer
 - {"action":"unknown"}                — if intent is unclear
@@ -81,9 +84,10 @@ RULES:
 2. «открой ютуб X» / «врубай ютубчик X» → open_url with provider="youtube", query=X.
 3. «включи второе видео» → play_nth, index=1 (zero-based!). «третье» → 2. «первое» → 0.
 4. «включи асмр одноклассница» (without ordinal) → play_by_title with keywords.
-5. «напиши Тиме привет» / «отправь Маше пока» → send_telegram. CONTACT must match one of the provided names if possible.
-6. «дай ответ X» / «спроси X» / «ответь X» → ask_ai.
-7. Default volume_up/down n=2 (~10%) if unspecified. Default seek n=2 if unspecified.
+5. «перейди на канал» / «канал автора» / «открой канал» → go_to_channel.
+6. «напиши Тиме привет» / «отправь Маше пока» → send_telegram. CONTACT must match one of the provided names if possible.
+7. «дай ответ X» / «спроси X» / «ответь X» → ask_ai.
+8. Default volume_up/down n=2 (~10%) if unspecified. Default seek n=2 if unspecified.
 
 EXAMPLES:
 User: "погромче немного"
@@ -97,6 +101,9 @@ User: "врубай ютубчик котики"
 
 User: "ну включи там второе"
 {"action":"play_nth","index":1}
+
+User: "перейди на канал"
+{"action":"go_to_channel"}
 
 User: "напиши Тиме чё там как дела"
 {"action":"send_telegram","contact":"Тима","message":"чё там как дела"}

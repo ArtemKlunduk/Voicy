@@ -1413,22 +1413,30 @@ fn cmd_listener_start(
                 return;
             }
 
-            // «Включи <часть названия>» — точное матчевание по title из
-            // последнего YouTube-поиска. Спасает от A/B вариаций ranking'а
-            // (когда «второе видео» каждый раз новое).
+            // «Включи <часть названия>» — сначала ищем в related videos текущего
+            // видео (справа на watch-странице), fallback на кэшированный поиск.
             if let Some(kws) = browser::parse_play_by_title(&text) {
                 info!("[listener] play-by-title: {:?}", kws);
-                match browser::play_youtube_by_title(&kws) {
+                match browser::play_related_by_title(&kws) {
                     Ok(url) => {
-                        push_event(&proxy, "log", &format!("✅ YouTube «{}» → {}", kws.join(" "), url));
+                        push_event(&proxy, "log", &format!("✅ YT related «{}» → {}", kws.join(" "), url));
                         push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
                         flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
                     }
-                    Err(e) => {
-                        warn!("[listener] play-by-title: {}", e);
-                        push_event(&proxy, "log", &format!("✗ play-by-title: {}", e));
-                        push_event(&proxy, "activity", "");
-                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    Err(_) => {
+                        match browser::play_youtube_by_title(&kws) {
+                            Ok(url) => {
+                                push_event(&proxy, "log", &format!("✅ YouTube «{}» → {}", kws.join(" "), url));
+                                push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                            }
+                            Err(e) => {
+                                warn!("[listener] play-by-title: {}", e);
+                                push_event(&proxy, "log", &format!("✗ play-by-title: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                            }
+                        }
                     }
                 }
                 return;
@@ -1443,6 +1451,25 @@ fn cmd_listener_start(
                 push_event(&proxy, "log", &format!("🎮 {:?}", action));
                 push_event(&proxy, "activity", "→ player");
                 flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                return;
+            }
+
+            // Перейти на канал автора текущего видео
+            if browser::parse_go_to_channel(&text) {
+                info!("[listener] go-to-channel");
+                match browser::go_to_channel() {
+                    Ok(url) => {
+                        push_event(&proxy, "log", &format!("✅ channel → {}", url));
+                        push_event(&proxy, "activity", "→ channel");
+                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                    }
+                    Err(e) => {
+                        warn!("[listener] go-to-channel: {}", e);
+                        push_event(&proxy, "log", &format!("✗ channel: {}", e));
+                        push_event(&proxy, "activity", "");
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    }
+                }
                 return;
             }
 
@@ -1706,14 +1733,24 @@ fn cmd_listener_start(
                                 return;
                             }
                             crate::intent_ai::Intent::PlayByTitle { keywords } => {
-                                match browser::play_youtube_by_title(&keywords) {
+                                // Сначала ищем в related videos текущего видео (справа на странице watch),
+                                // fallback на кэшированные search-результаты.
+                                match browser::play_related_by_title(&keywords) {
                                     Ok(url) => {
-                                        push_event(&proxy, "log", &format!("🤖→YT «{}» → {}", keywords.join(" "), url));
+                                        push_event(&proxy, "log", &format!("🤖→YT related «{}» → {}", keywords.join(" "), url));
                                         flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
                                     }
-                                    Err(e) => {
-                                        push_event(&proxy, "log", &format!("✗ AI play-title: {}", e));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                    Err(_) => {
+                                        match browser::play_youtube_by_title(&keywords) {
+                                            Ok(url) => {
+                                                push_event(&proxy, "log", &format!("🤖→YT «{}» → {}", keywords.join(" "), url));
+                                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                            }
+                                            Err(e) => {
+                                                push_event(&proxy, "log", &format!("✗ AI play-title: {}", e));
+                                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                            }
+                                        }
                                     }
                                 }
                                 return;
@@ -1739,6 +1776,19 @@ fn cmd_listener_start(
                                 // Gemini классифицировал. Не лезем — пусть юзер скажет «дай ответ».
                                 push_event(&proxy, "log", "🤖 для вопроса AI скажи «дай ответ <вопрос>»");
                                 flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                return;
+                            }
+                            crate::intent_ai::Intent::GoToChannel => {
+                                match browser::go_to_channel() {
+                                    Ok(url) => {
+                                        push_event(&proxy, "log", &format!("🤖→channel {}", url));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                    }
+                                    Err(e) => {
+                                        push_event(&proxy, "log", &format!("✗ AI channel: {}", e));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                    }
+                                }
                                 return;
                             }
                             crate::intent_ai::Intent::Unknown => {

@@ -34,6 +34,7 @@ mod startup;
 mod telegram;
 mod tts;
 mod ui;
+mod youtube_internal;
 
 /// Переносит данные из старых путей (рядом с exe) в новые (%APPDATA%/voicy).
 fn migrate_legacy_data() {
@@ -518,7 +519,67 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                 }
             }
 
-            // Проверяем браузерную команду
+            // --- Видео-плеер управление (громче, тише, пауза, etc.) ---
+            if let Some(action) = browser_action::parse(&text) {
+                info!("[hotkey] browser_action → {:?}", action);
+                browser_action::dispatch(action);
+                show_success();
+                schedule_hide();
+                return;
+            }
+
+            // --- Включи N-е видео из кэшированных результатов ---
+            if let Some(idx) = browser::parse_play_nth(&text) {
+                info!("[hotkey] play_nth → index {}", idx);
+                match browser::play_nth_youtube_result(idx) {
+                    Ok(url) => {
+                        info!("[hotkey] opened {}", url);
+                        show_success();
+                    }
+                    Err(e) => {
+                        warn!("[hotkey] play_nth: {}", e);
+                        show_error();
+                    }
+                }
+                schedule_hide();
+                return;
+            }
+
+            // --- Включи видео по названию (related → search cache) ---
+            if let Some(kws) = browser::parse_play_by_title(&text) {
+                info!("[hotkey] play_by_title → {:?}", kws);
+                match browser::play_youtube_by_title(&kws) {
+                    Ok(url) => {
+                        info!("[hotkey] opened {}", url);
+                        show_success();
+                    }
+                    Err(e) => {
+                        warn!("[hotkey] play_by_title: {}", e);
+                        show_error();
+                    }
+                }
+                schedule_hide();
+                return;
+            }
+
+            // --- Перейди на канал автора ---
+            if browser::parse_go_to_channel(&text) {
+                info!("[hotkey] go_to_channel");
+                match browser::go_to_channel() {
+                    Ok(url) => {
+                        info!("[hotkey] opened {}", url);
+                        show_success();
+                    }
+                    Err(e) => {
+                        warn!("[hotkey] go_to_channel: {}", e);
+                        show_error();
+                    }
+                }
+                schedule_hide();
+                return;
+            }
+
+            // --- Поисковые запросы (открой ютуб/google/tiktok/twitch) ---
             if let Some(cmd) = browser::parse(&text) {
                 info!("[hotkey] browser → {}: {}", cmd.provider, cmd.query);
                 if let Err(e) = browser::open(&cmd.url) {
@@ -529,6 +590,196 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                 }
                 schedule_hide();
                 return;
+            }
+
+            // --- AI intent fallback (Gemini) ---
+            if !cfg.gemini_api_key.is_empty() {
+                let ai_ctx = intent_ai::AiContext {
+                    contact_names: contacts.keys().cloned().collect(),
+                    has_recent_youtube: browser::last_youtube_query().is_some(),
+                };
+                match intent_ai::classify(&cfg.gemini_api_key, &text, &ai_ctx) {
+                    Ok(intent_ai::Intent::VolumeUp { n }) => {
+                        info!("[hotkey] AI intent → volume_up {}", n);
+                        browser_action::dispatch(browser_action::BrowserAction::VolumeUp(n));
+                        show_success();
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::VolumeDown { n }) => {
+                        info!("[hotkey] AI intent → volume_down {}", n);
+                        browser_action::dispatch(browser_action::BrowserAction::VolumeDown(n));
+                        show_success();
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::Fullscreen) => {
+                        info!("[hotkey] AI intent → fullscreen");
+                        browser_action::dispatch(browser_action::BrowserAction::Fullscreen);
+                        show_success();
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::PlayPause) => {
+                        info!("[hotkey] AI intent → play_pause");
+                        browser_action::dispatch(browser_action::BrowserAction::PlayPause);
+                        show_success();
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::SeekForward { n }) => {
+                        info!("[hotkey] AI intent → seek_forward {}", n);
+                        browser_action::dispatch(browser_action::BrowserAction::SeekForward(n));
+                        show_success();
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::SeekBackward { n }) => {
+                        info!("[hotkey] AI intent → seek_backward {}", n);
+                        browser_action::dispatch(browser_action::BrowserAction::SeekBackward(n));
+                        show_success();
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::Mute) => {
+                        info!("[hotkey] AI intent → mute");
+                        browser_action::dispatch(browser_action::BrowserAction::Mute);
+                        show_success();
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::OpenUrl { provider, query }) => {
+                        info!("[hotkey] AI intent → open_url {}: {}", provider, query);
+                        let url = match provider.as_str() {
+                            "youtube" | "ютуб" => {
+                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
+                                format!("https://www.youtube.com/results?search_query={}", enc)
+                            }
+                            "google" | "гугл" => {
+                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
+                                format!("https://www.google.com/search?q={}", enc)
+                            }
+                            "tiktok" | "тикток" => {
+                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
+                                format!("https://www.tiktok.com/search?q={}", enc)
+                            }
+                            "twitch" | "твич" => {
+                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
+                                format!("https://www.twitch.tv/search?term={}", enc)
+                            }
+                            _ => {
+                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
+                                format!("https://www.google.com/search?q={}", enc)
+                            }
+                        };
+                        if let Err(e) = browser::open(&url) {
+                            warn!("[hotkey] AI open_url: {}", e);
+                            show_error();
+                        } else {
+                            show_success();
+                        }
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::PlayNth { index }) => {
+                        info!("[hotkey] AI intent → play_nth {}", index);
+                        match browser::play_nth_youtube_result(index) {
+                            Ok(url) => {
+                                info!("[hotkey] opened {}", url);
+                                show_success();
+                            }
+                            Err(e) => {
+                                warn!("[hotkey] AI play_nth: {}", e);
+                                show_error();
+                            }
+                        }
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::PlayByTitle { keywords }) => {
+                        info!("[hotkey] AI intent → play_by_title {:?}", keywords);
+                        match browser::play_youtube_by_title(&keywords) {
+                            Ok(url) => {
+                                info!("[hotkey] opened {}", url);
+                                show_success();
+                            }
+                            Err(e) => {
+                                warn!("[hotkey] AI play_by_title: {}", e);
+                                show_error();
+                            }
+                        }
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::GoToChannel) => {
+                        info!("[hotkey] AI intent → go_to_channel");
+                        match browser::go_to_channel() {
+                            Ok(url) => {
+                                info!("[hotkey] opened {}", url);
+                                show_success();
+                            }
+                            Err(e) => {
+                                warn!("[hotkey] AI go_to_channel: {}", e);
+                                show_error();
+                            }
+                        }
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::SendTelegram { contact, message }) => {
+                        info!("[hotkey] AI intent → send_telegram {}: {}", contact, message);
+                        // Пытаемся найти контакт по имени из AI
+                        let found_uid = contacts.get(&contact.to_lowercase()).copied();
+                        if let Some(uid) = found_uid {
+                            let res = rt.block_on(async {
+                                telegram::send_message(&client, uid, &message).await
+                            });
+                            match res {
+                                Ok(()) => {
+                                    info!("[hotkey] ✅ → {} «{}»", uid, message);
+                                    show_success();
+                                }
+                                Err(e) => {
+                                    warn!("[hotkey] send: {}", e);
+                                    show_error();
+                                }
+                            }
+                        } else {
+                            warn!("[hotkey] AI contact '{}' not found", contact);
+                            show_error();
+                        }
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::AskAi { question }) => {
+                        info!("[hotkey] AI intent → ask_ai: {}", question);
+                        #[cfg(windows)]
+                        native_overlay::send(native_overlay::State::AiThinking);
+                        match ask_ai_assistant(&cfg, &ai, &question) {
+                            Ok(response) => {
+                                info!("[ai] ответ: {}", response);
+                                #[cfg(windows)]
+                                native_overlay::send(native_overlay::State::Success);
+                                if let Err(e) = tts::speak(&response) {
+                                    warn!("[ai] tts error: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("[ai] generation failed: {}", e);
+                                show_error();
+                            }
+                        }
+                        schedule_hide();
+                        return;
+                    }
+                    Ok(intent_ai::Intent::Unknown) => {
+                        // Не распознано AI — падаем в обычный parse (Telegram)
+                    }
+                    Err(e) => {
+                        warn!("[hotkey] intent_ai classify error: {}", e);
+                        // Падаем в обычный parse
+                    }
+                }
             }
 
             let (uid, message) = match contacts::parse_command(&text, &contacts) {

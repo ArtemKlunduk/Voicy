@@ -52,6 +52,7 @@ pub enum BrowserAction {
 ///   "выключи звук" / "mute"        → Mute
 pub fn parse(text: &str) -> Option<BrowserAction> {
     let t = normalize(text);
+    tracing::info!("[browser_action::parse] input='{}' normalized='{}'", text, t);
     if t.is_empty() {
         return None;
     }
@@ -62,6 +63,7 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
         || t == "mute"
         || t.contains("без звука")
     {
+        tracing::info!("[browser_action::parse] → Mute");
         return Some(BrowserAction::Mute);
     }
 
@@ -69,16 +71,20 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
     if let Some(n) = extract_percent(&t, &["громче", "сделай громче", "увеличь громкость", "погромче"]) {
         // YouTube ↑ = +5%. N% / 5 = количество нажатий, минимум 1.
         let presses = ((n + 4) / 5).max(1).min(20) as u8;
+        tracing::info!("[browser_action::parse] → VolumeUp({})", presses);
         return Some(BrowserAction::VolumeUp(presses));
     }
     if t.contains("громче") || t.contains("погромче") {
+        tracing::info!("[browser_action::parse] → VolumeUp(2)");
         return Some(BrowserAction::VolumeUp(2)); // ~10% по умолчанию
     }
     if let Some(n) = extract_percent(&t, &["тише", "сделай тише", "уменьши громкость", "потише"]) {
         let presses = ((n + 4) / 5).max(1).min(20) as u8;
+        tracing::info!("[browser_action::parse] → VolumeDown({})", presses);
         return Some(BrowserAction::VolumeDown(presses));
     }
     if t.contains("тише") || t.contains("потише") {
+        tracing::info!("[browser_action::parse] → VolumeDown(2)");
         return Some(BrowserAction::VolumeDown(2));
     }
 
@@ -88,22 +94,27 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
         || t.contains("фуллскрин")
         || t.contains("на весь экран")
     {
+        tracing::info!("[browser_action::parse] → Fullscreen");
         return Some(BrowserAction::Fullscreen);
     }
 
     // Seek
     if let Some(n) = extract_seconds(&t, &["перемотай вперёд", "перемотай вперед", "вперёд на", "вперед на"]) {
         let presses = ((n + 4) / 5).max(1).min(60) as u8;
+        tracing::info!("[browser_action::parse] → SeekForward({})", presses);
         return Some(BrowserAction::SeekForward(presses));
     }
     if let Some(n) = extract_seconds(&t, &["перемотай назад", "назад на"]) {
         let presses = ((n + 4) / 5).max(1).min(60) as u8;
+        tracing::info!("[browser_action::parse] → SeekBackward({})", presses);
         return Some(BrowserAction::SeekBackward(presses));
     }
     if t.contains("перемотай вперёд") || t.contains("перемотай вперед") {
+        tracing::info!("[browser_action::parse] → SeekForward(2)");
         return Some(BrowserAction::SeekForward(2)); // ~10s
     }
     if t.contains("перемотай назад") {
+        tracing::info!("[browser_action::parse] → SeekBackward(2)");
         return Some(BrowserAction::SeekBackward(2));
     }
 
@@ -118,15 +129,18 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
         || t.starts_with("стоп ")
         || t.contains("поставь на паузу")
     {
+        tracing::info!("[browser_action::parse] → PlayPause");
         return Some(BrowserAction::PlayPause);
     }
 
+    tracing::info!("[browser_action::parse] no match");
     None
 }
 
 /// Выполнить действие — отправить keystroke в активное окно.
 #[cfg(windows)]
 pub fn dispatch(action: BrowserAction) {
+    tracing::info!("[browser_action::dispatch] executing {:?}", action);
     match action {
         BrowserAction::VolumeUp(n) => press_repeat(VK_UP, n),
         BrowserAction::VolumeDown(n) => press_repeat(VK_DOWN, n),
