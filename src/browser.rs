@@ -63,20 +63,44 @@ pub fn parse(text: &str) -> Option<BrowserCmd> {
 
     // Список триггеров: (текст_триггера, название_провайдера, URL-шаблон)
     let triggers: &[(&str, &str, &str)] = &[
+        // --- YouTube ---
         ("открой youtube", "YouTube", "https://www.youtube.com/results?search_query={}"),
         ("открой ютуб", "YouTube", "https://www.youtube.com/results?search_query={}"),
+        ("открою youtube", "YouTube", "https://www.youtube.com/results?search_query={}"),
+        ("открою ютуб", "YouTube", "https://www.youtube.com/results?search_query={}"),
+        ("open youtube", "YouTube", "https://www.youtube.com/results?search_query={}"),
+        ("open ютуб", "YouTube", "https://www.youtube.com/results?search_query={}"),
         ("youtube", "YouTube", "https://www.youtube.com/results?search_query={}"),
         ("ютуб", "YouTube", "https://www.youtube.com/results?search_query={}"),
+        // ASR garbage
+        ("уоутуве", "YouTube", "https://www.youtube.com/results?search_query={}"),
+        // --- Google ---
         ("открой google", "Google", "https://www.google.com/search?q={}"),
         ("открой гугл", "Google", "https://www.google.com/search?q={}"),
+        ("открою google", "Google", "https://www.google.com/search?q={}"),
+        ("открою гугл", "Google", "https://www.google.com/search?q={}"),
+        ("open google", "Google", "https://www.google.com/search?q={}"),
+        ("open гугл", "Google", "https://www.google.com/search?q={}"),
         ("google", "Google", "https://www.google.com/search?q={}"),
         ("гугл", "Google", "https://www.google.com/search?q={}"),
+        // ASR garbage: mixed-script "google"
+        ("gооglе", "Google", "https://www.google.com/search?q={}"),
+        // --- TikTok ---
         ("открой tiktok", "TikTok", "https://www.tiktok.com/search?q={}"),
         ("открой тикток", "TikTok", "https://www.tiktok.com/search?q={}"),
+        ("открою tiktok", "TikTok", "https://www.tiktok.com/search?q={}"),
+        ("открою тикток", "TikTok", "https://www.tiktok.com/search?q={}"),
+        ("open tiktok", "TikTok", "https://www.tiktok.com/search?q={}"),
+        ("open тикток", "TikTok", "https://www.tiktok.com/search?q={}"),
         ("tiktok", "TikTok", "https://www.tiktok.com/search?q={}"),
         ("тикток", "TikTok", "https://www.tiktok.com/search?q={}"),
+        // --- Twitch ---
         ("открой twitch", "Twitch", "https://www.twitch.tv/search?term={}"),
         ("открой твич", "Twitch", "https://www.twitch.tv/search?term={}"),
+        ("открою twitch", "Twitch", "https://www.twitch.tv/search?term={}"),
+        ("открою твич", "Twitch", "https://www.twitch.tv/search?term={}"),
+        ("open twitch", "Twitch", "https://www.twitch.tv/search?term={}"),
+        ("open твич", "Twitch", "https://www.twitch.tv/search?term={}"),
         ("twitch", "Twitch", "https://www.twitch.tv/search?term={}"),
         ("твич", "Twitch", "https://www.twitch.tv/search?term={}"),
     ];
@@ -146,11 +170,69 @@ pub fn parse(text: &str) -> Option<BrowserCmd> {
 
 /// Открывает URL в системном браузере Windows.
 pub fn open(url: &str) -> Result<()> {
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .spawn()
-        .context("open browser")?;
+    let mut cmd = std::process::Command::new("cmd");
+    cmd.args(["/C", "start", "", url]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd.spawn().context("open browser")?;
     Ok(())
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Универсальный парсер «включи X» — разделяет на YouTube / Music / Ordinal
+// ────────────────────────────────────────────────────────────────────
+
+/// Результат парсинга play-запроса.
+#[derive(Debug, Clone)]
+pub enum PlayRequest {
+    /// «включи первое/второе/…» — индекс из кэшированных результатов YouTube.
+    Ordinal(usize),
+    /// «включи видео про котиков» — поиск на YouTube.
+    YouTube(Vec<String>),
+    /// «включи Кизару дежавю» — поиск музыки (YouTube Music).
+    Music(Vec<String>),
+}
+
+/// Универсальный парсер для всех play-команд.
+///
+/// Порядок разбора:
+/// 1. Ordinal («первое», «второе»…) → `PlayRequest::Ordinal`
+/// 2. Title-based — смотрим маркеры:
+///    - «видео/ролик/ютуб/song/track/музыка» → `PlayRequest::YouTube`
+///    - иначе → `PlayRequest::Music` (default)
+pub fn parse_play_request(text: &str) -> Option<PlayRequest> {
+    tracing::info!("[parse_play_request] input='{}'", text);
+    // 1. Ordinal
+    if let Some(idx) = parse_play_nth(text) {
+        tracing::info!("[parse_play_request] → Ordinal({})", idx);
+        return Some(PlayRequest::Ordinal(idx));
+    }
+
+    // 2. Title-based keywords
+    let kws = match parse_play_by_title(text) {
+        Some(k) => k,
+        None => {
+            tracing::info!("[parse_play_request] parse_play_by_title returned None");
+            return None;
+        }
+    };
+    tracing::info!("[parse_play_request] keywords={:?}", kws);
+
+    let t: String = text
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // «включи» — всегда музыка. Никаких различий между "видео" и "песня".
+    tracing::info!("[parse_play_request] → Music");
+    Some(PlayRequest::Music(kws))
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -174,21 +256,32 @@ pub fn parse_play_nth(text: &str) -> Option<usize> {
     tracing::debug!("[parse_play_nth] input='{}' normalized='{}'", text, t);
 
     // Триггеры действия — необязательны, имя порядкового числа уже достаточно.
-    let has_trigger = ["включи", "запусти", "открой", "проиграй", "плей"]
+    let has_trigger = ["включи", "запусти", "открой", "проиграй", "плей",
+                       "play", "start", "open"]
         .iter()
         .any(|t_str| t.contains(t_str));
 
     let ordinals: &[(&str, usize)] = &[
         ("первое", 0), ("первый", 0), ("первая", 0), ("1", 0),
+        ("first", 0),
         ("второе", 1), ("второй", 1), ("вторая", 1), ("2", 1),
+        ("second", 1),
         ("третье", 2), ("третий", 2), ("третья", 2), ("3", 2),
+        ("third", 2),
         ("четвёртое", 3), ("четвертое", 3), ("четвёртый", 3), ("четвертый", 3), ("4", 3),
+        ("fourth", 3),
         ("пятое", 4), ("пятый", 4), ("пятая", 4), ("5", 4),
+        ("fifth", 4),
         ("шестое", 5), ("шестой", 5), ("6", 5),
+        ("sixth", 5),
         ("седьмое", 6), ("седьмой", 6), ("7", 6),
+        ("seventh", 6),
         ("восьмое", 7), ("восьмой", 7), ("8", 7),
+        ("eighth", 7),
         ("девятое", 8), ("девятый", 8), ("9", 8),
+        ("ninth", 8),
         ("десятое", 9), ("десятый", 9), ("10", 9),
+        ("tenth", 9),
     ];
 
     for &(word, idx) in ordinals {
@@ -196,8 +289,8 @@ pub fn parse_play_nth(text: &str) -> Option<usize> {
         let needle = format!(" {} ", word);
         let padded = format!(" {} ", t);
         if padded.contains(&needle) {
-            // Требуем либо триггер, либо явное слово «видео»/«ролик».
-            if has_trigger || t.contains("видео") || t.contains("ролик") {
+            // Требуем либо триггер, либо явное слово «видео»/«ролик»/"video".
+            if has_trigger || t.contains("видео") || t.contains("ролик") || t.contains("video") || t.contains("track") {
                 tracing::info!("[parse_play_nth] matched ordinal '{}' → index {}", word, idx);
                 return Some(idx);
             }
@@ -234,7 +327,8 @@ pub fn parse_play_by_title(text: &str) -> Option<Vec<String>> {
         return None;
     }
 
-    let triggers = ["включи", "запусти", "проиграй", "плей", "найди"];
+    let triggers = ["включи", "запусти", "проиграй", "плей", "найди",
+                    "play", "start", "open", "find"];
     let mut trigger_pos = None;
     let mut trigger_len = 0;
     for &tr in &triggers {
@@ -254,7 +348,7 @@ pub fn parse_play_by_title(text: &str) -> Option<Vec<String>> {
     // Убираем слова «видео»/«ролик» если есть — они не часть title
     let kws: Vec<String> = after
         .split_whitespace()
-        .filter(|w| !matches!(*w, "видео" | "ролик" | "это" | "то" | "на" | "ютубе"))
+        .filter(|w| !matches!(*w, "видео" | "ролик" | "это" | "то" | "на" | "ютубе" | "песня" | "песню" | "песни" | "трек" | "трека" | "треки" | "музыка" | "музыку" | "музыки" | "song" | "songs" | "track" | "tracks" | "music"))
         .map(|s| s.to_string())
         .collect();
 
@@ -813,5 +907,29 @@ mod tests {
     #[test]
     fn title_parser_requires_trigger() {
         assert_eq!(parse_play_by_title("асмр одноклассница"), None);
+    }
+
+    #[test]
+    fn play_request_ordinal() {
+        let r = parse_play_request("включи первое видео").unwrap();
+        assert!(matches!(r, PlayRequest::Ordinal(0)));
+    }
+
+    #[test]
+    fn play_request_youtube_marker() {
+        let r = parse_play_request("включи видео про котиков").unwrap();
+        assert!(matches!(r, PlayRequest::YouTube(kws) if kws == vec!["про", "котиков"]));
+    }
+
+    #[test]
+    fn play_request_music_marker() {
+        let r = parse_play_request("включи песню Bohemian Rhapsody").unwrap();
+        assert!(matches!(r, PlayRequest::Music(kws) if kws.contains(&"bohemian".to_string()) && kws.contains(&"rhapsody".to_string())));
+    }
+
+    #[test]
+    fn play_request_default_music() {
+        let r = parse_play_request("включи Кизару дежавю").unwrap();
+        assert!(matches!(r, PlayRequest::Music(kws) if kws == vec!["кизару", "дежавю"]));
     }
 }

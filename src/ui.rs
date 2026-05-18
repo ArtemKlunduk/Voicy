@@ -3,7 +3,7 @@
 //!          login_phone, login_code, login_password, logout,
 //!          hotkey_set.
 
-use crate::{ai_assistant, asr, audio, browser, config, contacts as cts, hotkey, startup, telegram, tts};
+use crate::{ai_assistant, asr, audio, browser, config, contacts as cts, hotkey, music, startup, telegram, tts};
 use anyhow::Result;
 use grammers_client::Client;
 use grammers_client::types::PasswordToken;
@@ -270,9 +270,9 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                 .header(
                     "Content-Security-Policy",
                     "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; \
-                     script-src 'self' 'unsafe-inline' 'unsafe-eval'; \
+                     script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; \
                      style-src 'self' 'unsafe-inline'; \
-                     connect-src *; img-src * data:",
+                     connect-src *; img-src * data: https://i.ytimg.com https://s.ytimg.com; frame-src https://www.youtube.com",
                 )
                 .body(std::borrow::Cow::Borrowed(UI_HTML.as_bytes()))
                 .unwrap()
@@ -442,6 +442,13 @@ fn dispatch(
         "avatars_get" => cmd_avatars_get(rt, client, &msg.payload),
         "language_get" => cmd_language_get(cfg),
         "language_set" => cmd_language_set(cfg, cfg_path, &msg.payload),
+        "music_event" => cmd_music_event(&msg.payload),
+        "music_user_seek" => cmd_music_user_seek(&msg.payload, &proxy),
+        "music_user_stop" => cmd_music_user_stop(&proxy),
+        "music_user_next" => cmd_music_user_next(&proxy),
+        "feedback_config_get" => cmd_feedback_config_get(cfg),
+        "feedback_config_set" => cmd_feedback_config_set(cfg, cfg_path, &msg.payload),
+        "feedback_send" => cmd_feedback_send(rt, client, cfg, &msg.payload),
         "_window_close" => {
             let _ = proxy.send_event(UiLoopEvent::WindowClose);
             serde_json::json!({ "ok": true })
@@ -729,7 +736,7 @@ fn cmd_rec_lang_set(
     cfg_path: &PathBuf,
     payload: &serde_json::Value,
 ) -> serde_json::Value {
-    let val = payload.get("language").and_then(|v| v.as_str()).unwrap_or("ru").to_string();
+    let val = payload.get("language").and_then(|v| v.as_str()).unwrap_or("auto").to_string();
     let mut c = cfg.lock();
     c.recognition_language = val.clone();
     if let Err(e) = c.save(cfg_path) {
@@ -747,6 +754,61 @@ fn cmd_rec_lang_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
 fn cmd_theme_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
     let c = cfg.lock();
     serde_json::json!({ "ok": true, "theme": c.ui_theme })
+}
+
+fn cmd_feedback_config_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({
+        "ok": true,
+        "username": c.feedback_dev_username,
+        "uid": c.feedback_dev_uid,
+    })
+}
+
+fn cmd_feedback_config_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let uid = payload.get("uid").and_then(|v| v.as_i64()).unwrap_or(0);
+    let mut c = cfg.lock();
+    c.feedback_dev_username = username;
+    c.feedback_dev_uid = uid;
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    serde_json::json!({ "ok": true })
+}
+
+fn cmd_feedback_send(
+    rt: &Arc<tokio::runtime::Runtime>,
+    client: &Arc<Mutex<Option<Client>>>,
+    cfg: &Arc<Mutex<config::Config>>,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let text = payload.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if text.trim().is_empty() {
+        return err("empty feedback text");
+    }
+    let cfg_c = cfg.lock().clone();
+    let dev_uid = cfg_c.feedback_dev_uid;
+    if dev_uid == 0 {
+        return err("developer uid not configured");
+    }
+    let client_opt = client.lock().clone();
+    let Some(c) = client_opt else {
+        return err("telegram client not connected");
+    };
+    match rt.block_on(async {
+        if !crate::telegram::is_signed_in(&c).await? {
+            return Err(anyhow::anyhow!("not signed in"));
+        }
+        crate::telegram::send_message(&c, dev_uid, &text).await
+    }) {
+        Ok(()) => serde_json::json!({ "ok": true }),
+        Err(e) => err(format!("send failed: {}", e)),
+    }
 }
 
 /// Получить avatar'ы для списка UID. Возвращает `{uid: data_url}` для тех,
@@ -813,6 +875,93 @@ fn cmd_language_set(
     }
     info!("[ui] language updated: {}", val);
     serde_json::json!({ "ok": true, "language": val })
+}
+
+fn cmd_music_event(payload: &serde_json::Value) -> serde_json::Value {
+    let evt_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+    match evt_type {
+        "play" => {
+            crate::music::resume();
+            info!("[ui-music] JS event: play");
+        }
+        "pause" => {
+            crate::music::pause();
+            info!("[ui-music] JS event: pause");
+        }
+        "ended" => {
+            crate::music::stop();
+            info!("[ui-music] JS event: ended");
+        }
+        "stop" => {
+            crate::music::stop();
+            info!("[ui-music] JS event: stop");
+        }
+        _ => {
+            info!("[ui-music] JS event: {}", evt_type);
+        }
+    }
+    serde_json::json!({ "ok": true })
+}
+
+fn cmd_music_user_seek(
+    payload: &serde_json::Value,
+    _proxy: &EventLoopProxy<UiLoopEvent>,
+) -> serde_json::Value {
+    let seconds = payload.get("seconds").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    crate::music::seek(seconds as u32);
+    info!("[ui-music] user seek → {}s", seconds);
+    serde_json::json!({ "ok": true })
+}
+
+fn cmd_music_user_stop(proxy: &EventLoopProxy<UiLoopEvent>) -> serde_json::Value {
+    crate::music::stop();
+    info!("[ui-music] user stop");
+    // Отправляем обратно в JS чтобы скрыть виджет (на случай если остановка
+    // пришла из голосовой команды, а JS ещё не знает).
+    let js = "window.voicyMusicStop && window.voicyMusicStop();".to_string();
+    let _ = proxy.send_event(UiLoopEvent::EvalJs(js));
+    serde_json::json!({ "ok": true })
+}
+
+fn cmd_music_user_next(proxy: &EventLoopProxy<UiLoopEvent>) -> serde_json::Value {
+    let current = crate::music::current_track();
+    let (artist, title) = match current.as_ref() {
+        Some(t) => (t.artist.clone(), t.title.clone()),
+        None => {
+            warn!("[ui-music] next track requested but no current track");
+            return serde_json::json!({ "ok": false, "error": "no current track" });
+        }
+    };
+    // Если артист похож на UGC-канал, пытаемся вытащить реального артиста из title
+    let effective_artist = if crate::music::is_ugc_artist(&artist) {
+        crate::music::extract_artist_from_title(&title)
+            .unwrap_or_else(|| {
+                warn!("[ui-music] UGC artist '{}', could not extract from title '{}', falling back", artist, title);
+                artist
+            })
+    } else {
+        artist
+    };
+    let exclude = current.map(|t| t.video_id.clone());
+    match crate::music::play_random_by_artist(&effective_artist, exclude.as_deref()) {
+        Ok(track) => {
+            info!("[ui-music] next track → {} — {}", track.title, track.artist);
+            let js = format!(
+                "window.voicyMusicPlay && window.voicyMusicPlay({}, {}, {}, {}, {});",
+                serde_json::to_string(&track.video_id).unwrap_or_default(),
+                serde_json::to_string(&track.title).unwrap_or_default(),
+                serde_json::to_string(&track.artist).unwrap_or_default(),
+                serde_json::to_string(&track.thumbnail).unwrap_or_default(),
+                serde_json::to_string(&track.duration).unwrap_or_default()
+            );
+            let _ = proxy.send_event(UiLoopEvent::EvalJs(js));
+            serde_json::json!({ "ok": true })
+        }
+        Err(e) => {
+            warn!("[ui-music] next track failed: {}", e);
+            serde_json::json!({ "ok": false, "error": e.to_string() })
+        }
+    }
 }
 
 fn cmd_ai_model_download(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
@@ -1128,6 +1277,39 @@ fn flash_overlay(proxy: &EventLoopProxy<UiLoopEvent>, ev: UiLoopEvent) {
     });
 }
 
+/// Выбрать ASR-модель для inference: сначала проверяем скачанность
+/// сконфигурированной, затем идём по списку fallback'ов.
+fn resolve_inference_model(configured: &str, proxy: &EventLoopProxy<UiLoopEvent>) -> String {
+    let active_ok = asr::model_meta(configured)
+        .filter(|m| matches!(m.engine, "whisper" | "nemo") && asr::model_is_downloaded(m.name))
+        .map(|m| m.name.to_string());
+    let chosen = active_ok.or_else(|| {
+        const PREFERRED: &[&str] = &[
+            "parakeet-v3", "parakeet-v2",
+            "large-v3", "turbo", "medium", "small", "base", "tiny",
+        ];
+        PREFERRED
+            .iter()
+            .find(|name| asr::model_is_downloaded(name))
+            .map(|s| s.to_string())
+    });
+    let inference_model = chosen.unwrap_or_else(|| {
+        warn!("[listener] no ASR model downloaded — using configured model anyway");
+        configured.to_string()
+    });
+    if inference_model != configured {
+        push_event(
+            proxy,
+            "log",
+            &format!(
+                "ℹ inference fallback: «{}» → «{}»",
+                configured, inference_model
+            ),
+        );
+    }
+    inference_model
+}
+
 fn cmd_listener_start(
     cfg: &Arc<Mutex<config::Config>>,
     rt: &Arc<tokio::runtime::Runtime>,
@@ -1147,37 +1329,7 @@ fn cmd_listener_start(
     }
 
     // Active = whisper или nemo (Parakeet). transcribe_wav сама свалится на whisper если nemo не сработал.
-    let active_ok = asr::model_meta(&cfg_c.model)
-        .filter(|m| matches!(m.engine, "whisper" | "nemo") && asr::model_is_downloaded(m.name))
-        .map(|m| m.name.to_string());
-    let chosen = active_ok.or_else(|| {
-        const PREFERRED: &[&str] = &[
-            "parakeet-v3", "parakeet-v2",
-            "large-v3", "turbo", "medium", "small", "base", "tiny",
-        ];
-        PREFERRED
-            .iter()
-            .find(|name| asr::model_is_downloaded(name))
-            .map(|s| s.to_string())
-    });
-    let inference_model = chosen.unwrap_or_else(|| {
-        warn!("[listener] no ASR model downloaded — using configured model anyway");
-        cfg_c.model.clone()
-    });
-
-    // whisper-cli нужен только если inference пойдёт через whisper. Если
-    // активный движок — Parakeet (nemo), whisper-cli может отсутствовать.
-    // Проверка whisper-cli происходит уже в transcribe_wav_whisper, не тут.
-    if inference_model != cfg_c.model {
-        push_event(
-            proxy,
-            "log",
-            &format!(
-                "ℹ inference fallback: «{}» → «{}»",
-                cfg_c.model, inference_model
-            ),
-        );
-    }
+    let inference_model = resolve_inference_model(&cfg_c.model, proxy);
     cfg_c.model = inference_model;
 
     // Login check — НЕ блокирует старт листенера.
@@ -1303,7 +1455,7 @@ fn cmd_listener_start(
     let rec_release = recording.clone();
     let running_release = running.clone();
     let processing_release = processing.clone();
-    let cfg_thr = cfg_c.clone();
+    let cfg_arc = cfg.clone();
     let client_slot_thr = client.clone();
     let rt_thr = rt.clone();
     let ai_slot_thr = ai_assistant_release.clone();
@@ -1317,7 +1469,6 @@ fn cmd_listener_start(
         let Some((stop, h)) = pair else { return };
         stop.store(true, Ordering::Release);
         let res = h.join();
-        let cfg = cfg_thr.clone();
         let client_slot = client_slot_thr.clone();
         let rt = rt_thr.clone();
         let proxy = proxy_release.clone();
@@ -1329,7 +1480,14 @@ fn cmd_listener_start(
         // pipeline не завершится (или не упадёт в panic guard ниже).
         processing_release.store(true, Ordering::Release);
         let processing_done = processing_release.clone();
+        let cfg_for_thread = cfg_arc.clone();
+        let proxy_for_thread = proxy.clone();
         std::thread::spawn(move || {
+            // Читаем актуальный конфиг из Arc — чтобы runtime-изменения
+            // (ai_assistant_enabled, ai_model, gemini_key и т.д.) подхватывались
+            // без перезапуска listener'а.
+            let mut cfg = cfg_for_thread.lock().clone();
+            cfg.model = resolve_inference_model(&cfg.model, &proxy_for_thread);
             // Внешний catch_unwind гарантирует что даже если pipeline где-то
             // паникует (например ParakeetModel::load c битыми весами),
             // overlay-бары не залипают — мы покажем ✗ крест и скроем.
@@ -1393,46 +1551,72 @@ fn cmd_listener_start(
                 return;
             }
 
-            // «Включи N-е видео» — повторно скрейпим последний YouTube-запрос
-            // и открываем /watch?v=…&autoplay=1 для N-го результата.
-            if let Some(idx) = browser::parse_play_nth(&text) {
-                info!("[listener] play-nth-youtube: idx={}", idx);
-                match browser::play_nth_youtube_result(idx) {
-                    Ok(url) => {
-                        push_event(&proxy, "log", &format!("✅ YouTube #{} → {}", idx + 1, url));
-                        push_event(&proxy, "activity", &format!("→ video #{}", idx + 1));
-                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                    }
-                    Err(e) => {
-                        warn!("[listener] play-nth: {}", e);
-                        push_event(&proxy, "log", &format!("✗ play-nth: {}", e));
-                        push_event(&proxy, "activity", "");
-                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                    }
-                }
-                return;
-            }
-
-            // «Включи <часть названия>» — сначала ищем в related videos текущего
-            // видео (справа на watch-странице), fallback на кэшированный поиск.
-            if let Some(kws) = browser::parse_play_by_title(&text) {
-                info!("[listener] play-by-title: {:?}", kws);
-                match browser::play_related_by_title(&kws) {
-                    Ok(url) => {
-                        push_event(&proxy, "log", &format!("✅ YT related «{}» → {}", kws.join(" "), url));
-                        push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
-                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                    }
-                    Err(_) => {
-                        match browser::play_youtube_by_title(&kws) {
+            // --- Универсальный play: ordinal / YouTube / Music ---
+            if let Some(req) = browser::parse_play_request(&text) {
+                match req {
+                    browser::PlayRequest::Ordinal(idx) => {
+                        info!("[listener] play-nth-youtube: idx={}", idx);
+                        match browser::play_nth_youtube_result(idx) {
                             Ok(url) => {
-                                push_event(&proxy, "log", &format!("✅ YouTube «{}» → {}", kws.join(" "), url));
-                                push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
+                                push_event(&proxy, "log", &format!("✅ YouTube #{} → {}", idx + 1, url));
+                                push_event(&proxy, "activity", &format!("→ video #{}", idx + 1));
                                 flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
                             }
                             Err(e) => {
-                                warn!("[listener] play-by-title: {}", e);
-                                push_event(&proxy, "log", &format!("✗ play-by-title: {}", e));
+                                warn!("[listener] play-nth: {}", e);
+                                push_event(&proxy, "log", &format!("✗ play-nth: {}", e));
+                                push_event(&proxy, "activity", "");
+                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                            }
+                        }
+                    }
+                    browser::PlayRequest::YouTube(kws) => {
+                        info!("[listener] play-by-title (YouTube): {:?}", kws);
+                        match browser::play_related_by_title(&kws) {
+                            Ok(url) => {
+                                push_event(&proxy, "log", &format!("✅ YT related «{}» → {}", kws.join(" "), url));
+                                push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                            }
+                            Err(_) => {
+                                match browser::play_youtube_by_title(&kws) {
+                                    Ok(url) => {
+                                        push_event(&proxy, "log", &format!("✅ YouTube «{}» → {}", kws.join(" "), url));
+                                        push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
+                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                                    }
+                                    Err(e) => {
+                                        warn!("[listener] play-by-title: {}", e);
+                                        push_event(&proxy, "log", &format!("✗ play-by-title: {}", e));
+                                        push_event(&proxy, "activity", "");
+                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    browser::PlayRequest::Music(kws) => {
+                        let query = kws.join(" ");
+                        info!("[listener] play-music: {}", query);
+                        match music::search_and_play(&query) {
+                            Ok(track) => {
+                                // Отправляем IPC в UI WebView для запуска скрытого плеера
+                                let js = format!(
+                                    "window.voicyMusicPlay && window.voicyMusicPlay({}, {}, {}, {}, {});",
+                                    serde_json::to_string(&track.video_id).unwrap_or_default(),
+                                    serde_json::to_string(&track.title).unwrap_or_default(),
+                                    serde_json::to_string(&track.artist).unwrap_or_default(),
+                                    serde_json::to_string(&track.thumbnail).unwrap_or_default(),
+                                    serde_json::to_string(&track.duration).unwrap_or_default()
+                                );
+                                let _ = proxy.send_event(UiLoopEvent::EvalJs(js));
+                                push_event(&proxy, "log", &format!("✅ Music «{}» → {}", query, track.video_id));
+                                push_event(&proxy, "activity", &format!("→ {} — {}", track.title, track.artist));
+                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                            }
+                            Err(e) => {
+                                warn!("[listener] play-music: {}", e);
+                                push_event(&proxy, "log", &format!("✗ play-music: {}", e));
                                 push_event(&proxy, "activity", "");
                                 flash_overlay(&proxy, UiLoopEvent::OverlayError);
                             }
@@ -1475,19 +1659,32 @@ fn cmd_listener_start(
 
             // --- ИИ-ассистент ---
             if cfg.ai_assistant_enabled {
-                let ai_trigger = ["дай ответ", "ответь", "вопрос", "спроси"];
-                let text_lower = text.to_lowercase();
+                let ai_trigger = ["дай ответ", "ответь", "вопрос", "спроси",
+                                    "give answer", "give an answer", "give me answer",
+                                    "answer", "question", "ask"];
+                // Нормализация ASR-текста: пунктуация → пробелы, схлопываем дубли.
+                let normalized: String = text
+                    .to_lowercase()
+                    .chars()
+                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '\t' { c } else { ' ' })
+                    .collect();
+                let text_lower: String = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
 
                 // Проверяем: сказали ли триггер + вопрос сразу (одной фразой)
                 let mut question_immediate: Option<String> = None;
+                info!("[ai] checking triggers against: '{}'", text_lower);
                 for trigger in &ai_trigger {
                     if let Some(pos) = text_lower.find(trigger) {
-                        let after = text[pos + trigger.len()..].trim();
+                        let after = text_lower[pos + trigger.len()..].trim();
+                        info!("[ai] trigger matched: '{}' → after='{}'", trigger, after);
                         if !after.is_empty() {
                             question_immediate = Some(after.to_string());
                         }
                         break;
                     }
+                }
+                if question_immediate.is_none() {
+                    info!("[ai] no immediate question found");
                 }
 
                 // Если триггер + вопрос сразу — отправляем без режима ожидания
@@ -1497,60 +1694,22 @@ fn cmd_listener_start(
                     push_event(&proxy, "log", &format!("🤖 вопрос: {}", question));
                     let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
 
-                    let ai_kind = ai_assistant::AiModel::from_config_str(&cfg.ai_model);
-                    let mut ai_guard = ai_slot.lock();
-                    // Сменили модель в конфиге — выкинуть старую из слота.
-                    if let Some(ref a) = *ai_guard {
-                        if a.kind() != ai_kind {
-                            *ai_guard = None;
+                    match crate::ask_ai_assistant(&cfg, &ai_slot, &question) {
+                        Ok(response) => {
+                            info!("[ai] ответ: {}", response);
+                            push_event(&proxy, "log", &format!("🤖 {}", response));
+                            push_event(&proxy, "activity", "🤖 отвечаю...");
+                            if let Err(e) = tts::speak(&response, &cfg.ai_language) {
+                                warn!("[ai] tts error: {}", e);
+                                push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
+                            }
+                            flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
                         }
-                    }
-                    if ai_guard.is_none() {
-                        if !ai_assistant::AiAssistant::is_model_cached(ai_kind) {
-                            push_event(&proxy, "log", &format!("🤖 загрузка модели {}…", ai_kind.display_name()));
-                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync(ai_kind) {
-                                warn!("[ai] download failed: {}", e);
-                                push_event(&proxy, "log", &format!("✗ ИИ загрузка: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                return;
-                            }
-                        }
-                        match ai_assistant::AiAssistant::load_if_cached(ai_kind) {
-                            Ok(Some(a)) => { *ai_guard = Some(a); }
-                            Ok(None) => {
-                                push_event(&proxy, "log", "✗ ИИ модель не загрузилась");
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                return;
-                            }
-                            Err(e) => {
-                                push_event(&proxy, "log", &format!("✗ ИИ load: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                return;
-                            }
-                        }
-                    }
-
-                    if let Some(ref mut assistant) = *ai_guard {
-                        match assistant.ask(&question) {
-                            Ok(response) => {
-                                info!("[ai] ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
-                                push_event(&proxy, "log", &format!("🤖 {} ({} tok/s)", response.text, response.tokens_per_second));
-                                push_event(&proxy, "activity", "🤖 отвечаю...");
-                                if let Err(e) = tts::speak(&response.text) {
-                                    warn!("[ai] tts error: {}", e);
-                                    push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
-                                }
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                            }
-                            Err(e) => {
-                                warn!("[ai] generation failed: {}", e);
-                                push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                            }
+                        Err(e) => {
+                            warn!("[ai] generation failed: {}", e);
+                            push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
+                            push_event(&proxy, "activity", "");
+                            flash_overlay(&proxy, UiLoopEvent::OverlayError);
                         }
                     }
                     return;
@@ -1563,60 +1722,22 @@ fn cmd_listener_start(
                     push_event(&proxy, "log", &format!("🤖 вопрос: {}", text));
                     let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
 
-                    let ai_kind = ai_assistant::AiModel::from_config_str(&cfg.ai_model);
-                    let mut ai_guard = ai_slot.lock();
-                    // Сменили модель в конфиге — выкинуть старую из слота.
-                    if let Some(ref a) = *ai_guard {
-                        if a.kind() != ai_kind {
-                            *ai_guard = None;
+                    match crate::ask_ai_assistant(&cfg, &ai_slot, &text) {
+                        Ok(response) => {
+                            info!("[ai] ответ: {}", response);
+                            push_event(&proxy, "log", &format!("🤖 {}", response));
+                            push_event(&proxy, "activity", "🤖 отвечаю...");
+                            if let Err(e) = tts::speak(&response, &cfg.ai_language) {
+                                warn!("[ai] tts error: {}", e);
+                                push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
+                            }
+                            flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
                         }
-                    }
-                    if ai_guard.is_none() {
-                        if !ai_assistant::AiAssistant::is_model_cached(ai_kind) {
-                            push_event(&proxy, "log", &format!("🤖 загрузка модели {}…", ai_kind.display_name()));
-                            if let Err(e) = ai_assistant::AiAssistant::download_model_sync(ai_kind) {
-                                warn!("[ai] download failed: {}", e);
-                                push_event(&proxy, "log", &format!("✗ ИИ загрузка: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                return;
-                            }
-                        }
-                        match ai_assistant::AiAssistant::load_if_cached(ai_kind) {
-                            Ok(Some(a)) => { *ai_guard = Some(a); }
-                            Ok(None) => {
-                                push_event(&proxy, "log", "✗ ИИ модель не загрузилась");
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                return;
-                            }
-                            Err(e) => {
-                                push_event(&proxy, "log", &format!("✗ ИИ load: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                return;
-                            }
-                        }
-                    }
-
-                    if let Some(ref mut assistant) = *ai_guard {
-                        match assistant.ask(&text) {
-                            Ok(response) => {
-                                info!("[ai] ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
-                                push_event(&proxy, "log", &format!("🤖 {} ({} tok/s)", response.text, response.tokens_per_second));
-                                push_event(&proxy, "activity", "🤖 отвечаю...");
-                                if let Err(e) = tts::speak(&response.text) {
-                                    warn!("[ai] tts error: {}", e);
-                                    push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
-                                }
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                            }
-                            Err(e) => {
-                                warn!("[ai] generation failed: {}", e);
-                                push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                            }
+                        Err(e) => {
+                            warn!("[ai] generation failed: {}", e);
+                            push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
+                            push_event(&proxy, "activity", "");
+                            flash_overlay(&proxy, UiLoopEvent::OverlayError);
                         }
                     }
                     return;
@@ -1803,10 +1924,14 @@ fn cmd_listener_start(
                 }
             }
 
+            info!("[listener] trying contacts::parse_command with text='{}'", text);
             let (uid, message) = match tg_intent_resolved {
                 Some(x) => x,
                 None => match cts::parse_command(&text, &contacts) {
-                Ok(x) => x,
+                Ok(x) => {
+                    info!("[listener] contacts parsed: uid={} msg='{}'", x.0, x.1);
+                    x
+                },
                 Err(e) => {
                     warn!("[listener] {}", e);
                     // Контакт не нашли → копируем распознанный текст в буфер
@@ -2097,4 +2222,9 @@ fn cmd_logout(
     telegram::set_auth_snapshot(telegram::AuthSnapshot::default());
     serde_json::json!({ "ok": true })
 }
+
+
+// force rebuild 1721589229
+
+// rebuild 1548951036
 

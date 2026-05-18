@@ -78,6 +78,12 @@ pub struct Config {
     /// Дефолт — qwen-0.5b (минимальный RAM-overhead ~400 МБ).
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
+    /// Telegram username разработчика для вкладки Feedback (без @).
+    #[serde(default)]
+    pub feedback_dev_username: String,
+    /// Telegram User ID разработчика для прямой отправки feedback.
+    #[serde(default)]
+    pub feedback_dev_uid: i64,
 }
 
 fn default_theme() -> String { "light".into() }
@@ -111,7 +117,7 @@ impl Default for Config {
             model: "parakeet-v3".into(),
             hotkey: Hotkey::default(),
             telegram: Telegram::default(),
-            recognition_language: "ru".into(),
+            recognition_language: "auto".into(),
             ui_theme: "light".into(),
             preload_model: true,
             ai_assistant_enabled: true,
@@ -121,6 +127,8 @@ impl Default for Config {
             gemini_api_key: String::new(),
             ai_language: "en".into(),
             ai_model: "qwen-0.5b".into(),
+            feedback_dev_username: String::new(),
+            feedback_dev_uid: 0,
         }
     }
 }

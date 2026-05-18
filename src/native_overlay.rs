@@ -240,26 +240,33 @@ unsafe fn render_and_push(hwnd: HWND, state: State, elapsed_ms: u32) {
 
     match state {
         State::Recording => {
+            draw_glow(&mut pixmap, CENTER, CENTER, sage_soft(), ORB_R + 10.0, 0.18);
             draw_halo_rings(&mut pixmap, elapsed_ms, sage());
             draw_orb(&mut pixmap, sage_soft());
             draw_mic_icon(&mut pixmap, moss());
         }
         State::Success => {
+            draw_glow(&mut pixmap, CENTER, CENTER, sage_deep(), ORB_R + 10.0, 0.18);
             draw_orb(&mut pixmap, sage_deep());
             draw_check_icon(&mut pixmap, white());
         }
         State::Error => {
+            draw_glow(&mut pixmap, CENTER, CENTER, danger(), ORB_R + 10.0, 0.18);
             draw_orb(&mut pixmap, danger());
             draw_x_icon(&mut pixmap, white());
         }
         State::AiListening => {
+            let orb_c = Color::from_rgba8(0xB8, 0xD4, 0xE8, 0xFF);
+            draw_glow(&mut pixmap, CENTER, CENTER, orb_c, ORB_R + 10.0, 0.18);
             draw_halo_rings(&mut pixmap, elapsed_ms, Color::from_rgba8(0x7B, 0x9E, 0xC9, 0xFF));
-            draw_orb(&mut pixmap, Color::from_rgba8(0xB8, 0xD4, 0xE8, 0xFF));
+            draw_orb(&mut pixmap, orb_c);
             draw_mic_icon(&mut pixmap, Color::from_rgba8(0x2E, 0x4A, 0x6E, 0xFF));
         }
         State::AiThinking => {
+            let orb_c = Color::from_rgba8(0xF0, 0xD4, 0xA8, 0xFF);
+            draw_glow(&mut pixmap, CENTER, CENTER, orb_c, ORB_R + 10.0, 0.18);
             draw_halo_rings(&mut pixmap, elapsed_ms, Color::from_rgba8(0xD4, 0xA5, 0x6A, 0xFF));
-            draw_orb(&mut pixmap, Color::from_rgba8(0xF0, 0xD4, 0xA8, 0xFF));
+            draw_orb(&mut pixmap, orb_c);
             draw_spinner_icon(&mut pixmap, elapsed_ms, Color::from_rgba8(0x6B, 0x4A, 0x2A, 0xFF));
         }
         State::Hidden => return,
@@ -320,6 +327,29 @@ fn draw_orb(pixmap: &mut Pixmap, color: Color) {
             Transform::identity(),
             None,
         );
+    }
+}
+
+/// Мягкое свечение вокруг orb — скрывает рваные края на прозрачном фоне.
+fn draw_glow(pixmap: &mut Pixmap, cx: f32, cy: f32, color: Color, max_radius: f32, strength: f32) {
+    let steps = 6;
+    for i in 1..=steps {
+        let t = i as f32 / steps as f32;
+        let radius = ORB_R + t * (max_radius - ORB_R);
+        let opacity = strength * (1.0 - t) * (1.0 - t);
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba(
+            color.red(),
+            color.green(),
+            color.blue(),
+            opacity,
+        ).unwrap_or(color));
+        paint.anti_alias = true;
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx, cy, radius);
+        if let Some(path) = pb.finish() {
+            pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        }
     }
 }
 
@@ -506,22 +536,40 @@ unsafe fn push_pixmap_to_window(hwnd: HWND, pixmap: &Pixmap) {
     }
     let old = SelectObject(mem_dc, bmp);
 
-    // Конвертируем RGBA non-premul → BGRA premul.
+    // Конвертируем RGBA non-premul → BGRA premul + feather по краям окна.
     let src = pixmap.data(); // &[u8] длины W*H*4 в порядке RGBA
     let dst = std::slice::from_raw_parts_mut(bits as *mut u8, src.len());
+    let win_w = WIN_W as usize;
+    let win_h = WIN_H as usize;
+    let feather_px = 10.0f32;
     for i in (0..src.len()).step_by(4) {
+        let pixel = i / 4;
+        let x = (pixel % win_w) as i32;
+        let y = (pixel / win_w) as i32;
+
+        let dx = f32::min(x as f32, (win_w - 1 - x as usize) as f32);
+        let dy = f32::min(y as f32, (win_h - 1 - y as usize) as f32);
+        let dist = f32::min(dx, dy);
+
         let r = src[i] as u32;
         let g = src[i + 1] as u32;
         let b = src[i + 2] as u32;
         let a = src[i + 3] as u32;
-        // premultiply
-        let pr = (r * a / 255) as u8;
-        let pg = (g * a / 255) as u8;
-        let pb = (b * a / 255) as u8;
+
+        let a_f = if dist < feather_px {
+            (a as f32 * (dist / feather_px)).max(0.0).min(255.0)
+        } else {
+            a as f32
+        };
+        let a_u = a_f as u8;
+
+        let pr = (r * a_u as u32 / 255) as u8;
+        let pg = (g * a_u as u32 / 255) as u8;
+        let pb = (b * a_u as u32 / 255) as u8;
         dst[i] = pb;
         dst[i + 1] = pg;
         dst[i + 2] = pr;
-        dst[i + 3] = a as u8;
+        dst[i + 3] = a_u;
     }
 
     let size = windows_sys::Win32::Foundation::SIZE { cx: WIN_W, cy: WIN_H };

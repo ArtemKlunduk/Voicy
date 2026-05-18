@@ -148,6 +148,9 @@ const TRIGGERS: &[&str] = &[
     "пиши", "пишите",
     "отправь", "отправьте", "отправит",
     "напишет",
+    // English
+    "write", "right", "wright", "rite",
+    "text", "send", "message",
 ];
 
 /// Распарсить распознанный текст: «<триггер> имя текст» → (uid, message) или ошибка.
@@ -223,8 +226,19 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
     // берём как есть. Иначе пробуем самый длинный контакт-алиас как char-префикс
     // первого слова: «чинепривет»→«чине»+«привет».
     let (name, message) = extract_name_and_message(&rest, contacts);
-    let name = name.trim().to_string();
-    let message = message.trim().to_string();
+    let mut name = name.trim().to_string();
+    let mut message = message.trim().to_string();
+
+    // Пропускаем распространённые предлоги: «write to dan» → «write dan»
+    const PREPOSITIONS: &[&str] = &["to", "к", "в", "на", "for"];
+    if PREPOSITIONS.contains(&name.as_str()) {
+        // name — предлог, берём первое слово message как имя
+        let msg_words: Vec<&str> = message.split_whitespace().collect();
+        if !msg_words.is_empty() {
+            name = msg_words[0].to_string();
+            message = msg_words[1..].join(" ");
+        }
+    }
 
     if name.is_empty() {
         return Err("имя получателя не указано".into());
@@ -668,6 +682,71 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши чинепривет", &c).unwrap();
         assert_eq!(uid, 1001);
+        assert_eq!(msg, "привет");
+    }
+
+    #[test]
+    fn trigger_write_english() {
+        let mut c = sample_contacts();
+        c.insert("dan".into(), 4004);
+        let (uid, msg) = parse_command("write dan hello there", &c).unwrap();
+        assert_eq!(uid, 4004);
+        assert_eq!(msg, "hello there");
+    }
+
+    #[test]
+    fn trigger_send_english() {
+        let mut c = sample_contacts();
+        c.insert("alice".into(), 5005);
+        let (uid, msg) = parse_command("send alice how are you", &c).unwrap();
+        assert_eq!(uid, 5005);
+        assert_eq!(msg, "how are you");
+    }
+
+    #[test]
+    fn trigger_text_english() {
+        let mut c = sample_contacts();
+        c.insert("bob".into(), 6006);
+        let (uid, msg) = parse_command("text bob meeting at 5", &c).unwrap();
+        assert_eq!(uid, 6006);
+        assert_eq!(msg, "meeting at 5");
+    }
+
+    #[test]
+    fn trigger_message_english() {
+        let mut c = sample_contacts();
+        c.insert("carol".into(), 7007);
+        let (uid, msg) = parse_command("message carol see you soon", &c).unwrap();
+        assert_eq!(uid, 7007);
+        assert_eq!(msg, "see you soon");
+    }
+
+    #[test]
+    fn english_trigger_fuzzy_one_typo() {
+        // «wrote» = «write» с одной правкой (транспозиция)
+        let mut c = sample_contacts();
+        c.insert("dan".into(), 4004);
+        let (uid, msg) = parse_command("wrote dan hello", &c).unwrap();
+        assert_eq!(uid, 4004);
+        assert_eq!(msg, "hello");
+    }
+
+    #[test]
+    fn preposition_skip_english() {
+        // «write to dan» → предлог "to" пропускается
+        let mut c = sample_contacts();
+        c.insert("dan".into(), 4004);
+        let (uid, msg) = parse_command("write to dan hello there", &c).unwrap();
+        assert_eq!(uid, 4004);
+        assert_eq!(msg, "hello there");
+    }
+
+    #[test]
+    fn preposition_skip_russian() {
+        // «напиши к тиме» → предлог "к" пропускается
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши к тиме привет", &c).unwrap();
+        assert_eq!(uid, 3003);
         assert_eq!(msg, "привет");
     }
 }

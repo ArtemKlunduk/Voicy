@@ -34,6 +34,8 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 base64 = "0.22"
 url = "2"
 urlencoding = "2"
+rand = "0.8"
+ctrlc = "3"
 image = { version = "0.25", default-features = false, features = ["ico"] }
 arboard = { version = "3", default-features = false }
 # Parakeet inference — Handy использует тот же стек.

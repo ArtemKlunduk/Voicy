@@ -158,18 +158,23 @@ pub async fn connect(cfg: &Config) -> Result<Client> {
     let sp = session_path(cfg);
     let session = Session::load_file_or_create(&sp).context("Session::load")?;
     log_session_state("connect(load)", &session, &sp);
+    info!("[tg-connect] api_id={} api_hash_len={}", cfg.telegram.api_id, cfg.telegram.api_hash.len());
     let params = InitParams {
         reconnection_policy: &RECONN,
         ..Default::default()
     };
-    let client = Client::connect(TgConfig {
+    let client = match Client::connect(TgConfig {
         session,
         api_id: cfg.telegram.api_id,
         api_hash: cfg.telegram.api_hash.clone(),
         params,
-    })
-    .await
-    .context("Client::connect")?;
+    }).await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("[tg-connect] Client::connect FAILED: {:?}", e);
+            return Err(anyhow!("Client::connect: {:?}", e));
+        }
+    };
     Ok(client)
 }
 

@@ -61,29 +61,41 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
     if t.contains("выключи звук")
         || t.contains("включи звук")
         || t == "mute"
+        || t == "unmute"
+        || t.starts_with("mute ")
+        || t.starts_with("unmute ")
+        || t.contains(" mute ")
+        || t.contains(" unmute ")
         || t.contains("без звука")
+        || t.contains("no sound")
     {
         tracing::info!("[browser_action::parse] → Mute");
         return Some(BrowserAction::Mute);
     }
 
     // Volume
-    if let Some(n) = extract_percent(&t, &["громче", "сделай громче", "увеличь громкость", "погромче"]) {
+    if let Some(n) = extract_percent(&t, &["громче", "сделай громче", "увеличь громкость", "погромче",
+                                                "louder", "volume up", "turn up", "increase volume"]) {
         // YouTube ↑ = +5%. N% / 5 = количество нажатий, минимум 1.
         let presses = ((n + 4) / 5).max(1).min(20) as u8;
         tracing::info!("[browser_action::parse] → VolumeUp({})", presses);
         return Some(BrowserAction::VolumeUp(presses));
     }
-    if t.contains("громче") || t.contains("погромче") {
+    if t.contains("громче") || t.contains("погромче")
+        || t.contains("louder") || t.contains("volume up") || t.contains("turn up") || t.contains("increase volume")
+    {
         tracing::info!("[browser_action::parse] → VolumeUp(2)");
         return Some(BrowserAction::VolumeUp(2)); // ~10% по умолчанию
     }
-    if let Some(n) = extract_percent(&t, &["тише", "сделай тише", "уменьши громкость", "потише"]) {
+    if let Some(n) = extract_percent(&t, &["тише", "сделай тише", "уменьши громкость", "потише",
+                                                "quieter", "volume down", "turn down", "decrease volume"]) {
         let presses = ((n + 4) / 5).max(1).min(20) as u8;
         tracing::info!("[browser_action::parse] → VolumeDown({})", presses);
         return Some(BrowserAction::VolumeDown(presses));
     }
-    if t.contains("тише") || t.contains("потише") {
+    if t.contains("тише") || t.contains("потише")
+        || t.contains("quieter") || t.contains("volume down") || t.contains("turn down") || t.contains("decrease volume")
+    {
         tracing::info!("[browser_action::parse] → VolumeDown(2)");
         return Some(BrowserAction::VolumeDown(2));
     }
@@ -93,27 +105,35 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
         || t.contains("во весь экран")
         || t.contains("фуллскрин")
         || t.contains("на весь экран")
+        || t.contains("fullscreen")
+        || t.contains("full screen")
     {
         tracing::info!("[browser_action::parse] → Fullscreen");
         return Some(BrowserAction::Fullscreen);
     }
 
     // Seek
-    if let Some(n) = extract_seconds(&t, &["перемотай вперёд", "перемотай вперед", "вперёд на", "вперед на"]) {
+    if let Some(n) = extract_seconds(&t, &["перемотай вперёд", "перемотай вперед", "вперёд на", "вперед на",
+                                                "skip forward", "seek forward", "forward", "go forward"]) {
         let presses = ((n + 4) / 5).max(1).min(60) as u8;
         tracing::info!("[browser_action::parse] → SeekForward({})", presses);
         return Some(BrowserAction::SeekForward(presses));
     }
-    if let Some(n) = extract_seconds(&t, &["перемотай назад", "назад на"]) {
+    if let Some(n) = extract_seconds(&t, &["перемотай назад", "назад на",
+                                                "skip backward", "seek backward", "backward", "go back", "rewind"]) {
         let presses = ((n + 4) / 5).max(1).min(60) as u8;
         tracing::info!("[browser_action::parse] → SeekBackward({})", presses);
         return Some(BrowserAction::SeekBackward(presses));
     }
-    if t.contains("перемотай вперёд") || t.contains("перемотай вперед") {
+    if t.contains("перемотай вперёд") || t.contains("перемотай вперед")
+        || t.contains("skip forward") || t.contains("seek forward") || t.contains("go forward")
+    {
         tracing::info!("[browser_action::parse] → SeekForward(2)");
         return Some(BrowserAction::SeekForward(2)); // ~10s
     }
-    if t.contains("перемотай назад") {
+    if t.contains("перемотай назад")
+        || t.contains("skip backward") || t.contains("seek backward") || t.contains("go back") || t.contains("rewind")
+    {
         tracing::info!("[browser_action::parse] → SeekBackward(2)");
         return Some(BrowserAction::SeekBackward(2));
     }
@@ -128,6 +148,15 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
         || t.starts_with("пауза")
         || t.starts_with("стоп ")
         || t.contains("поставь на паузу")
+        || t == "pause"
+        || t == "stop"
+        || t == "play"
+        || t == "resume"
+        || t.starts_with("pause ")
+        || t.starts_with("stop ")
+        || t.starts_with("play ")
+        || t.starts_with("resume ")
+        || t.contains("put on pause")
     {
         tracing::info!("[browser_action::parse] → PlayPause");
         return Some(BrowserAction::PlayPause);
@@ -138,6 +167,8 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
 }
 
 /// Выполнить действие — отправить keystroke в активное окно.
+/// Для PlayPause сначала проверяем, не играет ли музыка — если да,
+/// останавливаем музыку вместо отправки Space в браузер.
 #[cfg(windows)]
 pub fn dispatch(action: BrowserAction) {
     tracing::info!("[browser_action::dispatch] executing {:?}", action);
@@ -145,7 +176,14 @@ pub fn dispatch(action: BrowserAction) {
         BrowserAction::VolumeUp(n) => press_repeat(VK_UP, n),
         BrowserAction::VolumeDown(n) => press_repeat(VK_DOWN, n),
         BrowserAction::Fullscreen => press_once(VK_F),
-        BrowserAction::PlayPause => press_once(VK_SPACE),
+        BrowserAction::PlayPause => {
+            if crate::music::is_playing() || crate::music::has_track() {
+                tracing::info!("[browser_action::dispatch] music is active → stopping music");
+                crate::music::stop();
+            } else {
+                press_once(VK_SPACE);
+            }
+        }
         BrowserAction::SeekForward(n) => press_repeat(VK_RIGHT, n),
         BrowserAction::SeekBackward(n) => press_repeat(VK_LEFT, n),
         BrowserAction::Mute => press_once(VK_M),
@@ -178,7 +216,9 @@ fn extract_percent(text: &str, triggers: &[&str]) -> Option<u32> {
         if let Some(pos) = text.find(trig) {
             let after = &text[pos + trig.len()..];
             // Должно встречаться "процент" чтобы это была команда с %
-            if !after.contains("процент") && !after.contains("процентов") {
+            if !after.contains("процент") && !after.contains("процентов")
+                && !after.contains("percent") && !after.contains("percents") && !after.contains('%')
+            {
                 continue;
             }
             if let Some(n) = find_number(after) {

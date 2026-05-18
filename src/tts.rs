@@ -2,7 +2,8 @@ use anyhow::{anyhow, Result};
 use std::io::Cursor;
 
 /// Озвучивает текст. Порядок: Windows OneCore → Google Translate TTS fallback.
-pub fn speak(text: &str) -> Result<()> {
+/// `lang` — язык озвучки: "ru" | "en" и т.д.
+pub fn speak(text: &str, lang: &str) -> Result<()> {
     if text.trim().is_empty() {
         return Ok(());
     }
@@ -13,34 +14,40 @@ pub fn speak(text: &str) -> Result<()> {
     };
 
     // Пробуем Windows OneCore
-    if let Ok(()) = speak_windows(text) {
+    if let Ok(()) = speak_windows(text, lang) {
         return Ok(());
     }
 
     // Fallback: Google Translate TTS
-    speak_gtts(text)
+    speak_gtts(text, lang)
 }
 
 // ── Windows OneCore SpeechSynthesizer ──
 #[cfg(windows)]
-fn speak_windows(text: &str) -> Result<()> {
+fn speak_windows(text: &str, lang: &str) -> Result<()> {
     let synth = windows::Media::SpeechSynthesis::SpeechSynthesizer::new()
         .map_err(|e| anyhow!("SpeechSynthesizer: {:?}", e))?;
 
     let voices = windows::Media::SpeechSynthesis::SpeechSynthesizer::AllVoices()
         .map_err(|e| anyhow!("AllVoices: {:?}", e))?;
 
-    let ru_voice = voices
+    let lang_prefix = if lang.trim().to_lowercase().starts_with("ru") {
+        "ru"
+    } else {
+        "en"
+    };
+
+    let voice = voices
         .into_iter()
         .find(|v| {
             v.Language()
-                .map(|l| l.to_string().starts_with("ru"))
+                .map(|l| l.to_string().starts_with(lang_prefix))
                 .unwrap_or(false)
         })
-        .ok_or_else(|| anyhow!("No Russian voice found"))?;
+        .ok_or_else(|| anyhow!("No {} voice found", lang_prefix))?;
 
     synth
-        .SetVoice(&ru_voice)
+        .SetVoice(&voice)
         .map_err(|e| anyhow!("SetVoice: {:?}", e))?;
 
     let htext = windows::core::HSTRING::from(text);
@@ -87,19 +94,25 @@ fn speak_windows(text: &str) -> Result<()> {
 }
 
 #[cfg(not(windows))]
-fn speak_windows(_text: &str) -> Result<()> {
+fn speak_windows(_text: &str, _lang: &str) -> Result<()> {
     Err(anyhow!("Windows TTS not available"))
 }
 
 // ── Google Translate TTS fallback ──
-fn speak_gtts(text: &str) -> Result<()> {
+fn speak_gtts(text: &str, lang: &str) -> Result<()> {
     tracing::info!("[tts] using Google Translate TTS fallback");
+
+    let tl = if lang.trim().to_lowercase().starts_with("ru") {
+        "ru"
+    } else {
+        "en"
+    };
 
     // Google Translate TTS endpoint (неофициальный, но стабильный)
     let encoded = urlencoding::encode(text);
     let url = format!(
-        "https://translate.google.com/translate_tts?ie=UTF-8&q={}&tl=ru&client=tw-ob&ttsspeed=1",
-        encoded
+        "https://translate.google.com/translate_tts?ie=UTF-8&q={}&tl={}&client=tw-ob&ttsspeed=1",
+        encoded, tl
     );
 
     let resp = ureq::get(&url)
@@ -135,15 +148,28 @@ fn play_audio(audio_buffer: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Проверяет, доступен ли русский голос в системе.
-pub fn is_russian_voice_available() -> bool {
-    if let Ok(voices) = windows::Media::SpeechSynthesis::SpeechSynthesizer::AllVoices() {
-        voices.into_iter().any(|v| {
-            v.Language()
-                .map(|l| l.to_string().starts_with("ru"))
-                .unwrap_or(false)
-        })
-    } else {
+/// Проверяет, доступен ли голос указанного языка в системе.
+pub fn is_voice_available(lang: &str) -> bool {
+    #[cfg(windows)]
+    {
+        if let Ok(voices) = windows::Media::SpeechSynthesis::SpeechSynthesizer::AllVoices() {
+            let prefix = if lang.trim().to_lowercase().starts_with("ru") { "ru" } else { "en" };
+            voices.into_iter().any(|v| {
+                v.Language()
+                    .map(|l| l.to_string().starts_with(prefix))
+                    .unwrap_or(false)
+            })
+        } else {
+            false
+        }
+    }
+    #[cfg(not(windows))]
+    {
         false
     }
+}
+
+#[allow(dead_code)]
+pub fn is_russian_voice_available() -> bool {
+    is_voice_available("ru")
 }

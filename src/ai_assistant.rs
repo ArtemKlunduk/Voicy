@@ -24,7 +24,13 @@ use std::sync::Arc;
 static CANCEL_TOKEN: AtomicBool = AtomicBool::new(false);
 
 /// Системный промпт — общий для всех моделей. Заставляет отвечать кратко.
-const SYSTEM_PROMPT: &str = "Ты голосовой ассистент. Отвечай кратко, по существу, максимум 2 предложения. Говори естественно, как человек.";
+pub fn system_prompt(lang: &str) -> &'static str {
+    if lang.trim().to_lowercase().starts_with("ru") {
+        "Ты голосовой ассистент. Отвечай кратко, по существу, максимум 2 предложения. Говори естественно, как человек."
+    } else {
+        "You are a voice assistant. Answer briefly, to the point, maximum 2 sentences. Speak naturally, like a human."
+    }
+}
 
 /// Перечень моделей. Каждая знает свой repo, файл, токенизатор и chat template.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,12 +96,15 @@ impl AiModel {
         }
     }
 
-    /// Репо с токенизатором (отдельный от GGUF).
+    /// Репо с токенизатором.
+    /// Используем GGUF-репо вместо оригинальных — у оригинальных Llama/Gemma
+    /// токенизаторы требуют авторизации (401). GGUF-репо от unsloth/bartowski
+    /// публичные и содержат tokenizer.json.
     fn tokenizer_repo(self) -> &'static str {
         match self {
             Self::Qwen05B => "Qwen/Qwen2.5-0.5B-Instruct",
-            Self::Llama32_1B => "meta-llama/Llama-3.2-1B-Instruct",
-            Self::Gemma2_2B => "google/gemma-2-2b-it",
+            Self::Llama32_1B => "unsloth/Llama-3.2-1B-Instruct-GGUF",
+            Self::Gemma2_2B => "bartowski/gemma-2-2b-it-GGUF",
         }
     }
 
@@ -191,11 +200,11 @@ impl AiAssistant {
     }
 
     /// Сгенерировать ответ.
-    pub fn ask(&mut self, question: &str) -> Result<AiResponse> {
+    pub fn ask(&mut self, system: &str, question: &str) -> Result<AiResponse> {
         if question.trim().is_empty() {
             return Err(anyhow!("Empty question"));
         }
-        let prompt = self.kind.build_prompt(SYSTEM_PROMPT, question);
+        let prompt = self.kind.build_prompt(system, question);
 
         let mut config = InferenceConfig::default();
         config.prompt = prompt;

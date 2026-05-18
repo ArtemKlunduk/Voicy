@@ -522,19 +522,25 @@ fn transcribe_wav_whisper(wav: &Path, model: &str, language: &str) -> Result<Str
     //                 выдавал галюны при низком confidence).
     //   -et 2.4  entropy threshold чуть выше дефолта — режет «нет речи».
     //   -lpt -1  logprob threshold — отбрасывает совсем неуверенные фразы.
-    let out = Command::new(&cli)
-        .arg("-m").arg(&model_p)
-        .arg("-l").arg(language)
-        .arg("-bs").arg("5")
+    let mut cmd = Command::new(&cli);
+    cmd.arg("-m").arg(&model_p);
+    if language != "auto" {
+        cmd.arg("-l").arg(language);
+    }
+    cmd.arg("-bs").arg("5")
         .arg("-bo").arg("2")
         .arg("-et").arg("2.4")
         .arg("-lpt").arg("-1.0")
         .arg("-otxt")
         .arg("-of").arg(wav.with_extension(""))
         .arg("-np")
-        .arg(wav)
-        .output()
-        .context("run whisper-cli")?;
+        .arg(wav);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().context("run whisper-cli")?;
     if !out.status.success() {
         warn!(
             "[asr] whisper-cli stderr: {}",
@@ -548,7 +554,16 @@ fn transcribe_wav_whisper(wav: &Path, model: &str, language: &str) -> Result<Str
     let _ = std::fs::remove_file(&txt_path);
     let dt = t0.elapsed();
     info!("[asr] transcribed in {:.2}s", dt.as_secs_f32());
-    Ok(normalize_cyrillic(text.trim()))
+    let text = text.trim();
+    // Нормализация кириллицы нужна только когда whisper работает в русском режиме
+    // и иногда выдаёт латинские look-alike буквы вместо кириллических.
+    // Для английского языка нормализация сломала бы текст ("write" → "wгите").
+    let normalized = if language == "ru" || language == "russian" {
+        normalize_cyrillic(text)
+    } else {
+        text.to_string()
+    };
+    Ok(normalized)
 }
 
 /// Заменяет латинские look-alike-буквы на кириллические.
