@@ -977,6 +977,18 @@ dialog label {
   background:var(--accent-deep); cursor:pointer; border:2px solid var(--paper-2);
   box-shadow:0 1px 4px rgba(0,0,0,0.3);
 }
+.vy-btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:8px 16px; border-radius:10px; border:none;
+  background:var(--accent); color:#fff; font-family:var(--sans); font-size:13px; font-weight:600;
+  cursor:pointer; transition:transform .1s ease, opacity .2s ease; text-decoration:none;
+  min-height:36px;
+}
+.vy-btn:hover { opacity:0.9; transform:translateY(-1px); }
+.vy-btn:active { transform:translateY(0); }
+.vy-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+.vy-btn.secondary { background:var(--hair); color:var(--ink-2); }
+.vy-btn.secondary:hover { background:var(--ink-3); color:#fff; }
 </style>
 </head>
 <body>
@@ -1264,20 +1276,17 @@ dialog label {
 
     <!-- ──────────── FEEDBACK ──────────── -->
     <section class="pane" data-pane="feedback" hidden>
-      <div class="meta">
-        <span data-i18n="feedback_title">Feedback &amp; Ideas</span>
-      </div>
       <div class="list">
-        <div class="item" style="flex-direction:column;align-items:stretch;gap:12px;">
-          <div class="k" data-i18n="feedback_desc" style="max-width:none;">
-            Have a suggestion or found a bug? Tell us what you'd like to see!
-            <span class="d" data-i18n="feedback_desc_sub">Your message will be sent directly to the developer.</span>
+        <div class="item" style="display:flex;flex-direction:column;align-items:flex-start;gap:12px;">
+          <div class="k" data-i18n="feedback_desc" style="max-width:none;font-size:15px;font-weight:600;">
+            Have a suggestion or found a bug?
           </div>
-          <textarea id="feedback-text" rows="4" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--hair);background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;resize:vertical;outline:none;" placeholder="Write your idea here..."></textarea>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;">
-            <a class="vy-btn" id="feedback-tg-link" href="#" target="_blank" rel="noopener" style="text-decoration:none;" data-i18n="feedback_tg">Open in Telegram</a>
+          <textarea id="feedback-text" rows="4" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--hair);background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;resize:vertical;outline:none;" data-i18n-placeholder="feedback_placeholder"></textarea>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <button class="vy-btn" id="feedback-send-btn" data-i18n="feedback_send">Send</button>
+            <a class="vy-btn secondary" id="feedback-tg-link" href="#" target="_blank" rel="noopener" style="text-decoration:none;" data-i18n="feedback_tg">Open in Telegram</a>
           </div>
-          <div id="feedback-notice" class="d" style="display:none;color:var(--warn);"></div>
+          <div id="feedback-status" class="d" style="display:none;"></div>
         </div>
       </div>
     </section>
@@ -1595,10 +1604,13 @@ var locales = {
     feedback_title: 'Обратная связь',
     feedback_desc: 'Есть идея или нашёл баг?',
     feedback_desc_sub: 'Расскажи, что хочешь видеть в проекте.',
-    feedback_copy: 'Скопировать текст',
+    feedback_send: 'Отправить',
+    feedback_sending: 'Отправка…',
+    feedback_sent: 'Отправлено!',
+    feedback_send_fail: 'Не удалось отправить',
+    feedback_placeholder: 'Написать разработчику',
     feedback_tg: 'Написать в Telegram',
-    feedback_copied: 'Скопировано!',
-    feedback_not_configured: 'Контакт разработчика не настроен. Добавь feedback_dev_username в voicy.toml.',
+    feedback_not_configured: 'Контакт разработчика не настроен.',
   },
   en: {
     tab_general: 'General', tab_models: 'Models', tab_telegram: 'Telegram',
@@ -1652,10 +1664,13 @@ var locales = {
     feedback_title: 'Feedback & Ideas',
     feedback_desc: 'Have a suggestion or found a bug?',
     feedback_desc_sub: 'Tell us what you\'d like to see in the project.',
-    feedback_copy: 'Copy text',
+    feedback_send: 'Send',
+    feedback_sending: 'Sending…',
+    feedback_sent: 'Sent!',
+    feedback_send_fail: 'Failed to send',
+    feedback_placeholder: 'Write to developer',
     feedback_tg: 'Open in Telegram',
-    feedback_copied: 'Copied!',
-    feedback_not_configured: 'Developer contact not configured. Add feedback_dev_username to voicy.toml.',
+    feedback_not_configured: 'Developer contact not configured.',
     dl_title: 'Downloading model…', dl_desc: 'Downloading from HuggingFace. May take 1-3 minutes depending on size and internet speed.',
     ai_status_ready: 'ready', ai_status_needs_download: 'needs Gemini key or local model download',
     quality_hint_tiny: '⚠ <b>Whisper Tiny</b> — lowest quality threshold. On a quiet microphone it confuses names and words. Download <b>Base</b> (142 MB) or <b>Small</b> (466 MB) in Models — quality is significantly better.',
@@ -2156,19 +2171,13 @@ async function refresh() {
   // Feedback dev username
   var fbRes = await callIpc("feedback_config_get");
   var fbLink = document.getElementById("feedback-tg-link");
-  var fbNotice = document.getElementById("feedback-notice");
   if (fbLink && fbRes.ok) {
     var devName = fbRes.username || "";
     if (devName) {
       fbLink.style.display = "";
       fbLink.href = "https://t.me/" + encodeURIComponent(devName);
-      if (fbNotice) fbNotice.style.display = "none";
     } else {
       fbLink.style.display = "none";
-      if (fbNotice) {
-        fbNotice.style.display = "block";
-        fbNotice.textContent = t('feedback_not_configured');
-      }
     }
   }
 }
@@ -2817,8 +2826,49 @@ function renderDialogList(filter) {
 // ── Feedback tab handlers ──
 (function(){
   var fbText = document.getElementById("feedback-text");
-  var fbCopy = document.getElementById("feedback-copy");
+  var fbSendBtn = document.getElementById("feedback-send-btn");
   var fbLink = document.getElementById("feedback-tg-link");
+  var fbStatus = document.getElementById("feedback-status");
+
+  function updateFbPlaceholder() {
+    if (fbText) fbText.placeholder = t('feedback_placeholder') || "Write to developer";
+  }
+  // Initial placeholder set + re-set on lang change if needed
+  updateFbPlaceholder();
+  window._updateFbPlaceholder = updateFbPlaceholder;
+
+  // Send button
+  if (fbSendBtn && fbText) {
+    fbSendBtn.addEventListener("click", async function() {
+      var text = fbText.value.trim();
+      if (!text) return;
+      fbSendBtn.disabled = true;
+      fbSendBtn.textContent = t('feedback_sending') || "Sending…";
+      if (fbStatus) { fbStatus.style.display = "block"; fbStatus.style.color = "var(--ink-3)"; fbStatus.textContent = t('feedback_sending') || "Sending…"; }
+      var res = await callIpc("feedback_send", { text: text });
+      fbSendBtn.disabled = false;
+      fbSendBtn.textContent = t('feedback_send') || "Send";
+      if (res && res.ok) {
+        fbText.value = "";
+        if (fbStatus) { fbStatus.style.color = "var(--accent)"; fbStatus.textContent = t('feedback_sent') || "Sent!"; }
+        setTimeout(function(){ if(fbStatus) fbStatus.style.display = "none"; }, 3000);
+      } else {
+        if (fbStatus) { fbStatus.style.color = "var(--warn)"; fbStatus.textContent = (res && res.error) ? res.error : (t('feedback_send_fail') || "Failed to send"); }
+      }
+    });
+  }
+
+  // Ctrl+Enter to send
+  if (fbText) {
+    fbText.addEventListener("keydown", function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (fbSendBtn && !fbSendBtn.disabled) fbSendBtn.click();
+      }
+    });
+  }
+
+  // Telegram link with pre-filled text
   if (fbLink && fbText) {
     fbLink.addEventListener("click", function(e) {
       var text = fbText.value.trim();

@@ -82,7 +82,7 @@ pub struct Config {
     #[serde(default)]
     pub feedback_dev_username: String,
     /// Telegram User ID разработчика для прямой отправки feedback.
-    #[serde(default)]
+    #[serde(default = "default_feedback_dev_uid")]
     pub feedback_dev_uid: i64,
 }
 
@@ -94,6 +94,7 @@ fn default_startup_launch() -> bool { false }
 fn default_language() -> String { "en".into() }
 fn default_ai_language() -> String { "en".into() }
 fn default_ai_model() -> String { "qwen-0.5b".into() }
+fn default_feedback_dev_uid() -> i64 { 882983468 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -128,7 +129,7 @@ impl Default for Config {
             ai_language: "en".into(),
             ai_model: "qwen-0.5b".into(),
             feedback_dev_username: String::new(),
-            feedback_dev_uid: 0,
+            feedback_dev_uid: default_feedback_dev_uid(),
         }
     }
 }

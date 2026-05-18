@@ -771,7 +771,7 @@ fn cmd_feedback_config_set(
     payload: &serde_json::Value,
 ) -> serde_json::Value {
     let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let uid = payload.get("uid").and_then(|v| v.as_i64()).unwrap_or(0);
+    let uid = payload.get("uid").and_then(|v| v.as_i64()).unwrap_or(882983468);
     let mut c = cfg.lock();
     c.feedback_dev_username = username;
     c.feedback_dev_uid = uid;
