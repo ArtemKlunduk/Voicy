@@ -96,15 +96,17 @@ impl AiModel {
         }
     }
 
-    /// Репо с токенизатором.
-    /// Используем GGUF-репо вместо оригинальных — у оригинальных Llama/Gemma
-    /// токенизаторы требуют авторизации (401). GGUF-репо от unsloth/bartowski
-    /// публичные и содержат tokenizer.json.
+    /// Репо с токенизатором (отдельный от GGUF).
+    /// ВАЖНО: google/gemma-* и meta-llama/Llama-* — gated на HF (401 без
+    /// токена). Используем non-gated зеркала unsloth, которые публикуют
+    /// идентичный tokenizer.json без license-acceptance.
     fn tokenizer_repo(self) -> &'static str {
         match self {
             Self::Qwen05B => "Qwen/Qwen2.5-0.5B-Instruct",
-            Self::Llama32_1B => "unsloth/Llama-3.2-1B-Instruct-GGUF",
-            Self::Gemma2_2B => "bartowski/gemma-2-2b-it-GGUF",
+            Self::Llama32_1B => "unsloth/Llama-3.2-1B-Instruct",
+            Self::Gemma2_2B => "unsloth/gemma-2-2b-it",
+        }
+    }
         }
     }
 

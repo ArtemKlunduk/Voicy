@@ -1699,7 +1699,7 @@ fn cmd_listener_start(
                             info!("[ai] ответ: {}", response);
                             push_event(&proxy, "log", &format!("🤖 {}", response));
                             push_event(&proxy, "activity", "🤖 отвечаю...");
-                            if let Err(e) = tts::speak(&response, &cfg.ai_language) {
+                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
                                 warn!("[ai] tts error: {}", e);
                                 push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
                             }
@@ -1727,7 +1727,7 @@ fn cmd_listener_start(
                             info!("[ai] ответ: {}", response);
                             push_event(&proxy, "log", &format!("🤖 {}", response));
                             push_event(&proxy, "activity", "🤖 отвечаю...");
-                            if let Err(e) = tts::speak(&response, &cfg.ai_language) {
+                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
                                 warn!("[ai] tts error: {}", e);
                                 push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
                             }
