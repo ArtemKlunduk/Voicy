@@ -329,14 +329,27 @@ pub fn parse_play_by_title(text: &str) -> Option<Vec<String>> {
 
     let triggers = ["включи", "запусти", "проиграй", "плей", "найди",
                     "play", "start", "open", "find"];
+    // Matchить триггер только как целое слово — иначе «плейки» (whisper-склейка)
+    // даст trigger="плей", и хвост «ки» уйдёт в keywords как мусор.
+    // Проверяем word-boundary: триггер либо в начале строки, либо после пробела;
+    // и либо в конце строки, либо перед пробелом.
     let mut trigger_pos = None;
     let mut trigger_len = 0;
     for &tr in &triggers {
-        if let Some(p) = t.find(tr) {
-            if trigger_pos.is_none() || p < trigger_pos.unwrap() {
-                trigger_pos = Some(p);
-                trigger_len = tr.len();
+        let mut start = 0;
+        while let Some(rel) = t[start..].find(tr) {
+            let p = start + rel;
+            let left_ok = p == 0 || t.as_bytes()[p - 1] == b' ';
+            let right_pos = p + tr.len();
+            let right_ok = right_pos == t.len() || t.as_bytes()[right_pos] == b' ';
+            if left_ok && right_ok {
+                if trigger_pos.is_none() || p < trigger_pos.unwrap() {
+                    trigger_pos = Some(p);
+                    trigger_len = tr.len();
+                }
+                break;
             }
+            start = p + tr.len();
         }
     }
     let Some(tp) = trigger_pos else {
@@ -345,15 +358,27 @@ pub fn parse_play_by_title(text: &str) -> Option<Vec<String>> {
     };
     let after = t[tp + trigger_len..].trim();
 
-    // Убираем слова «видео»/«ролик» если есть — они не часть title
+    // Убираем мусорные слова — они не часть title:
+    //   - «видео/ролик/песня/трек/музыка» — категория, не имя
+    //   - «и/а/ну/же» — союзы/частицы которые whisper часто вставляет после «включи»
+    //   - «это/то/на/ютубе» — указатели места
     let kws: Vec<String> = after
         .split_whitespace()
-        .filter(|w| !matches!(*w, "видео" | "ролик" | "это" | "то" | "на" | "ютубе" | "песня" | "песню" | "песни" | "трек" | "трека" | "треки" | "музыка" | "музыку" | "музыки" | "song" | "songs" | "track" | "tracks" | "music"))
+        .filter(|w| !matches!(*w,
+            "видео" | "ролик" | "это" | "то" | "на" | "ютубе"
+            | "песня" | "песню" | "песни"
+            | "трек" | "трека" | "треки"
+            | "музыка" | "музыку" | "музыки"
+            | "и" | "а" | "ну" | "же" | "там" | "ка"
+            | "song" | "songs" | "track" | "tracks" | "music"))
         .map(|s| s.to_string())
         .collect();
 
-    if kws.is_empty() || kws.iter().all(|k| k.chars().count() < 2) {
-        tracing::info!("[parse_play_by_title] keywords too short or empty");
+    // Игнорируем слишком короткие токены (типа одиночных букв-артефактов Whisper)
+    let kws: Vec<String> = kws.into_iter().filter(|k| k.chars().count() >= 2).collect();
+
+    if kws.is_empty() {
+        tracing::info!("[parse_play_by_title] keywords too short or empty after filter");
         return None;
     }
     tracing::info!("[parse_play_by_title] matched keywords: {:?}", kws);

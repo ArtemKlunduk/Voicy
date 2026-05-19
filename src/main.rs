@@ -217,6 +217,19 @@ fn main() -> Result<()> {
         warn!("⚠ {}", config::Config::credentials_setup_hint());
     }
 
+    // Кастомная папка для AI-моделей: переопределяем HF_HOME до того как
+    // hf-hub::Api инициализируется в любом downstream-вызове.
+    if !cfg.models_root.trim().is_empty() {
+        let p = std::path::PathBuf::from(cfg.models_root.trim());
+        if let Err(e) = std::fs::create_dir_all(&p) {
+            warn!("[boot] models_root «{}» mkdir fail: {}", p.display(), e);
+        } else {
+            std::env::set_var("HF_HOME", &p);
+            std::env::set_var("HF_HUB_CACHE", p.join("hub"));
+            info!("[boot] models_root → HF_HOME={}", p.display());
+        }
+    }
+
     #[cfg(windows)]
     startup::sync_with_config(cfg.startup_launch);
 
@@ -883,6 +896,19 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                 schedule_hide();
                 return;
             }
+            // SELF sentinel → Saved Messages (chat with own user_id).
+            let resolved_uid = if uid == contacts::SELF_SENTINEL_UID {
+                match rt.block_on(async { client.get_me().await }) {
+                    Ok(me) => me.id(),
+                    Err(e) => {
+                        warn!("[hotkey] get_me для SELF: {}", e);
+                        show_error();
+                        schedule_hide();
+                        return;
+                    }
+                }
+            } else { uid };
+            let uid = resolved_uid;
             let res = rt.block_on(async { telegram::send_message(&client, uid, &message).await });
             match res {
                 Ok(()) => {

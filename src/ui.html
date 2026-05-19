@@ -795,8 +795,13 @@ dialog label {
   padding:8px 14px; border-radius:7px; font-size:12.5px;
   box-shadow:0 8px 22px rgba(0,0,0,.18); z-index:200;
   opacity:0; transform:translateY(8px); transition:opacity .2s, transform .2s;
+  /* CRITICAL: без pointer-events:none этот toast (даже невидимый) ловит
+     клики по нижней-правой области экрана — а там у нас music-player
+     volume slider и × кнопка. Юзер тыкает в slider, а попадает в flash.
+     С :none клики проходят насквозь к music-player. */
+  pointer-events:none;
 }
-.flash.show { opacity:1; transform:translateY(0); }
+.flash.show { opacity:1; transform:translateY(0); pointer-events:auto; }
 
 .spin {
   display:inline-block; width:11px; height:11px;
@@ -888,6 +893,394 @@ dialog label {
 .onboarding-start { background:var(--moss); }
 .onboarding-start:hover { background:#243d2a; }
 
+/* =============================================================================
+ * Handoff CSS — Voicy first-run flow (lang picker + 3-step onboarding).
+ * Drop-in из /handoff folder. Все токены scoped к .vy-first-run.
+ * ============================================================================= */
+.vy-first-run {
+  --bg:          #16191A;
+  --bg-raised:   #1F2322;
+  --bg-input:    #262B29;
+  --line:        #2C3331;
+  --line-strong: #3A4340;
+  --text:        #E8ECE6;
+  --text-2:      #9AA39E;
+  --text-3:      #6B7570;
+  --sage:        #A8C8A0;
+  --sage-deep:   #7DAE82;
+  --sage-soft:   rgba(168, 200, 160, 0.14);
+  --font-sans:   'Onest', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:   'JetBrains Mono', 'SF Mono', Menlo, ui-monospace, monospace;
+
+  /* В нашем интегрированном виде — fullscreen overlay over main app. */
+  position: fixed; inset: 0; z-index: 9500;
+  display: none;
+  font-family: var(--font-sans); color: var(--text); background: var(--bg);
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.vy-first-run.show { display: grid; }
+
+.vy-first-run .vy-window {
+  /* Адаптивная высота — не больше viewport. min-height убран чтобы карточка
+     могла шринкаться на маленьких окнах и НЕ ВКЛЮЧАТЬ scrollbar.
+     overflow:hidden — никаких полос прокрутки внутри онбординга. */
+  width: 440px; max-width: 92vw;
+  max-height: calc(100vh - 48px);
+  border-radius: 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 60px -28px rgba(0,0,0,0.55), inset 0 2px 0 rgba(255,255,255,0.02);
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative;
+}
+.vy-first-run .vy-scr { display: none; flex: 1; flex-direction: column; }
+.vy-first-run .vy-scr.is-active { display: flex; }
+.vy-first-run .vy-h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; margin: 0; text-align: center; }
+.vy-first-run .vy-sub { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); text-align: center; }
+.vy-first-run .vy-caption { font-size: 11px; color: var(--text-3); text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.vy-first-run .vy-bubble {
+  background: var(--sage-soft);
+  border: 1px solid rgba(168, 200, 160, 0.22);
+  border-radius: 18px; padding: 12px 18px;
+  font-size: 15px; line-height: 22px; color: var(--text);
+  text-align: center; max-width: 320px; align-self: center;
+}
+.vy-first-run .vy-dots { display: flex; gap: 6px; justify-content: center; }
+.vy-first-run .vy-dots__dot { width: 6px; height: 6px; border-radius: 999px; background: var(--line); transition: all 240ms ease; }
+.vy-first-run .vy-dots__dot.is-active { width: 18px; background: var(--sage); }
+.vy-first-run .vy-dots__dot.is-past   { background: var(--sage); }
+.vy-first-run .vy-btn {
+  all: unset; box-sizing: border-box; cursor: pointer; text-align: center;
+  padding: 12px 16px; border-radius: 10px;
+  font: 600 14px/1 var(--font-sans);
+  transition: background 120ms ease, transform 120ms ease;
+}
+.vy-first-run .vy-btn--primary { background: var(--sage); color: #0E1614; width: 100%; }
+.vy-first-run .vy-btn--primary:hover { background: #BAD3B3; }
+.vy-first-run .vy-btn--primary:active { background: #7DA679; transform: translateY(1px); }
+.vy-first-run .vy-btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.vy-first-run .vy-input {
+  all: unset; box-sizing: border-box;
+  width: 240px; text-align: center;
+  padding: 12px 14px; border-radius: 10px;
+  border: 1.5px solid var(--sage);
+  box-shadow: 0 0 0 3px rgba(168, 200, 160, 0.12);
+  background: var(--bg-input);
+  font: 500 15px/1 var(--font-mono); color: var(--text);
+  align-self: center;
+}
+.vy-first-run .vy-input--code { letter-spacing: 0.18em; }
+.vy-first-run .vy-kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 12px/1 var(--font-mono);
+  padding: 4px 8px; min-width: 18px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  background: linear-gradient(180deg, #2A3331 0%, #1E2624 100%);
+  color: var(--sage);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 0 #0d100f;
+}
+.vy-first-run .vy-kbd--lg { font-size: 18px; padding: 10px 16px; border-radius: 10px; }
+.vy-first-run .vy-kbd-row { display: inline-flex; align-items: center; gap: 10px; align-self: center; }
+.vy-first-run .vy-kbd-row__plus { color: var(--text-3); font-family: var(--font-mono); }
+.vy-first-run .vy-kbd-row.is-tappable { cursor: pointer; padding: 6px 10px; border-radius: 10px; transition: background 200ms; }
+.vy-first-run .vy-kbd-row.is-tappable:hover { background: rgba(168, 200, 160, 0.06); }
+.vy-first-run .vy-kbd-row.is-listening { background: rgba(168, 200, 160, 0.10); }
+.vy-first-run .vy-lang-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.vy-first-run .vy-lang-card {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  background: var(--bg-input); border-radius: 14px; padding: 18px 14px;
+  border: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center; transition: border-color 160ms, background 160ms;
+}
+.vy-first-run .vy-lang-card:hover { border-color: var(--line-strong); }
+.vy-first-run .vy-lang-card.is-active {
+  background: linear-gradient(180deg, rgba(168,200,160,0.22) 0%, rgba(168,200,160,0.06) 100%);
+  border: 1.5px solid var(--sage);
+  padding: 17px 13px;
+}
+.vy-first-run .vy-lang-card__code { font: 700 26px/1 var(--font-mono); color: var(--text); letter-spacing: 0.02em; }
+.vy-first-run .vy-lang-card.is-active .vy-lang-card__code { color: var(--sage); }
+.vy-first-run .vy-lang-card__name { font-size: 14px; color: var(--text); font-weight: 500; }
+.vy-first-run .vy-lang-card__sub  { font-size: 11px; color: var(--text-3); }
+.vy-first-run .vy-pad { padding: 18px 24px 20px; }
+.vy-first-run .vy-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; flex: 1; min-height: 0; }
+.vy-first-run .vy-col { display: flex; flex-direction: column; gap: 10px; }
+.vy-first-run .vy-foot { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.vy-first-run .vy-spacer { flex: 1; min-height: 4px; }
+/* Mascot уменьшен — иначе card не помещается в малое окно и появляется scroll. */
+.vy-first-run .vy-shu { width: 120px; height: 120px; display: block; transition: opacity 240ms ease; flex-shrink: 0; }
+.vy-first-run .vy-shu--lg { width: 140px; height: 140px; }
+.vy-first-run .vy-shu--md { width: 100px; height: 100px; }
+.vy-first-run .vy-shu--sm { width: 64px;  height: 64px;  }
+.vy-first-run .vy-pulse-dot { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: var(--sage); animation: vy-pulse 1.2s infinite; }
+@keyframes vy-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* Shimmer для прогресс-бара скачивания AI-модели. */
+@keyframes vy-shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+
+/* ── Шу tokens (dark palette from spec — overrides regardless of theme) ── */
+.lang-picker-overlay, .ov2-overlay {
+  --shu-bg:        #16191A;
+  --shu-bg-raised: #1F2322;
+  --shu-bg-input:  #262B29;
+  --shu-line:      #2C3331;
+  --shu-sage:      #A8C8A0;
+  --shu-sage-deep: #7DAE82;
+  --shu-text:      #E8ECE6;
+  --shu-text-2:    #9AA39E;
+  --shu-text-3:    #6B7570;
+  /* Локальные алиасы для symbol'ов Шу (var(--sage) и т.д. внутри SVG'шек) */
+  --sage:          var(--shu-sage);
+  --sage-deep:     var(--shu-sage-deep);
+  --bg:            var(--shu-bg);
+}
+.shu-mascot { width:180px; height:180px; display:block; margin:0 auto; }
+.shu-mascot.size-md { width:130px; height:130px; }
+.shu-mascot.size-sm { width:80px; height:80px; }
+
+/* ── First-launch language picker (Flow A dark) ── */
+.lang-picker-overlay {
+  position:fixed; inset:0; z-index:9500;
+  background:rgba(10,12,11,0.85);
+  backdrop-filter:blur(18px) saturate(1.2);
+  -webkit-backdrop-filter:blur(18px) saturate(1.2);
+  display:none; align-items:center; justify-content:center;
+  font-family:'Onest', system-ui, sans-serif;
+}
+.lang-picker-overlay.show { display:flex; }
+.lang-picker-card {
+  background:var(--shu-bg-raised); color:var(--shu-text);
+  border:1px solid var(--shu-line); border-radius:16px;
+  padding:28px 32px 22px; max-width:440px; width:90%;
+  box-shadow:0 30px 80px rgba(0,0,0,.55);
+  text-align:center;
+}
+.lang-picker-mascot { margin-bottom:8px; }
+.lang-picker-bubble {
+  position:relative; display:inline-block;
+  background:var(--shu-sage); color:var(--shu-bg);
+  padding:10px 16px; border-radius:14px;
+  font-size:13.5px; font-weight:500; line-height:1.45;
+  margin-bottom:22px; max-width:330px;
+}
+.lang-picker-bubble::after {
+  content:""; position:absolute; left:50%; top:-7px;
+  transform:translateX(-50%) rotate(45deg);
+  width:14px; height:14px; background:var(--shu-sage);
+  border-radius:3px 0 0 0;
+}
+.lang-picker-bubble-text { position:relative; z-index:1; }
+.lang-picker-buttons {
+  display:flex; gap:12px; justify-content:center; margin-bottom:14px;
+}
+.lang-picker-btn {
+  flex:1; padding:18px 16px; border-radius:12px;
+  background:var(--shu-bg-input);
+  border:1.5px solid var(--shu-line);
+  cursor:pointer; transition:background .15s, border-color .15s, transform .1s;
+  font-family:'Onest', system-ui, sans-serif;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  color:var(--shu-text);
+}
+.lang-picker-btn:hover {
+  border-color:var(--shu-sage-deep);
+  background:linear-gradient(180deg, rgba(125,174,130,0.10), rgba(125,174,130,0.04));
+}
+.lang-picker-btn:active { transform:scale(0.97); }
+.lang-picker-code {
+  font-family:'JetBrains Mono', monospace;
+  font-size:18px; font-weight:600; color:var(--shu-sage);
+}
+.lang-picker-name {
+  font-size:13px; font-weight:500; color:var(--shu-text-2);
+}
+.lang-picker-footer {
+  font-size:11px; color:var(--shu-text-3); margin-top:4px;
+  font-family:'JetBrains Mono', monospace;
+}
+
+/* ── Spotlight overlay (показывается после онбординга) ── */
+.spotlight-overlay {
+  position:fixed; inset:0; z-index:9050;
+  background:rgba(10,12,11,0.78);
+  backdrop-filter:blur(2px);
+  -webkit-backdrop-filter:blur(2px);
+  display:none; pointer-events:auto;
+  font-family:'Onest', system-ui, sans-serif;
+}
+.spotlight-overlay.show { display:block; }
+/* Подсвеченная кнопка — поднимается над затемнением + glow border */
+.spotlight-target {
+  position:relative !important;
+  z-index:9051 !important;
+  outline:2px solid var(--shu-sage, #A8C8A0) !important;
+  outline-offset:6px !important;
+  border-radius:6px !important;
+  box-shadow:0 0 0 4px rgba(168,200,160,0.25), 0 0 24px rgba(168,200,160,0.55) !important;
+  animation:spotlight-pulse 1.8s ease-in-out infinite;
+}
+@keyframes spotlight-pulse {
+  0%, 100% { box-shadow:0 0 0 4px rgba(168,200,160,0.25), 0 0 24px rgba(168,200,160,0.55); }
+  50%      { box-shadow:0 0 0 8px rgba(168,200,160,0.20), 0 0 32px rgba(168,200,160,0.75); }
+}
+.spotlight-tooltip {
+  position:fixed; z-index:9052;
+  max-width:280px;
+  background:var(--shu-bg-raised, #1F2322);
+  color:var(--shu-text, #E8ECE6);
+  border:1px solid var(--shu-line, #2C3331);
+  border-radius:12px;
+  padding:14px 16px 12px;
+  box-shadow:0 14px 40px rgba(0,0,0,.55);
+  font-size:13px; line-height:1.45;
+}
+.spotlight-tooltip-arrow {
+  position:absolute;
+  width:14px; height:14px;
+  background:var(--shu-bg-raised, #1F2322);
+  border-left:1px solid var(--shu-line, #2C3331);
+  border-top:1px solid var(--shu-line, #2C3331);
+  transform:rotate(45deg);
+}
+/* arrow на правой стороне (тултип слева от кнопки) */
+.spotlight-tooltip.arrow-right .spotlight-tooltip-arrow {
+  right:-8px; top:50%; transform:translateY(-50%) rotate(135deg);
+}
+/* arrow на левой стороне (тултип справа) */
+.spotlight-tooltip.arrow-left .spotlight-tooltip-arrow {
+  left:-8px; top:50%; transform:translateY(-50%) rotate(-45deg);
+}
+/* arrow снизу (тултип над кнопкой) */
+.spotlight-tooltip.arrow-bottom .spotlight-tooltip-arrow {
+  bottom:-8px; left:50%; transform:translateX(-50%) rotate(225deg);
+}
+/* arrow сверху (тултип под кнопкой) */
+.spotlight-tooltip.arrow-top .spotlight-tooltip-arrow {
+  top:-8px; left:50%; transform:translateX(-50%) rotate(45deg);
+}
+.spotlight-tooltip-text {
+  margin-bottom:10px;
+  color:var(--shu-text, #E8ECE6);
+}
+.spotlight-dismiss {
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:6px 14px; border-radius:6px;
+  background:var(--shu-sage, #A8C8A0); color:var(--shu-bg, #16191A);
+  border:none; font-family:inherit; font-size:12.5px; font-weight:600;
+  cursor:pointer; transition:background .15s;
+}
+.spotlight-dismiss:hover { background:#BFD5B6; }
+
+/* ── Interactive Onboarding v2 (Flow B Dark — Шу 3 steps) ── */
+.ov2-overlay {
+  position:fixed; inset:0; z-index:9100;
+  background:rgba(10,12,11,0.85);
+  backdrop-filter:blur(18px) saturate(1.2);
+  -webkit-backdrop-filter:blur(18px) saturate(1.2);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity .35s ease;
+  font-family:'Onest', system-ui, sans-serif;
+}
+.ov2-overlay.show { opacity:1; pointer-events:auto; }
+.ov2-card {
+  background:var(--shu-bg-raised); color:var(--shu-text);
+  border:1px solid var(--shu-line); border-radius:18px;
+  padding:24px 32px 22px; max-width:480px; width:90%;
+  box-shadow:0 30px 80px rgba(0,0,0,.55);
+  text-align:center;
+}
+.ov2-progress { display:flex; justify-content:center; gap:7px; margin-bottom:18px; }
+.ov2-dot {
+  width:24px; height:6px; border-radius:3px;
+  background:var(--shu-line); transition:background .3s, width .3s;
+}
+.ov2-dot.active { background:var(--shu-sage-deep); width:34px; }
+.ov2-dot.done { background:var(--shu-sage); }
+.ov2-mascot-wrap { margin-bottom:6px; }
+#ov2-mascot { transition:opacity .24s ease; }
+#ov2-mascot.fade { opacity:0.2; }
+.ov2-bubble {
+  position:relative; display:inline-block;
+  background:var(--shu-sage); color:var(--shu-bg);
+  padding:11px 18px; border-radius:14px;
+  font-size:14px; font-weight:500; line-height:1.45;
+  margin-bottom:18px; max-width:380px;
+}
+.ov2-bubble::after {
+  content:""; position:absolute; left:50%; top:-7px;
+  transform:translateX(-50%) rotate(45deg);
+  width:14px; height:14px; background:var(--shu-sage);
+  border-radius:3px 0 0 0;
+}
+.ov2-body {
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  margin-bottom:18px; min-height:60px;
+}
+.ov2-cta {
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:11px 28px; border-radius:10px;
+  background:var(--shu-sage); color:var(--shu-bg);
+  border:none; font-family:inherit; font-size:14px; font-weight:600;
+  cursor:pointer; transition:background .15s, transform .1s;
+}
+.ov2-cta:hover { background:#BFD5B6; }
+.ov2-cta:active { transform:scale(0.97); }
+.ov2-sub {
+  font-size:11.5px; color:var(--shu-text-3);
+  font-family:'JetBrains Mono', monospace;
+}
+.ov2-input {
+  width:280px; padding:10px 14px; border-radius:8px;
+  background:var(--shu-bg-input);
+  border:1px solid var(--shu-line);
+  color:var(--shu-text); font-family:'Onest', system-ui, sans-serif;
+  font-size:14px; outline:none;
+}
+.ov2-input:focus { border-color:var(--shu-sage-deep); }
+/* Keycap recipe per spec: gradient + 1px border + sage text + bottom shadow */
+.ov2-kbd-row { display:flex; gap:8px; align-items:center; }
+.ov2-kbd {
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:38px; height:38px; padding:0 12px;
+  background:linear-gradient(180deg, #2A3331 0%, #1E2624 100%);
+  border:1px solid #3A4340;
+  border-radius:7px;
+  font-family:'JetBrains Mono', monospace;
+  font-size:14px; font-weight:600;
+  color:var(--shu-sage);
+  box-shadow:0 2px 0 #0d100f;
+}
+.ov2-kbd-plus { color:var(--shu-text-3); font-size:13px; }
+.ov2-pulse {
+  display:flex; align-items:center; gap:10px;
+  font-size:13px; color:var(--shu-text-2);
+  font-family:'JetBrains Mono', monospace;
+}
+.ov2-pulse-dot {
+  width:10px; height:10px; border-radius:50%;
+  background:var(--shu-sage-deep);
+  animation:ov2-pulse-anim 1.4s ease-in-out infinite;
+}
+@keyframes ov2-pulse-anim {
+  0%, 100% { transform:scale(1); opacity:0.5; }
+  50% { transform:scale(1.4); opacity:1; }
+}
+.ov2-actions {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:8px; margin-top:4px;
+}
+.ov2-skip-step, .ov2-skip-all {
+  font-size:12px; color:var(--shu-text-3); background:transparent; border:0;
+  cursor:pointer; padding:6px 10px; border-radius:6px;
+  font-family:'Onest', system-ui, sans-serif;
+  transition:background .15s, color .15s;
+}
+.ov2-skip-step:hover, .ov2-skip-all:hover {
+  background:var(--shu-bg-input); color:var(--shu-text-2);
+}
+
 /* ── модальная плашка «идёт загрузка модели» ── */
 .dl-banner {
   position:fixed; inset:0; z-index:999;
@@ -927,17 +1320,22 @@ dialog label {
   background:var(--paper-2); border-top:1px solid var(--hair);
   padding:8px 12px; display:flex; align-items:center; gap:10px;
   transform:translateY(100%); transition:transform .35s var(--ease);
+  /* Контролы (volume slider + close ×) у правого края не должны уходить за
+     рамку окна и не должны иметь мёртвой зоны рядом. overflow:hidden +
+     min-width:0 на детях гарантируют что layout уложится. */
+  overflow:hidden;
+  box-sizing:border-box;
 }
 .music-player.show { transform:translateY(0); }
 .music-cover {
   width:44px; height:44px; border-radius:6px; object-fit:cover;
   background:var(--hair-vsoft); flex-shrink:0;
 }
-.music-info { min-width:0; flex:0 1 160px; }
+.music-info { min-width:0; flex:1 1 120px; }
 .music-title { font-size:13px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .music-artist { font-size:11px; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
 .music-seek {
-  flex:1; min-width:60px; max-width:180px;
+  flex:1 1 100px; min-width:60px; max-width:180px;
   -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
   background:var(--hair); outline:none; cursor:pointer;
 }
@@ -962,18 +1360,46 @@ dialog label {
 .music-btn:hover, .music-close:hover { background:var(--accent-bg); color:var(--accent-deep); }
 .music-btn:active, .music-close:active { transform:scale(0.9); }
 .music-close {
-  width:48px; height:48px; background:transparent; color:var(--ink-3); font-size:24px; font-weight:500;
-  position:relative; z-index:1;
+  width:44px; height:44px; background:transparent; color:var(--ink-3); font-size:22px; font-weight:500;
+  /* z-index выше чем у volume slider (z:1) и thumb. margin-left:6px
+     резервирует gap от thumb'а volume-slider'а который может торчать
+     на ~9px вправо за пределы своего box'а. Без этого левый край × мог
+     быть перекрыт thumb'ом и клики туда не доходили. */
+  position:relative; z-index:5;
+  flex-shrink:0;
+  margin-left:6px;
 }
 .music-close:hover { background:var(--danger-soft); color:var(--danger); }
 .music-volume {
-  width:80px; height:12px; border-radius:6px;
-  -webkit-appearance:none; appearance:none; background:var(--hair); outline:none; cursor:pointer;
+  /* Ширина и высота — реальный hit-area для клика. WebKit считает
+     клик-зону по полной box'е input'а range. Делаем 100px×28px чтобы
+     было легко попасть в любую часть. */
+  width:100px; height:28px; border-radius:6px;
+  -webkit-appearance:none; appearance:none;
+  background:transparent; outline:none; cursor:pointer;
   flex-shrink:0;
-  position:relative; z-index:2;
+  position:relative; z-index:1;
+  padding:0; margin:0;
+}
+/* Визуальный track — узкая полоска по центру, но клики ловит вся
+   28px высота input'а (см. выше). */
+.music-volume::-webkit-slider-runnable-track {
+  height:6px; border-radius:3px; background:var(--hair);
+  cursor:pointer;
+}
+.music-volume::-moz-range-track {
+  height:6px; border-radius:3px; background:var(--hair);
+  cursor:pointer;
 }
 .music-volume::-webkit-slider-thumb {
-  -webkit-appearance:none; appearance:none; width:18px; height:18px; border-radius:50%;
+  -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%;
+  background:var(--accent-deep); cursor:pointer; border:2px solid var(--paper-2);
+  box-shadow:0 1px 4px rgba(0,0,0,0.3);
+  /* track 6px + центрировать 14px thumb: margin-top = (6-14)/2 = -4px */
+  margin-top:-4px;
+}
+.music-volume::-moz-range-thumb {
+  width:14px; height:14px; border-radius:50%;
   background:var(--accent-deep); cursor:pointer; border:2px solid var(--paper-2);
   box-shadow:0 1px 4px rgba(0,0,0,0.3);
 }
@@ -1018,7 +1444,7 @@ dialog label {
         <div class="tab-pill" id="tab-pill"></div>
         <span class="tab is-active" data-tab="general">General</span>
         <span class="tab" data-tab="models">Models</span>
-        <span class="tab" data-tab="telegram">Telegram <span class="num" id="tg-count">0</span></span>
+        <span class="tab" data-tab="telegram">Telegram</span>
         <span class="tab" data-tab="history">History</span>
         <span class="tab" data-tab="feedback">Feedback</span>
       </nav>
@@ -1141,20 +1567,38 @@ dialog label {
         <div class="item">
           <div class="k" data-i18n="ai_model_label">Local AI model
             <span class="d" data-i18n="ai_model_desc">Local fallback when Gemini is unavailable. Bigger = better quality, more RAM.</span>
+            <span class="d" data-i18n="models_root_desc" style="margin-top:6px;">Where GGUF and tokenizer files are downloaded. Empty = default HuggingFace cache.</span>
           </div>
-          <div class="v" style="gap:8px; flex-wrap:wrap;">
-            <div class="vy-select" id="ai-model-select">
-              <button type="button" class="vy-select__trigger" id="ai-model-trigger" aria-expanded="false">
-                <span class="label" id="ai-model-label-text">…</span>
-                <span class="check" id="ai-model-trigger-check" hidden>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                </span>
-                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
-              <div class="vy-select__menu" id="ai-model-menu" hidden></div>
+          <div class="v" style="gap:8px; flex-wrap:wrap; flex-direction:column; align-items:stretch;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <div class="vy-select" id="ai-model-select">
+                <button type="button" class="vy-select__trigger" id="ai-model-trigger" aria-expanded="false">
+                  <span class="label" id="ai-model-label-text">…</span>
+                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="vy-select__menu" id="ai-model-menu" hidden></div>
+              </div>
+              <span id="ai-model-status" style="font-size:11px; color:var(--ink-3);"></span>
+              <button class="link" id="ai-model-download-btn" data-i18n="btn_download">download</button>
             </div>
-            <span id="ai-model-status" style="font-size:11px; color:var(--ink-3);"></span>
-            <button class="link" id="ai-model-download-btn" data-i18n="btn_download">download</button>
+            <!-- Прогресс-бар для скачивания AI-модели. По дефолту скрыт. -->
+            <div id="ai-model-progress-wrap" style="display:none; width:100%;">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--ink-3); margin-bottom:4px;">
+                <span id="ai-model-progress-label">downloading…</span>
+                <span id="ai-model-progress-pct">0%</span>
+              </div>
+              <div style="position:relative; width:100%; height:4px; background:var(--hair); border-radius:999px; overflow:hidden;">
+                <div id="ai-model-progress-bar" style="position:absolute; left:0; top:0; height:100%; width:0%; background:linear-gradient(90deg, #A8C8A0 0%, #7DAE82 100%); border-radius:999px; transition:width 200ms ease;"></div>
+                <div id="ai-model-progress-shimmer" style="position:absolute; left:0; top:0; height:100%; width:30%; background:linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%); animation:vy-shimmer 1.4s linear infinite;"></div>
+              </div>
+            </div>
+            <!-- Папка для AI-моделей: input + Browse + save. Сразу под dropdown'ом. -->
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <input type="text" id="models-root-input" class="val-mono" placeholder="…"
+                     style="flex:1; min-width:220px; padding:6px 10px; border-radius:6px; border:1px solid var(--hair); background:var(--paper); color:var(--ink); font-size:11px;" />
+              <button class="link" id="models-root-browse" data-i18n="browse">Browse…</button>
+              <button class="link" id="models-root-save" data-i18n="btn_save">save</button>
+            </div>
           </div>
         </div>
 
@@ -1200,6 +1644,15 @@ dialog label {
           </div>
           <div class="v">
             <span class="val-mono" id="appdir">…</span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="onboarding_replay">Гайд для новичков
+            <span class="d" data-i18n="onboarding_replay_desc">Пройти ещё раз пошаговое знакомство с голосовыми командами.</span>
+          </div>
+          <div class="v">
+            <button class="link" id="onboarding-replay-btn" data-i18n="onboarding_replay_btn">показать</button>
           </div>
         </div>
       </div>
@@ -1305,7 +1758,6 @@ dialog label {
   <span class="music-time" id="music-time">0:00 / 0:00</span>
   <div class="music-controls">
     <button class="music-btn" id="music-playpause" title="Play/Pause">▶</button>
-    <button class="music-btn next" id="music-next" title="Next">⏭</button>
     <input type="range" class="music-volume" id="music-volume" min="0" max="100" value="100" title="Volume" />
     <button class="music-close" id="music-close" title="Close">×</button>
   </div>
@@ -1514,6 +1966,153 @@ dialog label {
   </div>
 </div>
 
+<!-- ── First-run overlay: handoff design (lang picker + 3-step onboarding) ──
+     Шу-mascot SVG'шки и стайлы — drop-in из /handoff. Не переделывать.
+     Загружается поверх главного UI как fixed overlay; скрывается после done. -->
+<div id="first-run" class="vy-first-run">
+  <div class="vy-window" data-screen="lang">
+
+    <!-- SCREEN 1 · Language picker -->
+    <section class="vy-scr is-active" data-scr="lang">
+      <div class="vy-pad vy-col" style="gap:18px;">
+        <div class="vy-col" style="align-items:center; gap:14px;">
+          <img class="vy-shu" src="voicy://localhost/assets/shu/hello.svg" alt="Shu">
+          <h1 class="vy-h1" data-i18n="lang.title">Привет / Hi</h1>
+          <div class="vy-bubble" data-i18n-html="lang.bubble">
+            На каком языке поговорим?<br>What language should we speak?
+          </div>
+        </div>
+        <div class="vy-lang-grid">
+          <button class="vy-lang-card is-active" data-lang="ru">
+            <span class="vy-lang-card__code">RU</span>
+            <span class="vy-lang-card__name" data-i18n="lang.ru.name">Русский</span>
+            <span class="vy-lang-card__sub" data-i18n="lang.ru.sub">на русском</span>
+          </button>
+          <button class="vy-lang-card" data-lang="en">
+            <span class="vy-lang-card__code">EN</span>
+            <span class="vy-lang-card__name" data-i18n="lang.en.name">English</span>
+            <span class="vy-lang-card__sub" data-i18n="lang.en.sub">in English</span>
+          </button>
+        </div>
+        <div class="vy-spacer"></div>
+        <div class="vy-foot">
+          <button class="vy-btn vy-btn--primary" data-action="lang-next" data-i18n="lang.cta">Дальше</button>
+          <div class="vy-sub" data-i18n="lang.footer">можно сменить в настройках · can change later</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: generic onboarding (steps 1..N driven by JS via #fr-step-*) -->
+    <section class="vy-scr" data-scr="onb">
+      <div class="vy-pad vy-col" style="flex:1; gap:18px;">
+        <div class="vy-dots" id="fr-dots"></div>
+        <div class="vy-center">
+          <img class="vy-shu vy-shu--lg" id="fr-mascot" src="voicy://localhost/assets/shu/hello.svg" alt="Shu">
+          <div class="vy-bubble" id="fr-bubble">…</div>
+          <!-- Содержимое body шага: либо kbd-row для voice-теста, либо ничего -->
+          <div id="fr-body"></div>
+        </div>
+        <div class="vy-foot">
+          <button class="vy-btn vy-btn--primary" id="fr-cta">…</button>
+          <div class="vy-sub" id="fr-sub">…</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- Spotlight (показывается после онбординга, подсвечивает Replay-кнопку) -->
+<div id="spotlight" class="spotlight-overlay">
+  <div class="spotlight-tooltip" id="spotlight-tooltip">
+    <div class="spotlight-tooltip-arrow"></div>
+    <div class="spotlight-tooltip-text" id="spotlight-tooltip-text">
+      Если вам что-то непонятно или вы что-то забыли — нажимайте сюда.
+    </div>
+    <button class="spotlight-dismiss" id="spotlight-dismiss">Понятно</button>
+  </div>
+</div>
+
+<!-- ── DEPRECATED: hand-drawn Шу sprites kept for back-compat (unused) ── -->
+<svg id="shu-sprites" width="0" height="0" style="position:absolute; display:none" aria-hidden="true">
+  <defs>
+    <symbol id="shu-body" viewBox="0 0 200 200">
+      <!-- body: rounded squarish blob -->
+      <path d="M40 70 Q40 40 70 35 Q100 30 130 35 Q160 40 160 70 L160 140 Q160 170 130 175 Q100 180 70 175 Q40 170 40 140 Z"
+            fill="var(--sage)" stroke="var(--sage-deep)" stroke-width="2"/>
+      <!-- brand wave on forehead (mirrors logo.svg curve) -->
+      <path d="M62 70 Q75 60 88 70 T114 70 T140 70"
+            fill="none" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <!-- Expression: idle (calm eyes, soft smile) -->
+    <symbol id="shu-idle" viewBox="0 0 200 200">
+      <use href="#shu-body"/>
+      <circle cx="80" cy="110" r="5" fill="var(--bg)"/>
+      <circle cx="120" cy="110" r="5" fill="var(--bg)"/>
+      <path d="M82 138 Q100 148 118 138" fill="none" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <!-- Expression: listening (wide eyes, slightly open mouth) -->
+    <symbol id="shu-listening" viewBox="0 0 200 200">
+      <use href="#shu-body"/>
+      <circle cx="80" cy="110" r="7" fill="var(--bg)"/>
+      <circle cx="120" cy="110" r="7" fill="var(--bg)"/>
+      <circle cx="82" cy="108" r="2" fill="var(--sage)"/>
+      <circle cx="122" cy="108" r="2" fill="var(--sage)"/>
+      <ellipse cx="100" cy="142" rx="9" ry="6" fill="var(--bg)"/>
+    </symbol>
+    <!-- Expression: sending (focused eyes, pressed mouth) -->
+    <symbol id="shu-sending" viewBox="0 0 200 200">
+      <use href="#shu-body"/>
+      <path d="M73 108 L87 113" stroke="var(--bg)" stroke-width="4" stroke-linecap="round"/>
+      <path d="M127 108 L113 113" stroke="var(--bg)" stroke-width="4" stroke-linecap="round"/>
+      <line x1="85" y1="140" x2="115" y2="140" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <!-- Expression: sent (happy eyes ^_^, big smile + sparkle) -->
+    <symbol id="shu-sent" viewBox="0 0 200 200">
+      <use href="#shu-body"/>
+      <path d="M72 113 Q80 105 88 113" fill="none" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M112 113 Q120 105 128 113" fill="none" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M78 138 Q100 156 122 138" fill="none" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M165 50 L168 56 L174 59 L168 62 L165 68 L162 62 L156 59 L162 56 Z" fill="var(--sage-deep)"/>
+    </symbol>
+    <!-- Expression: sleep (closed eyes + Z) -->
+    <symbol id="shu-sleep" viewBox="0 0 200 200">
+      <use href="#shu-body"/>
+      <line x1="70" y1="112" x2="90" y2="112" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+      <line x1="110" y1="112" x2="130" y2="112" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M88 142 Q100 148 112 142" fill="none" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+      <text x="155" y="58" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" fill="var(--sage-deep)">Z</text>
+      <text x="170" y="44" font-family="JetBrains Mono, monospace" font-size="14" font-weight="700" fill="var(--sage-deep)">z</text>
+    </symbol>
+    <!-- Expression: shy (eyes looking sideways + blush + small smile) -->
+    <symbol id="shu-shy" viewBox="0 0 200 200">
+      <use href="#shu-body"/>
+      <circle cx="82" cy="111" r="5" fill="var(--bg)"/>
+      <circle cx="122" cy="111" r="5" fill="var(--bg)"/>
+      <ellipse cx="65" cy="128" rx="9" ry="5" fill="var(--sage-deep)" opacity="0.5"/>
+      <ellipse cx="135" cy="128" rx="9" ry="5" fill="var(--sage-deep)" opacity="0.5"/>
+      <path d="M90 142 Q100 146 110 142" fill="none" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+    <!-- Pose: wave (idle expression with raised "arm") -->
+    <symbol id="shu-wave" viewBox="0 0 200 200">
+      <use href="#shu-idle"/>
+      <!-- Waving arm — rounded protrusion top-right -->
+      <path d="M160 70 Q175 50 178 30 Q182 35 184 42 Q180 60 168 78"
+            fill="var(--sage)" stroke="var(--sage-deep)" stroke-width="2"/>
+      <circle cx="183" cy="37" r="6" fill="var(--sage)" stroke="var(--sage-deep)" stroke-width="2"/>
+    </symbol>
+    <!-- Pose: tilt (shy expression with slight rotation feel) -->
+    <symbol id="shu-tilt" viewBox="0 0 200 200">
+      <g transform="rotate(-8 100 100)">
+        <use href="#shu-shy"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- (старые lang-picker / onboarding-v2 / spotlight overlay'и удалены,
+     заменены handoff-флоу #first-run выше) -->
+
 <script>
 // ── i18n ──
 var _lang = 'en';
@@ -1534,7 +2133,9 @@ var locales = {
     gemini_key: 'Ключ Gemini API', gemini_key_desc: 'Google Gemini 2.0 Flash — основной движок ИИ. Быстрые ответы (~1–2 сек), отличный русский. Бесплатный tier: 1500 запросов/день. Без ключа — fallback на локальную модель.',
     ai_language_label: 'Язык ассистента', ai_language_desc: 'Язык, на котором ИИ будет отвечать голосом.',
     ai_model_label: 'Локальная ИИ-модель', ai_model_desc: 'Fallback когда Gemini недоступен. Больше = качественнее, больше RAM.',
-    ai_model_cached: '✓ скачана', ai_model_not_cached: 'не скачана', ai_model_downloading: 'скачиваю…',
+    ai_model_cached: 'скачана', ai_model_not_cached: 'не скачана', ai_model_downloading: 'скачиваю…',
+    models_root_label: 'Папка для ИИ-моделей', models_root_desc: 'Куда скачивать GGUF и токенизатор. Пусто — стандартный кэш HuggingFace.',
+    browse: 'Обзор…',
     btn_download: 'скачать', btn_save: 'сохранить', btn_check: 'проверить', btn_change: 'изменить', btn_reset: 'сброс',
     gemini_key_ok: '✓ ключ работает', gemini_key_bad: '✗ ключ не работает',
     help_gemini_title: 'Как получить ключ Gemini',
@@ -1544,6 +2145,44 @@ var locales = {
     startup: 'Автозапуск', startup_desc: 'Запускать Voicy вместе с Windows.',
     log_label: 'Лог', log_desc: 'Последнее событие пайплайна.',
     data_label: 'Данные', data_desc: 'Конфиг, session, кэш диалогов и whisper-веса.',
+    onboarding_replay: 'Гайд для новичков',
+    onboarding_replay_desc: 'Пройти ещё раз пошаговое знакомство с голосовыми командами.',
+    onboarding_replay_btn: 'показать',
+    ov2_skip_step: 'Пропустить шаг',
+    ov2_skip_all: 'Пропустить всё',
+    ov2_done_title: 'Готово!',
+    ov2_done_desc: 'Можешь пользоваться. Полный список команд — в Help.',
+    // 3-step Flow B (Шу mascot)
+    ov2_s1_bubble: 'Привет. Я Шу — помогу тебе писать в Telegram голосом.',
+    ov2_s1_cta: 'Начнём',
+    ov2_s1_sub: 'минута, не больше',
+    ov2_s2_bubble: 'Войди в Telegram. Один раз — и забудешь, что вообще такое было.',
+    ov2_s2_cta: 'Перейти к логину',
+    ov2_s2_sub: 'сессия остаётся у тебя на компьютере',
+    ov2_s3_bubble: 'А теперь — зажми и скажи слово. Например, «тест».',
+    ov2_s3_listening: 'слушаю…',
+    spotlight_text: 'Если что-то непонятно или забыл — нажми сюда, гайд запустится снова.',
+    spotlight_dismiss: 'Понятно',
+    // Handoff first-run strings (drop-in from /handoff)
+    fr_lang_title:    'Привет / Hi',
+    fr_lang_bubble:   'На каком языке поговорим?<br>What language should we speak?',
+    fr_lang_cta:      'Дальше',
+    fr_lang_footer:   'можно сменить в настройках · can change later',
+    fr_lang_ru_name:  'Русский',
+    fr_lang_ru_sub:   'на русском',
+    fr_lang_en_name:  'English',
+    fr_lang_en_sub:   'in English',
+    fr_onb1_bubble:   'Привет. Я Шу — помогу тебе писать в Telegram голосом.',
+    fr_onb1_cta:      'Начнём',
+    fr_onb1_sub:      'минута, не больше',
+    fr_onb2_phone_bubble: 'Войди в Telegram. Один раз — и забудешь, что вообще такое было.',
+    fr_onb2_phone_cta:    'Получить код',
+    fr_onb2_code_bubble:  'Код пришёл в Telegram на ',
+    fr_onb2_code_cta:     'Войти',
+    fr_onb2_sub:          'сессия остаётся у тебя на компьютере',
+    fr_onb3_bubble:       'А теперь — зажми и скажи слово.<br>Например, «тест».',
+    fr_onb3_hint:         'нажми клавиши или клацни на них',
+    fr_onb3_listening:    'слушаю…',
     recog_lang: 'Язык распознавания', recog_lang_desc: 'Язык для whisper. Авто-определение пока не поддерживается.',
     models_title: 'Модели',
     model_active_now: 'Используется сейчас',
@@ -1628,7 +2267,9 @@ var locales = {
     gemini_key: 'Gemini API key', gemini_key_desc: 'Google Gemini 2.0 Flash — primary AI engine. Fast replies (~1–2 sec), excellent English. Free tier: 1500 requests/day. Without key — fallback to local model.',
     ai_language_label: 'Assistant language', ai_language_desc: 'Language the AI will speak in.',
     ai_model_label: 'Local AI model', ai_model_desc: 'Fallback when Gemini is unavailable. Bigger = better quality, more RAM.',
-    ai_model_cached: '✓ cached', ai_model_not_cached: 'not cached', ai_model_downloading: 'downloading…',
+    ai_model_cached: 'cached', ai_model_not_cached: 'not cached', ai_model_downloading: 'downloading…',
+    models_root_label: 'AI models folder', models_root_desc: 'Where GGUF and tokenizer files are downloaded. Empty = default HuggingFace cache.',
+    browse: 'Browse…',
     btn_download: 'download', btn_save: 'save', btn_check: 'check', btn_change: 'change', btn_reset: 'reset',
     gemini_key_ok: '✓ key valid', gemini_key_bad: '✗ key invalid',
     help_gemini_title: 'How to get a Gemini key',
@@ -1638,6 +2279,44 @@ var locales = {
     startup: 'Run at startup', startup_desc: 'Start Voicy with Windows.',
     log_label: 'Log', log_desc: 'Last pipeline event.',
     data_label: 'Data', data_desc: 'Config, session, dialog cache and Whisper weights.',
+    onboarding_replay: 'Newcomer tour',
+    onboarding_replay_desc: 'Walk through the voice commands tutorial again.',
+    onboarding_replay_btn: 'show',
+    ov2_skip_step: 'Skip step',
+    ov2_skip_all: 'Skip all',
+    ov2_done_title: 'Done!',
+    ov2_done_desc: 'You can start using it now. Full command list — in Help.',
+    // 3-step Flow B (Шу mascot)
+    ov2_s1_bubble: 'Hi. I\'m Shu — I\'ll help you write to Telegram with your voice.',
+    ov2_s1_cta: 'Let\'s go',
+    ov2_s1_sub: 'a minute, no more',
+    ov2_s2_bubble: 'Sign in to Telegram. Just once — and you\'ll forget about it.',
+    ov2_s2_cta: 'Go to login',
+    ov2_s2_sub: 'session stays on your machine',
+    ov2_s3_bubble: 'Now — hold and say a word. For example, "test".',
+    ov2_s3_listening: 'listening…',
+    spotlight_text: 'If anything is unclear or you forget — click here, the guide will run again.',
+    spotlight_dismiss: 'Got it',
+    // Handoff first-run strings (drop-in from /handoff)
+    fr_lang_title:    'Hi / Привет',
+    fr_lang_bubble:   'What language should we speak?<br>На каком языке поговорим?',
+    fr_lang_cta:      'Continue',
+    fr_lang_footer:   'you can change this in settings',
+    fr_lang_ru_name:  'Русский',
+    fr_lang_ru_sub:   'in Russian',
+    fr_lang_en_name:  'English',
+    fr_lang_en_sub:   'in English',
+    fr_onb1_bubble:   "Hi. I'm Shu — I'll help you write to Telegram with your voice.",
+    fr_onb1_cta:      "Let's go",
+    fr_onb1_sub:      'takes a minute, no more',
+    fr_onb2_phone_bubble: 'Sign in to Telegram. One time — then forget it ever happened.',
+    fr_onb2_phone_cta:    'Get code',
+    fr_onb2_code_bubble:  'Code sent to Telegram at ',
+    fr_onb2_code_cta:     'Sign in',
+    fr_onb2_sub:          'your session stays on this computer',
+    fr_onb3_bubble:       'Now — hold the keys and say a word.<br>Like "test", for example.',
+    fr_onb3_hint:         'press the keys or tap them',
+    fr_onb3_listening:    'listening…',
     recog_lang: 'Recognition language', recog_lang_desc: 'Whisper recognition language. Auto-detection is not yet supported.',
     models_title: 'Models',
     model_active_now: 'Active now',
@@ -1719,6 +2398,10 @@ function applyLanguage() {
   document.querySelectorAll('[data-i18n]').forEach(function(el) {
     var key = el.getAttribute('data-i18n');
     if (!key) return;
+    // SKIP: элементы внутри #first-run handoff-флоу имеют свой i18n
+    // (ключи типа "onb1.bubble" с точками). Иначе наш t() возвращает
+    // raw key как fallback и перетирает уже applied перевод.
+    if (el.closest('#first-run')) return;
     var vars = {};
     if (el.dataset.i18nVars) {
       try { vars = JSON.parse(el.dataset.i18nVars); } catch(e) {}
@@ -1964,11 +2647,41 @@ async function refresh() {
     _lang = langRes.language;
     applyLanguage();
   }
-  // UI lang vy-select (English / Русский)
+  // First-launch language picker — показывается ТОЛЬКО если флаг не выставлен.
+  // Блокирует UI до выбора. После выбора применяет язык + сохраняет в config.
+  if (typeof window._voicyLangPickerMaybeShow === 'function') {
+    window._voicyLangPickerMaybeShow();
+  }
+  // AUTO-SYNC: если ai_language или rec_lang в конфиге отличаются от UI lang,
+  // подтягиваем их к UI lang. Иначе юзер ставит EN в UI, но Edge TTS говорит
+  // с русским акцентом потому что ai_language остался "ru" с прошлого запуска.
+  // Делаем это только если в localStorage стоит флаг lang_chosen (юзер уже
+  // явно выбирал) — иначе lang picker сделает всё сам.
+  try {
+    if (localStorage.getItem('voicy_lang_chosen')) {
+      var aiLang = (await callIpc('ai_language_get')).language;
+      var recLang = (await callIpc('rec_lang_get')).language;
+      if (aiLang && aiLang !== _lang) {
+        await callIpc('ai_language_set', { language: _lang });
+      }
+      if (recLang && recLang !== _lang && recLang !== 'auto') {
+        await callIpc('rec_lang_set', { language: _lang });
+      }
+    }
+  } catch(e) { console.warn('lang auto-sync failed', e); }
+  // UI lang vy-select (English / Русский). Меняем UI — синхронно меняем
+  // ai_language (Edge TTS voice выбирается по нему) и rec_lang (Whisper).
+  // Иначе юзер ставит EN, а ассистент продолжает говорить русским голосом
+  // с акцентом — путает.
   mountVySelect("ui-lang-select",
     [{value:"en", label:"English"}, {value:"ru", label:"Русский"}],
     _lang,
-    async function(v){ await callIpc("language_set", { language: v }); refresh(); }
+    async function(v){
+      await callIpc("language_set", { language: v });
+      await callIpc("ai_language_set", { language: v });
+      await callIpc("rec_lang_set", { language: v });
+      refresh();
+    }
   );
 
   // recognition language vy-select (English / Русский / Auto)
@@ -2030,28 +2743,25 @@ async function refresh() {
   var aiModelMenu = document.getElementById("ai-model-menu");
   var aiModelLabel = document.getElementById("ai-model-label-text");
   var aiModelTrigger = document.getElementById("ai-model-trigger");
-  var aiModelTriggerCheck = document.getElementById("ai-model-trigger-check");
   var aiModelStatusEl = document.getElementById("ai-model-status");
   var aiModelDownloadBtn = document.getElementById("ai-model-download-btn");
   if (aiModelMenu && aiModelRes.ok && aiModelRes.available) {
     var current = aiModelRes.available.find(function(m){ return m.id === aiModelRes.current; });
     var currentRam = current ? (current.ram_mb < 1000 ? (current.ram_mb + ' MB') : ((current.ram_mb/1000).toFixed(1) + ' GB')) : '';
     if (current && aiModelLabel) aiModelLabel.textContent = current.name + ' · ' + currentRam;
-    if (aiModelTriggerCheck) aiModelTriggerCheck.hidden = !(current && current.cached);
 
-    // Перерисовываем items
+    // Перерисовываем items — без галочки на selected (всё равно selected
+     // подсвечивается через aria-selected/.is-active в CSS). "✓ скачана"
+     // бейдж справа от trigger'а уже несёт информацию о cached-state —
+     // дубликаты только шумят.
     aiModelMenu.innerHTML = aiModelRes.available.map(function(m){
       var ram = m.ram_mb < 1000 ? (m.ram_mb + ' MB') : ((m.ram_mb/1000).toFixed(1) + ' GB');
       var isSel = m.id === aiModelRes.current;
       var metaSuffix = m.cached ? '' : ' · ' + t('ai_model_not_cached');
-      var checkSvg = isSel
-        ? '<span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
-        : '';
       return '<div class="vy-select__item" data-id="' + m.id + '"' + (isSel ? ' aria-selected="true"' : '') + '>'
         + '<span>' + m.name
           + '<span class="vy-select__meta">' + ram + metaSuffix + '</span>'
         + '</span>'
-        + checkSvg
         + '</div>';
     }).join('');
 
@@ -2095,6 +2805,17 @@ async function refresh() {
   var avatar = document.getElementById("account-avatar");
   var logoutBtn = document.getElementById("btn-logout");
   var tgMeta = document.getElementById("tg-meta-right");
+  // Триггер интерактивного онбординга — только после TG логина.
+  if (typeof window._voicyOv2MaybeShow === 'function') {
+    window._voicyOv2MaybeShow(!!info.signed_in);
+  }
+  // Handoff first-run: уведомляем когда TG signed_in (для step 2 → 3 auto-advance)
+  if (typeof window._voicyFirstRunOnSignedIn === 'function') {
+    window._voicyFirstRunOnSignedIn(!!info.signed_in);
+  }
+  // Кэш для boot() и interval-recheck в handoff onboarding —
+  // позволяет скипнуть QR-шаг, если юзер уже залогинен на старте.
+  window._voicySignedInCache = !!info.signed_in;
   if (info.signed_in) {
     var label = info.username ? "@" + info.username : "id:" + info.user_id;
     name.textContent = info.username ? info.username : ("Telegram " + info.user_id);
@@ -2203,7 +2924,7 @@ async function refreshContacts() {
   if (!r.ok) return;
   _contacts = r.contacts || [];
   document.getElementById("contact-count").textContent = _contacts.length;
-  document.getElementById("tg-count").textContent = _contacts.length;
+  var tgc = document.getElementById("tg-count"); if (tgc) tgc.textContent = _contacts.length;
   document.getElementById("contacts-path").textContent = r.path || "contacts.txt";
   renderContacts();
 }
@@ -2802,6 +3523,50 @@ function renderDialogList(filter) {
     if (e.key === "Escape" && menu && !menu.hidden) closeMenu();
   });
   var btn = document.getElementById("ai-model-download-btn");
+  var progWrap   = document.getElementById("ai-model-progress-wrap");
+  var progBar    = document.getElementById("ai-model-progress-bar");
+  var progPct    = document.getElementById("ai-model-progress-pct");
+  var progLabel  = document.getElementById("ai-model-progress-label");
+
+  function showDownloadProgress() {
+    if (progWrap) progWrap.style.display = "block";
+    if (progBar)  progBar.style.width = "0%";
+    if (progPct)  progPct.textContent  = "";
+    if (progLabel) progLabel.textContent = t('ai_model_downloading') || "downloading…";
+  }
+  function hideDownloadProgress() {
+    if (progWrap) progWrap.style.display = "none";
+  }
+  // Indeterminate "creeping" анимация ширины 0→90% за ~30 секунд.
+  // Реального прогресса от candelabra мы не получаем — но shimmer + ползущая
+  // полоса визуально передают что что-то происходит. На done — сразу 100%.
+  var _progCreepTimer = null;
+  function startCreep() {
+    var w = 0;
+    stopCreep();
+    _progCreepTimer = setInterval(function() {
+      if (!progBar) return;
+      // Асимптотически приближается к 90% — никогда не достигнет 100% без события.
+      w = w + (90 - w) * 0.04;
+      progBar.style.width = w.toFixed(1) + "%";
+    }, 600);
+  }
+  function stopCreep() {
+    if (_progCreepTimer) { clearInterval(_progCreepTimer); _progCreepTimer = null; }
+  }
+  function setProgressDone() {
+    stopCreep();
+    if (progBar) progBar.style.width = "100%";
+    if (progPct) progPct.textContent = "100%";
+    setTimeout(hideDownloadProgress, 700);
+  }
+
+  async function pollDownloadState() {
+    var s = await callIpc("ai_model_download_state", {});
+    if (!s || !s.ok) return null;
+    return s;
+  }
+
   if (btn) {
     btn.addEventListener("click", async function() {
       btn.disabled = true;
@@ -2810,15 +3575,75 @@ function renderDialogList(filter) {
         statusEl.textContent = t('ai_model_downloading');
         statusEl.style.color = "var(--ink-3)";
       }
+      showDownloadProgress();
+      startCreep();
       appendLog("⬇ скачиваю локальную модель ИИ…");
       var r = await callIpc("ai_model_download", {});
-      btn.disabled = false;
-      if (r && r.ok) {
-        appendLog("✅ модель скачана");
-      } else {
+      if (!r || !r.ok) {
+        stopCreep();
+        hideDownloadProgress();
+        btn.disabled = false;
         appendLog("✗ скачивание: " + (r && r.error ? r.error : "fail"));
+        return;
       }
-      refresh();
+      // Если уже cached — мгновенный успех.
+      if (r.cached) {
+        setProgressDone();
+        btn.disabled = false;
+        refresh();
+        return;
+      }
+      // Polling: state каждые 700 ms пока in_progress=true.
+      var pollInterval = setInterval(async function() {
+        var s = await pollDownloadState();
+        if (!s) return;
+        if (s.in_progress) return; // ещё качается — продолжаем ждать
+        // Завершилось — успех или ошибка
+        clearInterval(pollInterval);
+        btn.disabled = false;
+        if (s.done) {
+          setProgressDone();
+          appendLog("✅ модель скачана");
+        } else {
+          stopCreep();
+          hideDownloadProgress();
+          appendLog("✗ скачивание: " + (s.error || "fail"));
+        }
+        refresh();
+      }, 700);
+    });
+  }
+
+  // ── Models folder (HF cache) input + Browse + Save ──────────────────────
+  var mrInput  = document.getElementById("models-root-input");
+  var mrBrowse = document.getElementById("models-root-browse");
+  var mrSave   = document.getElementById("models-root-save");
+  async function loadModelsRoot() {
+    var r = await callIpc("models_root_get", {});
+    if (!r || !r.ok) return;
+    if (mrInput) mrInput.value = r.path || "";
+    if (mrInput) mrInput.placeholder = r.default || "default HF cache";
+  }
+  loadModelsRoot();
+  if (mrBrowse) {
+    mrBrowse.addEventListener("click", async function() {
+      mrBrowse.disabled = true;
+      var r = await callIpc("models_root_pick", {});
+      mrBrowse.disabled = false;
+      if (r && r.ok && r.path) {
+        if (mrInput) mrInput.value = r.path;
+      }
+    });
+  }
+  if (mrSave) {
+    mrSave.addEventListener("click", async function() {
+      var val = mrInput ? mrInput.value.trim() : "";
+      var r = await callIpc("models_root_set", { path: val });
+      if (r && r.ok) {
+        appendLog(val ? ("📁 AI models folder: " + val + " (рестарт для применения)") : "📁 AI models folder: default");
+      } else {
+        appendLog("✗ models_root_set: " + (r && r.error ? r.error : "fail"));
+      }
     });
   }
 })();
@@ -2902,6 +3727,9 @@ setInterval(refresh, 5000);
   var elClose = document.getElementById('music-close');
   var elVolume = document.getElementById('music-volume');
 
+  // (диагностический listener убран — нашли что #flash toast перекрывал
+  // клики; фикс — pointer-events:none в .flash CSS)
+
   function formatTime(sec) {
     if (!sec || sec < 0) sec = 0;
     var m = Math.floor(sec / 60);
@@ -2933,8 +3761,14 @@ setInterval(refresh, 5000);
   function onPlayerStateChange(event) {
     // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
     if (event.data === 1) {
+      var wasPlaying = (musicState === 'playing');
       musicState = 'playing';
       if (elPlayPause) elPlayPause.textContent = '⏸';
+      // Сигнал в лог для onboarding-теста музыки. Только при первом
+      // переходе в playing — иначе будет спам при unpause.
+      if (!wasPlaying && typeof window.appendLog === 'function') {
+        try { window.appendLog('▶ music playing'); } catch(e){}
+      }
     } else if (event.data === 2) {
       musicState = 'paused';
       if (elPlayPause) elPlayPause.textContent = '▶';
@@ -3063,7 +3897,13 @@ setInterval(refresh, 5000);
   }
 
   if (elClose) {
-    elClose.addEventListener('click', function() {
+    // Используем mousedown (НЕ click) — клик может перехватываться если
+    // прозрачный элемент сверху "съел" mouseup. mousedown срабатывает
+    // первым в event-chain. + stopPropagation чтобы не bubblе'илось на
+    // document-level drag handler (был случай — overlay-listener воровал).
+    var closeHandler = function(e) {
+      e.stopPropagation();
+      e.preventDefault();
       stopMusic();
       if (window.ipc) {
         window.ipc.postMessage(JSON.stringify({
@@ -3072,7 +3912,9 @@ setInterval(refresh, 5000);
           payload: {}
         }));
       }
-    });
+    };
+    elClose.addEventListener('mousedown', closeHandler);
+    elClose.addEventListener('click', closeHandler);
   }
 
   if (elSeek) {
@@ -3098,7 +3940,74 @@ setInterval(refresh, 5000);
       var vol = parseInt(elVolume.value, 10);
       if (!isNaN(vol)) musicPlayer.setVolume(vol);
     });
+    // CRITICAL: на WebView2 input[range] не всегда отвечает на click по
+    // треку — только drag по thumb'у работает. Перехватываем mousedown
+    // и вычисляем value вручную: x относительно bounding rect → percentage.
+    // Сразу делаем pointerdown chain через JS — обновляем value, дёргаем
+    // input event для setVolume.
+    function trackClickToValue(e) {
+      var rect = elVolume.getBoundingClientRect();
+      var x = (e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX) || 0) - rect.left;
+      var pct = Math.max(0, Math.min(1, x / rect.width));
+      var newVal = Math.round(pct * (parseFloat(elVolume.max) || 100));
+      elVolume.value = newVal;
+      elVolume.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    elVolume.addEventListener('mousedown', function(e) {
+      trackClickToValue(e);
+      // Continue tracking until mouseup для drag behavior.
+      var moveHandler = function(ev) { trackClickToValue(ev); };
+      var upHandler = function() {
+        document.removeEventListener('mousemove', moveHandler);
+        document.removeEventListener('mouseup', upHandler);
+      };
+      document.addEventListener('mousemove', moveHandler);
+      document.addEventListener('mouseup', upHandler);
+      e.preventDefault();
+    });
   }
+
+  // Аналогично для seek (top-level) — тот же баг с click vs drag.
+  if (elSeek) {
+    function seekClickToValue(e) {
+      var rect = elSeek.getBoundingClientRect();
+      var x = (e.clientX !== undefined ? e.clientX : 0) - rect.left;
+      var pct = Math.max(0, Math.min(1, x / rect.width));
+      var newVal = Math.round(pct * (parseFloat(elSeek.max) || 100));
+      elSeek.value = newVal;
+      elSeek.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    elSeek.addEventListener('mousedown', function(e) {
+      seekClickToValue(e);
+      var moveHandler = function(ev) { seekClickToValue(ev); };
+      var upHandler = function() {
+        document.removeEventListener('mousemove', moveHandler);
+        document.removeEventListener('mouseup', upHandler);
+      };
+      document.addEventListener('mousemove', moveHandler);
+      document.addEventListener('mouseup', upHandler);
+      e.preventDefault();
+    });
+  }
+
+  // ── Hooks для голосовых команд (browser_action::dispatch когда music_active) ──
+  // Из Rust шлются через eval_js — здесь принимаем и шуруем в YT IFrame API.
+  window.voicyMusicVolumeDelta = function(delta) {
+    if (!musicPlayer || !musicPlayer.setVolume || !musicPlayer.getVolume) return;
+    var cur = musicPlayer.getVolume();
+    var next = Math.max(0, Math.min(100, cur + delta));
+    musicPlayer.setVolume(next);
+    if (elVolume) elVolume.value = next;
+  };
+  window.voicyMusicMute = function() {
+    if (!musicPlayer || !musicPlayer.isMuted || !musicPlayer.mute || !musicPlayer.unMute) return;
+    if (musicPlayer.isMuted()) musicPlayer.unMute(); else musicPlayer.mute();
+  };
+  window.voicyMusicSeekDelta = function(seconds) {
+    if (!musicPlayer || !musicPlayer.getCurrentTime || !musicPlayer.seekTo) return;
+    var cur = musicPlayer.getCurrentTime();
+    musicPlayer.seekTo(Math.max(0, cur + seconds), true);
+  };
 })();
 
 refresh();
@@ -3109,6 +4018,31 @@ setInterval(refresh, 5000);
   var STORAGE_KEY = 'voicy_onboarding_done';
   var overlay = document.getElementById('onboarding');
   if (!overlay) return;
+
+  // Окно должно перетаскиваться даже во время guide'а — с ЛЮБОГО места
+  // overlay'а (старый карусель / handoff first-run) ВКЛЮЧАЯ карточку,
+  // кроме конкретно интерактивных элементов (кнопки, инпуты, ссылки).
+  document.addEventListener("mousedown", function(e) {
+    if (e.button !== 0) return;
+    var ov1 = document.getElementById('onboarding');
+    var fr  = document.getElementById('first-run');
+    var ov1Active = ov1 && ov1.classList.contains('show');
+    var frActive  = fr  && fr.classList.contains('show');
+    if (!ov1Active && !frActive) return;
+    // Только конкретные интерактивные элементы исключаем.
+    if (e.target && e.target.closest) {
+      if (e.target.closest("button, a, input, textarea, .onboarding-dot, .onboarding-example, .vy-lang-card, .vy-kbd-row, [data-no-drag]")) {
+        return;
+      }
+    }
+    if (window.ipc) {
+      window.ipc.postMessage(JSON.stringify({
+        id: "drag-" + Date.now(),
+        cmd: "_window_drag",
+        payload: { src: frActive ? "first-run" : "ov1", x: e.clientX, y: e.clientY }
+      }));
+    }
+  }, true);
   var track = document.getElementById('ob-track');
   var dotsWrap = document.getElementById('ob-dots');
   var btnNext = document.getElementById('ob-next');
@@ -3194,6 +4128,759 @@ setInterval(refresh, 5000);
   });
 
   maybeShow();
+})();
+
+/* =============================================================================
+ * Handoff state machine — Voicy first-run flow (drop-in из /handoff).
+ * Заменяет старые lang-picker + onboarding-v2 IIFE.
+ * Использует те же localStorage keys что и старая v2 (back-compat).
+ *
+ * Bridge methods (window.voicyBridge):
+ *   - saveLanguage(lang)        → IPC language_set + ai_language_set + rec_lang_set
+ *   - sendCode(phone)           → TODO: tg_send_code IPC (пока fake-delay)
+ *   - checkCode(phone, code)    → TODO: tg_check_code IPC (пока fake-delay)
+ * ============================================================================= */
+window.voicyBridge = {
+  saveLanguage: function(lang) {
+    if (!window.ipc) return;
+    _lang = lang; applyLanguage();
+    window.ipc.postMessage(JSON.stringify({id:'lp-ui-'+Date.now(),  cmd:'language_set',     payload:{language:lang}}));
+    window.ipc.postMessage(JSON.stringify({id:'lp-ai-'+Date.now(),  cmd:'ai_language_set',  payload:{language:lang}}));
+    window.ipc.postMessage(JSON.stringify({id:'lp-rec-'+Date.now(), cmd:'rec_lang_set',     payload:{language:lang}}));
+  },
+  _legacy_sendCode: function(phone) {
+    return new Promise(function(r){ setTimeout(r, 400); });
+  },
+  checkCode: function(phone, code) {
+    // TODO: добавить IPC tg_check_code в Rust (grammers::client::sign_in)
+    return new Promise(function(r){ setTimeout(r, 400); });
+  }
+};
+
+(function () {
+  'use strict';
+
+  // ---------- DOM helpers ---------------------------------------------------
+  var $  = function(sel, ctx) { return (ctx || document).querySelector(sel); };
+  var $$ = function(sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+  var root = $('#first-run');
+  if (!root) return;
+  var win = $('.vy-window', root);
+  var elDots   = $('#fr-dots', win);
+  var elMascot = $('#fr-mascot', win);
+  var elBubble = $('#fr-bubble', win);
+  var elBody   = $('#fr-body', win);
+  var elCta    = $('#fr-cta', win);
+  var elSub    = $('#fr-sub', win);
+
+  function showScreen(name) {
+    $$('.vy-scr', win).forEach(function(s) { s.classList.toggle('is-active', s.dataset.scr === name); });
+    win.dataset.screen = name;
+  }
+  function bridge() { return (typeof window !== 'undefined' && window.voicyBridge) || null; }
+
+  // ---------- Persistence (СОВПАДАЕТ с handoff README) ---------------------
+  var LS = {
+    lang:       'voicy_lang_chosen',
+    step:       'voicy_onboarding_v2_step',
+    doneV2:     'voicy_onboarding_v2_done',
+    doneLegacy: 'voicy_onboarding_done'
+  };
+  function getLang()   { try { return localStorage.getItem(LS.lang); } catch(e){ return null; } }
+  function setLang(v)  { try { localStorage.setItem(LS.lang, v); } catch(e){} var b = bridge(); if (b && b.saveLanguage) b.saveLanguage(v); }
+  function getStep()   { try { return localStorage.getItem(LS.step); } catch(e){ return null; } }
+  function setStep(v)  { try { localStorage.setItem(LS.step, String(v)); } catch(e){} }
+  function isDone()    { try { return localStorage.getItem(LS.doneV2) === '1'; } catch(e){ return false; } }
+  function markDone()  { try { localStorage.setItem(LS.doneV2, '1'); localStorage.setItem(LS.doneLegacy, '1'); localStorage.removeItem(LS.step); } catch(e){} }
+
+  // ---------- i18n (handoff strings inline — без зависимости от _lang state) --
+  // Hardcoded чтобы убрать всю indirection через map+locales: было обнаружено
+  // что либо _lang не успевает обновиться, либо ключи не находятся → текст
+  // остаётся как raw data-i18n значение типа "onb2.phone.bubble".
+  var FR_STRINGS = {
+    ru: {
+      'lang.title':           'Привет / Hi',
+      'lang.bubble':          'На каком языке поговорим?<br>What language should we speak?',
+      'lang.cta':             'Дальше',
+      'lang.footer':          'можно сменить в настройках · can change later',
+      'lang.ru.name':         'Русский', 'lang.ru.sub': 'на русском',
+      'lang.en.name':         'English', 'lang.en.sub': 'in English',
+      'onb1.bubble':          'Привет. Я Шу — помогу тебе писать в Telegram голосом.',
+      'onb1.cta':             'Начнём',
+      'onb1.sub':             'минута, не больше',
+      'onb2.qr.bubble':       'Войди в Telegram через QR. Открой Telegram → Settings → Devices → Link Desktop, отсканируй код.',
+      'onb2.qr.cta':          'Открыть QR-вход',
+      'onb2.sub':             'сессия остаётся у тебя на компьютере',
+      'onb3.bubble':          'А теперь — зажми и скажи слово.<br>Например, «тест».',
+      'onb3.hint':            'нажми клавиши или клацни на них',
+      'onb3.listening':       'слушаю…'
+    },
+    en: {
+      'lang.title':           'Hi / Привет',
+      'lang.bubble':          'What language should we speak?<br>На каком языке поговорим?',
+      'lang.cta':             'Continue',
+      'lang.footer':          'you can change this in settings',
+      'lang.ru.name':         'Русский', 'lang.ru.sub': 'in Russian',
+      'lang.en.name':         'English', 'lang.en.sub': 'in English',
+      'onb1.bubble':          "Hi. I'm Shu — I'll help you write to Telegram with your voice.",
+      'onb1.cta':             "Let's go",
+      'onb1.sub':             'takes a minute, no more',
+      'onb2.qr.bubble':       'Sign in to Telegram via QR. Open Telegram → Settings → Devices → Link Desktop, scan the code.',
+      'onb2.qr.cta':          'Open QR sign-in',
+      'onb2.sub':             'your session stays on this computer',
+      'onb3.bubble':          'Now — hold the keys and say a word.<br>Like "test", for example.',
+      'onb3.hint':            'press the keys or tap them',
+      'onb3.listening':       'listening…'
+    }
+  };
+  function currentLang() {
+    var l = getLang() || _lang || 'ru';
+    return FR_STRINGS[l] ? l : 'ru';
+  }
+  function tr(handoffKey) {
+    return FR_STRINGS[currentLang()][handoffKey] || null;
+  }
+  function applyI18n() {
+    var s = FR_STRINGS[currentLang()];
+    $$('[data-i18n]', root).forEach(function(el) {
+      var v = s[el.dataset.i18n];
+      if (v != null) el.textContent = v;
+    });
+    $$('[data-i18n-html]', root).forEach(function(el) {
+      var v = s[el.dataset.i18nHtml];
+      if (v != null) el.innerHTML = v;
+    });
+  }
+  // Сразу применяем — на случай если step 0 (lang picker) тоже должен
+  // показать переведённые карточки если есть сохранённый язык.
+  applyI18n();
+
+  // ---------- SCREEN: lang picker ------------------------------------------
+  var pickedLang = 'ru';
+  $$('.vy-lang-card', win).forEach(function(card) {
+    card.addEventListener('click', function() {
+      pickedLang = card.dataset.lang;
+      $$('.vy-lang-card', win).forEach(function(c) { c.classList.toggle('is-active', c === card); });
+    });
+  });
+  $('[data-action="lang-next"]', win).addEventListener('click', function() {
+    setLang(pickedLang);
+    applyI18n();
+    goToOnb(1);
+  });
+
+  // ---------- Шаги онбординга (6 штук) --------------------------------------
+  // kind:
+  //   'cta'    — кнопка "Начнём" → следующий шаг
+  //   'qr'     — кнопка "QR-вход" → tab Telegram, ждём signed_in → next
+  //   'voice'  — Alt+X kbd-row + pattern на ASR/log → next когда match
+  //   'final'  — финал, авто-закрыть
+  var STEPS_RU = [
+    { mascot: 'hello',     bubble: 'Привет. Я Шу — помогу тебе писать в Telegram голосом и не только.', kind: 'cta', cta: 'Начнём', sub: 'минута, не больше' },
+    { mascot: 'shy',       bubble: 'Сначала войди в Telegram. Открой QR-код и отсканируй с телефона.', kind: 'qr',  cta: 'Открыть QR-вход', sub: 'сессия остаётся у тебя на компьютере' },
+    { mascot: 'listening', bubble: 'Тест 1/4 — Telegram. Зажми Alt+X и скажи: «напиши себе тест».', kind: 'voice', sub: 'я отправлю тебе самому сообщение «тест»', pattern: /^→ \d+ «/ },
+    { mascot: 'tilt',      bubble: 'Тест 2/4 — ИИ-ассистент. Зажми Alt+X и скажи: «дай ответ сколько будет два плюс два».', kind: 'voice', sub: 'Gemini или локальная модель ответит вслух', pattern: /^🤖 ✓ done$/ },
+    // Browser-тест ДО Music — потому что «открой ютуб» открывает YouTube
+    // в браузере, а потом Music-тест проиграет трек в встроенном виджете.
+    { mascot: 'sending',   bubble: 'Тест 3/4 — Браузер. Зажми Alt+X и скажи: «открой ютуб котики».', kind: 'voice', sub: 'откроется YouTube с поиском', pattern: /^✅ YouTube → / },
+    { mascot: 'idle',      bubble: 'Тест 4/4 — Музыка. Зажми Alt+X и скажи: «включи Дежавю» (или любую песню).', kind: 'voice', sub: 'трек заиграет в встроенном плеере', pattern: /^▶ music playing$/ },
+    { mascot: 'sent',      bubble: 'Готово! Полный список команд — в Help. Удачи 🎉', kind: 'final', cta: 'Поехали', sub: '' }
+  ];
+  var STEPS_EN = [
+    { mascot: 'hello',     bubble: "Hi. I'm Shu — I'll help you write to Telegram with your voice (and more).", kind: 'cta', cta: "Let's go", sub: 'a minute, no more' },
+    { mascot: 'shy',       bubble: 'First — sign in to Telegram. Open QR and scan with your phone.',            kind: 'qr',  cta: 'Open QR sign-in', sub: 'session stays on your computer' },
+    { mascot: 'listening', bubble: 'Test 1/4 — Telegram. Hold Alt+X and say: "write to myself test".',          kind: 'voice', sub: 'I will send you the message "test"', pattern: /^→ \d+ «/ },
+    { mascot: 'tilt',      bubble: 'Test 2/4 — AI assistant. Hold Alt+X and say: "give answer what is two plus two".', kind: 'voice', sub: 'Gemini or local model will answer aloud', pattern: /^🤖 ✓ done$/ },
+    { mascot: 'sending',   bubble: 'Test 3/4 — Browser. Hold Alt+X and say: "open YouTube cats".',              kind: 'voice', sub: 'opens YouTube search in your browser', pattern: /^✅ YouTube → / },
+    { mascot: 'idle',      bubble: 'Test 4/4 — Music. Hold Alt+X and say: "play Bohemian Rhapsody" (or any song).', kind: 'voice', sub: 'track will play in the built-in widget', pattern: /^▶ music playing$/ },
+    { mascot: 'sent',      bubble: 'Done! Full command list — in Help. Have fun 🎉', kind: 'final', cta: "Let's go", sub: '' }
+  ];
+  function steps() { return currentLang() === 'en' ? STEPS_EN : STEPS_RU; }
+
+  var TOTAL_VISIBLE = 6; // welcome + QR + 4 tests (final doesn't get a dot)
+  var stepIdx = 0;
+
+  function renderDots(activeIdx) {
+    if (!elDots) return;
+    elDots.innerHTML = '';
+    for (var i = 0; i < TOTAL_VISIBLE; i++) {
+      var d = document.createElement('div');
+      d.className = 'vy-dots__dot' + (i < activeIdx ? ' is-past' : (i === activeIdx ? ' is-active' : ''));
+      elDots.appendChild(d);
+    }
+  }
+
+  function fadeMascot(name) {
+    if (!elMascot) return;
+    // window.__SHU_URLS injectнут из Rust handoff_assets::inline_data_uris.
+    // Содержит base64 data URIs для всех 8 expressions. Если по какой-то
+    // причине отсутствует — fallback на custom-protocol URL.
+    var url = (window.__SHU_URLS && window.__SHU_URLS[name])
+      ? window.__SHU_URLS[name]
+      : ('voicy://localhost/assets/shu/' + name + '.svg');
+    elMascot.style.opacity = '0.2';
+    setTimeout(function() {
+      elMascot.src = url;
+      elMascot.alt = 'Shu';
+      elMascot.style.opacity = '1';
+    }, 240);
+  }
+
+  function renderStep(n) {
+    var s = steps()[n];
+    if (!s) { finishOnboarding(); return; }
+    fadeMascot(s.mascot);
+    if (elBubble) elBubble.innerHTML = s.bubble;
+    if (elSub)    elSub.textContent  = s.sub || '';
+    renderDots(Math.min(n, TOTAL_VISIBLE - 1));
+    // Body: либо kbd-row (voice), либо ничего
+    if (elBody) {
+      if (s.kind === 'voice') {
+        elBody.innerHTML = '<div class="vy-kbd-row" style="margin-top:10px;">'
+          + '<span class="vy-kbd vy-kbd--lg">Alt</span>'
+          + '<span class="vy-kbd-row__plus">+</span>'
+          + '<span class="vy-kbd vy-kbd--lg">X</span></div>'
+          + '<div class="vy-caption" style="margin-top:8px;"><span class="vy-pulse-dot"></span> '
+          + (tr('onb3.listening') || (currentLang() === 'en' ? 'listening…' : 'слушаю…')) + '</div>';
+      } else {
+        elBody.innerHTML = '';
+      }
+    }
+    // CTA + skip controls
+    if (elCta) {
+      if (s.kind === 'cta' || s.kind === 'final') {
+        elCta.style.display = '';
+        elCta.textContent = s.cta;
+        elCta.onclick = function() {
+          if (s.kind === 'final') finishOnboarding();
+          else goToOnb(n + 1);
+        };
+      } else if (s.kind === 'qr') {
+        elCta.style.display = '';
+        elCta.textContent = s.cta;
+        elCta.onclick = openQrLogin;
+      } else {
+        // voice — основная CTA скрыта (юзер должен сказать команду),
+        // но даём skip-step / skip-all ниже
+        elCta.style.display = 'none';
+        elCta.onclick = null;
+      }
+    }
+    // Skip-блок: на voice-шагах юзер может пропустить либо завершить целиком
+    // (по требованию: «нельзя закрыть после финального теста»).
+    var skipRow = document.getElementById('fr-skip-row');
+    if (!skipRow) {
+      skipRow = document.createElement('div');
+      skipRow.id = 'fr-skip-row';
+      skipRow.style.cssText = 'display:flex; justify-content:space-between; margin-top:6px;';
+      elCta && elCta.parentNode && elCta.parentNode.appendChild(skipRow);
+    }
+    if (s.kind === 'voice') {
+      var lang = currentLang();
+      var lblSkip = lang === 'en' ? 'Skip step'  : 'Пропустить шаг';
+      var lblFin  = lang === 'en' ? 'Finish'      : 'Закрыть';
+      skipRow.style.display = 'flex';
+      skipRow.innerHTML =
+        '<button class="vy-btn vy-btn--ghost" id="fr-skip-step" style="font-size:12px; color:var(--text-3);">' + lblSkip + '</button>' +
+        '<button class="vy-btn vy-btn--ghost" id="fr-skip-all"  style="font-size:12px; color:var(--text-3);">' + lblFin + '</button>';
+      document.getElementById('fr-skip-step').onclick = function() { goToOnb(n + 1); };
+      document.getElementById('fr-skip-all').onclick  = finishOnboarding;
+    } else {
+      skipRow.style.display = 'none';
+    }
+  }
+
+  function openQrLogin() {
+    // Временно скрываем overlay, переключаемся на TG-таб, открываем QR-диалог.
+    root.classList.remove('show');
+    var tab = document.querySelector('[data-tab="telegram"]');
+    if (tab) tab.click();
+    var qrLoginBtn = document.querySelector('#btn-login-qr, [data-action="login-qr"]');
+    if (qrLoginBtn) setTimeout(function(){ qrLoginBtn.click(); }, 200);
+  }
+
+  // signed_in hook — refresh() вызывает на каждой итерации
+  var _prevSignedIn = false;
+  window._voicyFirstRunOnSignedIn = function(signed) {
+    if (signed && !_prevSignedIn && stepIdx === 1) {
+      // step 1 (QR) → автоматически на step 2 (TG-test)
+      root.style.display = 'grid';
+      root.classList.add('show');
+      goToOnb(2);
+    }
+    _prevSignedIn = signed;
+  };
+
+  // ASR / log-pattern listener для voice-шагов
+  // ПОРЯДОК ВАЖЕН: сначала проверяем success-pattern, потом fallback на phase-эмоции.
+  // Иначе success-маркер вида "🤖 ✓ done" перехватился бы phase-проверкой "^🤖 ".
+  var origAppendLog = window.appendLog;
+  window.appendLog = function(line) {
+    if (origAppendLog) origAppendLog(line);
+    if (!root.classList.contains('show')) return;
+    if (win.dataset.screen !== 'onb') return;
+    var s = steps()[stepIdx];
+    if (!s || s.kind !== 'voice') return;
+    // 1. Success-pattern — приоритетно. Если совпало — успех.
+    if (s.pattern && s.pattern.test(line)) {
+      fadeMascot('sent');
+      setTimeout(function() { goToOnb(stepIdx + 1); }, 900);
+      return;
+    }
+    // 2. Phase-эмоции — fallback для подсказки прогресса.
+    if (/^⏹/.test(line)) {
+      fadeMascot('sending');
+      return;
+    }
+    if (/^→ /.test(line) || /^🤖 /.test(line)) {
+      fadeMascot('sending');
+    }
+  };
+
+  // ---------- Step transitions ---------------------------------------------
+  function goToOnb(n) {
+    stepIdx = n;
+    setStep(n);
+    showScreen('onb');
+    renderStep(n);
+  }
+  function finishOnboarding() {
+    markDone();
+    root.classList.remove('show');
+    setTimeout(function() {
+      root.style.display = 'none';
+      window.dispatchEvent(new CustomEvent('voicy:onboarding-done'));
+      if (typeof showReplaySpotlight === 'function') {
+        setTimeout(showReplaySpotlight, 400);
+      }
+    }, 400);
+  }
+
+  // Dedicated drag handler — на сам #first-run элемент (cap phase).
+  // Document-level handler уже есть в другом IIFE, но добавляем дублирующий
+  // listener на overlay чтобы гарантированно ловить mousedown даже если
+  // event свалится в stopPropagation на другом этапе.
+  root.addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return;
+    if (e.target && e.target.closest && e.target.closest('button, a, input, textarea, .vy-lang-card, .vy-kbd-row, [data-no-drag]')) return;
+    if (window.ipc) {
+      window.ipc.postMessage(JSON.stringify({
+        id: 'drag-fr-' + Date.now(),
+        cmd: '_window_drag',
+        payload: { src: 'first-run-dedicated', x: e.clientX, y: e.clientY }
+      }));
+    }
+  }, true);
+  // Visual hint что фон/карточка draggable
+  root.style.cursor = 'grab';
+
+  // ---------- Boot ---------------------------------------------------------
+  // Кэш signed_in статуса — для skipQrIfSignedIn внутри boot().
+  // Запрашиваем listener_status НЕ нужно, но info из refresh уже придёт.
+  // Чтобы не блокировать boot, используем синхронный check через
+  // window._voicySignedInCache (ставится из refresh()).
+  function boot() {
+    if (isDone()) {
+      window.dispatchEvent(new CustomEvent('voicy:onboarding-done'));
+      return;
+    }
+    var lang = getLang();
+    if (lang) {
+      pickedLang = lang;
+      applyI18n();
+      var step = parseInt(getStep() || '0', 10);
+      // Skip-QR-логика: если юзер уже залогинен И находимся на step 1 (QR),
+      // прыгаем сразу на step 2 (первый тест).
+      if (step === 1 && window._voicySignedInCache === true) {
+        step = 2;
+        setStep(2);
+      }
+      if (step >= 0 && step < steps().length) {
+        root.classList.add('show'); goToOnb(step); return;
+      }
+      root.classList.add('show'); goToOnb(0);
+    } else {
+      root.classList.add('show'); showScreen('lang');
+    }
+  }
+  boot();
+  // Re-boot когда первый раз получили signed_in — мог быть бут до прихода
+  // первого refresh(). Если step=1 (QR) и теперь signed_in=true, прыгаем.
+  var _bootedAt = Date.now();
+  setInterval(function() {
+    if (Date.now() - _bootedAt > 30000) return; // только в первые 30 сек
+    if (!root.classList.contains('show')) return;
+    if (stepIdx === 1 && window._voicySignedInCache === true) {
+      stepIdx = 2; setStep(2); goToOnb(2);
+    }
+  }, 2000);
+
+  // Триггер повторного запуска онбординга — общая функция.
+  // Используется и кнопкой «показать гайд» в Settings, и top-right help-btn.
+  function replayOnboardingFromScratch() {
+    try {
+      localStorage.removeItem(LS.doneV2);
+      localStorage.removeItem(LS.doneLegacy);
+      localStorage.removeItem(LS.step);
+    } catch(e){}
+    var lang = getLang();
+    root.style.display = 'grid';
+    root.classList.add('show');
+    if (lang) { pickedLang = lang; applyI18n(); goToOnb(0); }
+    else { showScreen('lang'); }
+  }
+  var replayBtn = document.getElementById('onboarding-replay-btn');
+  if (replayBtn) replayBtn.addEventListener('click', replayOnboardingFromScratch);
+  // Top-right ? — главный триггер повторного гайда.
+  // stopImmediatePropagation чтобы устаревший listener на том же элементе
+  // (открывает legacy carousel #onboarding) не сработал.
+  var helpBtnFR = document.getElementById('help-btn');
+  if (helpBtnFR) {
+    helpBtnFR.addEventListener('click', function(e) {
+      e.stopImmediatePropagation();
+      // Если активен spotlight — снимаем его прежде чем стартовать гайд.
+      var sp = document.getElementById('spotlight');
+      if (sp && sp.classList.contains('show')) {
+        sp.classList.remove('show');
+        helpBtnFR.classList.remove('spotlight-target');
+      }
+      replayOnboardingFromScratch();
+    }, true);
+  }
+
+  // Экспорт для совместимости со старыми хуками в refresh()
+  window._voicyOv2MaybeShow = function(){};
+  window._voicyLangPickerMaybeShow = function(){};
+})();
+
+/* ── Post-onboarding spotlight (подсвечивает «?» вверху справа) ── */
+window.showReplaySpotlight = function() {
+  // Главная цель — top-right help-btn (вопросик).
+  // Если по какой-то причине его нет — fallback на «гайд для новичков» в Settings.
+  var btn = document.getElementById('help-btn')
+         || document.getElementById('onboarding-replay-btn');
+  var sp = document.getElementById('spotlight');
+  var tip = document.getElementById('spotlight-tooltip');
+  var tipText = document.getElementById('spotlight-tooltip-text');
+  var dismiss = document.getElementById('spotlight-dismiss');
+  if (!btn || !sp || !tip) return;
+  if (tipText) tipText.textContent = t('spotlight_text');
+  if (dismiss) dismiss.textContent = t('spotlight_dismiss');
+  requestAnimationFrame(function() {
+    // help-btn всегда виден (он в шапке) — scrollIntoView не нужен для него.
+    if (btn.id !== 'help-btn') {
+      btn.scrollIntoView({behavior:'smooth', block:'center'});
+    }
+    setTimeout(function() {
+      sp.classList.add('show');
+      btn.classList.add('spotlight-target');
+      var rect = btn.getBoundingClientRect();
+      var tipW = 280, tipH = 90, m = 16;
+      // Для help-btn (top-right) предпочитаем разместить тултип СНИЗУ
+      // с указателем вверх — стрелка тянется к кнопке.
+      var left, top, side;
+      if (btn.id === 'help-btn') {
+        side = 'arrow-top';
+        top = rect.bottom + m;
+        // Центрируем тултип под кнопкой, но не вылезаем за правый край.
+        left = rect.left + rect.width/2 - tipW/2;
+      } else {
+        side = 'arrow-right';
+        left = rect.left - tipW - m;
+        top = rect.top + rect.height/2 - tipH/2;
+        if (left < 12) {
+          left = rect.left + rect.width/2 - tipW/2;
+          top = rect.top - tipH - m;
+          side = 'arrow-bottom';
+          if (top < 12) { top = rect.bottom + m; side = 'arrow-top'; }
+        }
+      }
+      tip.className = 'spotlight-tooltip ' + side;
+      tip.style.left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12)) + 'px';
+      tip.style.top  = Math.max(12, Math.min(top,  window.innerHeight - tipH - 12)) + 'px';
+    }, 400);
+  });
+  function close() {
+    sp.classList.remove('show');
+    btn.classList.remove('spotlight-target');
+    dismiss.removeEventListener('click', close);
+    sp.removeEventListener('click', bgClose);
+    document.removeEventListener('keydown', escClose);
+  }
+  function bgClose(e) { if (e.target === sp) close(); }
+  function escClose(e) { if (e.key === 'Escape') close(); }
+  dismiss.addEventListener('click', close);
+  sp.addEventListener('click', bgClose);
+  document.addEventListener('keydown', escClose);
+};
+
+/* ── DEPRECATED: старый Onboarding v2 IIFE (заменён handoff state machine) ── */
+(function(){
+  var DONE_KEY = 'voicy_onboarding_v2_done';
+  var STEP_KEY = 'voicy_onboarding_v2_step';
+  var LEGACY_DONE_KEY = 'voicy_onboarding_done'; // back-compat per spec
+  var overlay = document.getElementById('onboarding-v2');
+  if (!overlay) return;
+
+  var elBubble = document.getElementById('ov2-bubble');
+  var elBody = document.getElementById('ov2-body');
+  var elMascot = document.getElementById('ov2-mascot');
+  var elProgress = document.getElementById('ov2-progress');
+  var btnSkipStep = document.getElementById('ov2-skip-step');
+  var btnSkipAll = document.getElementById('ov2-skip-all');
+
+  // 3 шага по spec:
+  //  1. Greeting (pose=wave) → CTA «Начнём» → step 2
+  //  2. Telegram login (expression=shy pose=tilt) → CTA «Войти», ждём signed_in → step 3
+  //  3. Voice test (expression=listening) → Alt+X kbd, ждём ASR (≥1 word) → done
+  var steps = [
+    { mascot: 'shu-wave',      bubbleKey: 'ov2_s1_bubble', body: 'cta_start' },
+    { mascot: 'shu-tilt',      bubbleKey: 'ov2_s2_bubble', body: 'tg_login' },
+    { mascot: 'shu-listening', bubbleKey: 'ov2_s3_bubble', body: 'voice_test',
+      pattern: /^📝 «\S+/ }
+  ];
+
+  function show() { overlay.classList.add('show'); }
+  function hide() {
+    overlay.classList.remove('show');
+    setTimeout(function(){ overlay.style.display = 'none'; }, 400);
+  }
+  function done() {
+    try {
+      localStorage.setItem(DONE_KEY, '1');
+      localStorage.setItem(LEGACY_DONE_KEY, '1');
+      localStorage.removeItem(STEP_KEY);
+    } catch(e){}
+    hide();
+  }
+
+  var idx = 0;
+  try { idx = parseInt(localStorage.getItem(STEP_KEY) || '0', 10); } catch(e){}
+  if (idx >= steps.length) idx = 0;
+
+  function setMascot(symbolId) {
+    if (!elMascot) return;
+    elMascot.classList.add('fade');
+    setTimeout(function() {
+      var u = elMascot.querySelector('use');
+      if (u) u.setAttribute('href', '#' + symbolId);
+      elMascot.classList.remove('fade');
+    }, 240);
+  }
+
+  function renderProgress() {
+    var dots = elProgress ? elProgress.querySelectorAll('.ov2-dot') : [];
+    for (var i = 0; i < dots.length; i++) {
+      dots[i].classList.remove('active', 'done');
+      if (i < idx) dots[i].classList.add('done');
+      else if (i === idx) dots[i].classList.add('active');
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function renderBody(kind) {
+    if (!elBody) return;
+    elBody.innerHTML = '';
+    if (kind === 'cta_start') {
+      var btn = document.createElement('button');
+      btn.className = 'ov2-cta';
+      btn.textContent = t('ov2_s1_cta');
+      btn.addEventListener('click', advance);
+      var sub = document.createElement('div');
+      sub.className = 'ov2-sub';
+      sub.textContent = t('ov2_s1_sub');
+      elBody.appendChild(btn);
+      elBody.appendChild(sub);
+    } else if (kind === 'tg_login') {
+      var btn = document.createElement('button');
+      btn.className = 'ov2-cta';
+      btn.textContent = t('ov2_s2_cta');
+      btn.addEventListener('click', function() {
+        // Открываем Telegram таб — там QR-login UI существующий.
+        var tab = document.querySelector('[data-tab="telegram"]');
+        if (tab) tab.click();
+        // Шаг 2 → 3 автоматом, когда signed_in detected via refresh()
+      });
+      var sub = document.createElement('div');
+      sub.className = 'ov2-sub';
+      sub.textContent = t('ov2_s2_sub');
+      elBody.appendChild(btn);
+      elBody.appendChild(sub);
+    } else if (kind === 'voice_test') {
+      var row = document.createElement('div');
+      row.className = 'ov2-kbd-row';
+      row.innerHTML = '<span class="ov2-kbd">Alt</span><span class="ov2-kbd-plus">+</span><span class="ov2-kbd">X</span>';
+      var pulse = document.createElement('div');
+      pulse.className = 'ov2-pulse';
+      pulse.innerHTML = '<div class="ov2-pulse-dot"></div><span>' + escapeHtml(t('ov2_s3_listening')) + '</span>';
+      elBody.appendChild(row);
+      elBody.appendChild(pulse);
+    }
+  }
+
+  function render() {
+    var s = steps[idx];
+    if (!s) { finish(); return; }
+    if (elBubble) elBubble.textContent = t(s.bubbleKey);
+    setMascot(s.mascot);
+    renderProgress();
+    renderBody(s.body);
+    if (btnSkipStep) btnSkipStep.textContent = t('ov2_skip_step');
+    if (btnSkipAll) btnSkipAll.textContent = t('ov2_skip_all');
+  }
+
+  function advance() {
+    idx++;
+    try { localStorage.setItem(STEP_KEY, String(idx)); } catch(e){}
+    if (idx >= steps.length) { finish(); return; }
+    render();
+  }
+
+  function finish() {
+    if (elBubble) elBubble.textContent = t('ov2_done_title');
+    if (elBody) elBody.innerHTML = '<div class="ov2-sub">' + escapeHtml(t('ov2_done_desc')) + '</div>';
+    setMascot('shu-sent');
+    var dots = elProgress ? elProgress.querySelectorAll('.ov2-dot') : [];
+    for (var i = 0; i < dots.length; i++) dots[i].classList.add('done');
+    setTimeout(function() {
+      done();
+      // После закрытия онбординга — spotlight на «показать гайд» кнопке.
+      setTimeout(showReplaySpotlight, 500);
+    }, 1800);
+  }
+
+  // Spotlight: переключаемся на General таб, скроллим к replay-кнопке,
+  // подсвечиваем её glow border'ом + показываем tooltip «жми сюда если что».
+  function showReplaySpotlight() {
+    var btn = document.getElementById('onboarding-replay-btn');
+    var sp = document.getElementById('spotlight');
+    var tip = document.getElementById('spotlight-tooltip');
+    var tipText = document.getElementById('spotlight-tooltip-text');
+    var dismiss = document.getElementById('spotlight-dismiss');
+    if (!btn || !sp || !tip) return;
+
+    // 1) Переключаемся на General таб (replay-кнопка живёт в System секции).
+    var gTab = document.querySelector('[data-tab="general"]');
+    if (gTab) gTab.click();
+
+    // 2) Локализуем текст tooltip.
+    if (tipText) tipText.textContent = t('spotlight_text');
+    if (dismiss) dismiss.textContent = t('spotlight_dismiss');
+
+    // 3) Ждём 1 кадр чтобы вкладка применилась → скроллим кнопку в виду.
+    requestAnimationFrame(function() {
+      btn.scrollIntoView({behavior:'smooth', block:'center'});
+      // Ещё 1 кадр после скролла → позиционируем tooltip.
+      setTimeout(function() {
+        sp.classList.add('show');
+        btn.classList.add('spotlight-target');
+        positionTooltip(btn, tip);
+      }, 400);
+    });
+
+    function close() {
+      sp.classList.remove('show');
+      btn.classList.remove('spotlight-target');
+      dismiss.removeEventListener('click', close);
+      sp.removeEventListener('click', bgClose);
+      document.removeEventListener('keydown', escClose);
+    }
+    function bgClose(e) {
+      if (e.target === sp) close();
+    }
+    function escClose(e) {
+      if (e.key === 'Escape') close();
+    }
+    dismiss.addEventListener('click', close);
+    sp.addEventListener('click', bgClose);
+    document.addEventListener('keydown', escClose);
+  }
+
+  function positionTooltip(target, tip) {
+    var rect = target.getBoundingClientRect();
+    var tipRect = { w: 280, h: 90 };
+    var margin = 16;
+    // Размещаем СЛЕВА от кнопки (replay-кнопка обычно в правой колонке).
+    var left = rect.left - tipRect.w - margin;
+    var top = rect.top + rect.height/2 - tipRect.h/2;
+    var side = 'arrow-right';
+    if (left < 12) {
+      // Не помещается слева — кладём СВЕРХУ.
+      left = rect.left + rect.width/2 - tipRect.w/2;
+      top = rect.top - tipRect.h - margin;
+      side = 'arrow-bottom';
+      if (top < 12) {
+        // И сверху не лезет — кладём СНИЗУ.
+        top = rect.bottom + margin;
+        side = 'arrow-top';
+      }
+    }
+    tip.className = 'spotlight-tooltip ' + side;
+    tip.style.left = Math.max(12, Math.min(left, window.innerWidth - tipRect.w - 12)) + 'px';
+    tip.style.top  = Math.max(12, Math.min(top,  window.innerHeight - tipRect.h - 12)) + 'px';
+  }
+
+  // Hook: при изменении сигнализированного TG signed_in → если мы на step 2,
+  // автоматически переходим на step 3 (логин завершён).
+  var _prevSignedIn = false;
+  window._voicyOv2OnSignedIn = function(signed) {
+    if (signed && !_prevSignedIn && idx === 1 && overlay.classList.contains('show')) {
+      // Возвращаем onboarding на топ (юзер мог увести фокус на TG таб)
+      advance();
+    }
+    _prevSignedIn = signed;
+  };
+
+  // Monkey-patch appendLog для step 3 — ASR транскрипция = успех голос-теста.
+  var origAppendLog = window.appendLog;
+  window.appendLog = function(line) {
+    if (origAppendLog) origAppendLog(line);
+    if (!overlay.classList.contains('show')) return;
+    var s = steps[idx];
+    if (s && s.pattern && s.pattern.test(line)) {
+      // Cross-fade на «sent» expression + закрываем
+      setMascot('shu-sent');
+      setTimeout(advance, 800);
+    }
+  };
+
+  if (btnSkipStep) btnSkipStep.addEventListener('click', advance);
+  if (btnSkipAll) btnSkipAll.addEventListener('click', done);
+
+  // Кнопка «показать гайд» в Settings — ресетит и запускает с 0-го шага.
+  var replayBtn = document.getElementById('onboarding-replay-btn');
+  if (replayBtn) {
+    replayBtn.addEventListener('click', function() {
+      try {
+        localStorage.removeItem(DONE_KEY);
+        localStorage.removeItem(STEP_KEY);
+      } catch(e){}
+      idx = 0;
+      overlay.style.display = 'flex';
+      render();
+      requestAnimationFrame(show);
+    });
+  }
+
+  // Триггер: показываем если ещё не done (НЕ требует signed_in — step 1
+  // greeting, step 2 сам предлагает залогиниться).
+  window._voicyOv2MaybeShow = function(signedIn) {
+    if (signedIn !== undefined) {
+      window._voicyOv2OnSignedIn(!!signedIn);
+    }
+    try {
+      if (localStorage.getItem(DONE_KEY)) return;
+    } catch(e) {}
+    if (overlay.classList.contains('show')) return;
+    overlay.style.display = 'flex';
+    render();
+    requestAnimationFrame(show);
+  };
 })();
 </script>
 

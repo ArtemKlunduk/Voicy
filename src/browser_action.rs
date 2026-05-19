@@ -172,21 +172,58 @@ pub fn parse(text: &str) -> Option<BrowserAction> {
 #[cfg(windows)]
 pub fn dispatch(action: BrowserAction) {
     tracing::info!("[browser_action::dispatch] executing {:?}", action);
+    // Если у нас активен встроенный music-виджет (YouTube iframe внутри
+    // WebView2), VK_UP/DOWN из браузера НЕ дойдёт до iframe — фокус
+    // обычно на Voicy окне, а не на iframe. Шлём команду напрямую в JS,
+    // который вызовет musicPlayer.setVolume()/seekTo() через YT IFrame API.
+    let music_active = crate::music::is_playing() || crate::music::has_track();
     match action {
-        BrowserAction::VolumeUp(n) => press_repeat(VK_UP, n),
-        BrowserAction::VolumeDown(n) => press_repeat(VK_DOWN, n),
+        BrowserAction::VolumeUp(n) => {
+            if music_active {
+                // Шаг ~10% за каждое условное «нажатие» — как было бы у YT keys.
+                crate::ui::eval_js(format!("window.voicyMusicVolumeDelta && window.voicyMusicVolumeDelta({});", (n as i32) * 10));
+            } else {
+                press_repeat(VK_UP, n);
+            }
+        }
+        BrowserAction::VolumeDown(n) => {
+            if music_active {
+                crate::ui::eval_js(format!("window.voicyMusicVolumeDelta && window.voicyMusicVolumeDelta({});", -(n as i32) * 10));
+            } else {
+                press_repeat(VK_DOWN, n);
+            }
+        }
+        BrowserAction::Mute => {
+            if music_active {
+                crate::ui::eval_js("window.voicyMusicMute && window.voicyMusicMute();");
+            } else {
+                press_once(VK_M);
+            }
+        }
         BrowserAction::Fullscreen => press_once(VK_F),
         BrowserAction::PlayPause => {
-            if crate::music::is_playing() || crate::music::has_track() {
+            if music_active {
                 tracing::info!("[browser_action::dispatch] music is active → stopping music");
                 crate::music::stop();
             } else {
                 press_once(VK_SPACE);
             }
         }
-        BrowserAction::SeekForward(n) => press_repeat(VK_RIGHT, n),
-        BrowserAction::SeekBackward(n) => press_repeat(VK_LEFT, n),
-        BrowserAction::Mute => press_once(VK_M),
+        BrowserAction::SeekForward(n) => {
+            if music_active {
+                // YT keys = 5s per arrow. Эмулируем то же.
+                crate::ui::eval_js(format!("window.voicyMusicSeekDelta && window.voicyMusicSeekDelta({});", (n as i32) * 5));
+            } else {
+                press_repeat(VK_RIGHT, n);
+            }
+        }
+        BrowserAction::SeekBackward(n) => {
+            if music_active {
+                crate::ui::eval_js(format!("window.voicyMusicSeekDelta && window.voicyMusicSeekDelta({});", -(n as i32) * 5));
+            } else {
+                press_repeat(VK_LEFT, n);
+            }
+        }
     }
 }
 

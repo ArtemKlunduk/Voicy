@@ -13,6 +13,8 @@ contacts.txt
 /dist
 /build
 *.spec
+/installer/dist/
+/handoff_extracted/
 
 # Local maintainer secrets — embedded Telegram API creds for release builds.
 # NEVER commit this directory.

@@ -23,12 +23,12 @@ pub fn speak_with_lang(text: &str, lang: &str) -> Result<()> {
     }
 
     // 2) Windows OneCore (SAPI 5 локально, всегда есть)
-    if let Ok(()) = speak_windows(text) {
+    if let Ok(()) = speak_windows(text, lang) {
         return Ok(());
     }
 
     // 3) Google Translate TTS (network fallback)
-    speak_gtts(text)
+    speak_gtts(text, lang)
 }
 
 // ── Edge TTS via Python edge-tts ─────────────────────────────────────────
@@ -43,12 +43,20 @@ fn speak_edge_tts(text: &str, lang: &str) -> Result<()> {
     // Поэтому ищем в нескольких местах.
     let script = locate_edge_script()?;
 
-    let output = Command::new("python")
-        .arg(&script)
+    let mut cmd = Command::new("python");
+    cmd.arg(&script)
         .arg(voice)
         .arg(text)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    // CREATE_NO_WINDOW = 0x08000000 — без флага Python subprocess открывает
+    // мигающее cmd-окно при каждом TTS вызове (раздражает в работе).
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd
         .output()
         .map_err(|e| anyhow!("python spawn: {}", e))?;
 

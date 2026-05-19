@@ -23,12 +23,16 @@ use std::sync::Arc;
 
 static CANCEL_TOKEN: AtomicBool = AtomicBool::new(false);
 
-/// Системный промпт — общий для всех моделей. Заставляет отвечать кратко.
+/// Системный промпт — общий для всех моделей. Заставляет:
+/// 1) отвечать кратко;
+/// 2) ВСЕГДА на выбранном пользователем языке (UI lang-picker → cfg.ai_language).
+///    Иначе локальные LLM (Qwen/Llama/Gemma) иногда отвечают на французском
+///    или немецком даже при английском вопросе. Жёстко фиксируем выходной язык.
 pub fn system_prompt(lang: &str) -> &'static str {
     if lang.trim().to_lowercase().starts_with("ru") {
-        "Ты голосовой ассистент. Отвечай кратко, по существу, максимум 2 предложения. Говори естественно, как человек."
+        "Ты голосовой ассистент. ВСЕГДА отвечай на РУССКОМ языке — никогда на английском, французском или любом другом. Отвечай кратко, по существу, максимум 2 предложения. Говори естественно, как человек."
     } else {
-        "You are a voice assistant. Answer briefly, to the point, maximum 2 sentences. Speak naturally, like a human."
+        "You are a voice assistant. ALWAYS answer in ENGLISH only — never French, German, Russian, or any other language. Answer briefly, to the point, maximum 2 sentences. Speak naturally, like a human."
     }
 }
 
@@ -41,6 +45,9 @@ pub enum AiModel {
     Llama32_1B,
     /// Gemma 2 2B IT (Q4_K_M, ~1.6 ГБ).
     Gemma2_2B,
+    /// Qwen 3 4B Instruct 2507 (Q4_K_M, ~2.5 ГБ).
+    /// Не Thinking-режим — Instruct-2507 не эмитит <think>...</think>.
+    Qwen3_4B,
 }
 
 impl AiModel {
@@ -49,6 +56,7 @@ impl AiModel {
             "qwen-0.5b" | "qwen2.5-0.5b" | "qwen" => Self::Qwen05B,
             "llama-3.2-1b" | "llama-1b" | "llama3.2-1b" | "llama" => Self::Llama32_1B,
             "gemma-2-2b" | "gemma2-2b" | "gemma-2b" | "gemma" => Self::Gemma2_2B,
+            "qwen3-4b" | "qwen-3-4b" | "qwen3" | "qwen-3" => Self::Qwen3_4B,
             _ => Self::Qwen05B, // дефолт — самая лёгкая
         }
     }
@@ -58,6 +66,7 @@ impl AiModel {
             Self::Qwen05B => "qwen-0.5b",
             Self::Llama32_1B => "llama-3.2-1b",
             Self::Gemma2_2B => "gemma-2-2b",
+            Self::Qwen3_4B => "qwen3-4b",
         }
     }
 
@@ -66,6 +75,7 @@ impl AiModel {
             Self::Qwen05B => "Qwen 2.5 0.5B",
             Self::Llama32_1B => "Llama 3.2 1B",
             Self::Gemma2_2B => "Gemma 2 2B",
+            Self::Qwen3_4B => "Qwen 3 4B",
         }
     }
 
@@ -75,6 +85,7 @@ impl AiModel {
             Self::Qwen05B => 400,
             Self::Llama32_1B => 800,
             Self::Gemma2_2B => 1500,
+            Self::Qwen3_4B => 2500,
         }
     }
 
@@ -84,6 +95,9 @@ impl AiModel {
             Self::Qwen05B => "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
             Self::Llama32_1B => "unsloth/Llama-3.2-1B-Instruct-GGUF",
             Self::Gemma2_2B => "bartowski/gemma-2-2b-it-GGUF",
+            // Qwen/Qwen3-4B-Instruct-2507-GGUF возвращает 401 (gated).
+            // unsloth публикует non-gated GGUF-зеркало с идентичными квантами.
+            Self::Qwen3_4B => "unsloth/Qwen3-4B-Instruct-2507-GGUF",
         }
     }
 
@@ -93,6 +107,7 @@ impl AiModel {
             Self::Qwen05B => "qwen2.5-0.5b-instruct-q4_k_m.gguf",
             Self::Llama32_1B => "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
             Self::Gemma2_2B => "gemma-2-2b-it-Q4_K_M.gguf",
+            Self::Qwen3_4B => "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
         }
     }
 
@@ -105,8 +120,8 @@ impl AiModel {
             Self::Qwen05B => "Qwen/Qwen2.5-0.5B-Instruct",
             Self::Llama32_1B => "unsloth/Llama-3.2-1B-Instruct",
             Self::Gemma2_2B => "unsloth/gemma-2-2b-it",
-        }
-    }
+            // Используем unsloth-зеркало чтобы избежать любых gating-сюрпризов.
+            Self::Qwen3_4B => "unsloth/Qwen3-4B-Instruct-2507",
         }
     }
 
@@ -131,6 +146,13 @@ impl AiModel {
                 "<start_of_turn>user\n{}\n\n{}<end_of_turn>\n<start_of_turn>model\n",
                 system, user
             ),
+            // Qwen 3: тот же ChatML что у Qwen 2.5.
+            // Instruct-2507 уже без thinking-режима — `<think>` блоки не эмитятся,
+            // но на всякий случай чистим их в cleanup_tokens.
+            Self::Qwen3_4B => format!(
+                "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+                system, user
+            ),
         }
     }
 
@@ -153,6 +175,11 @@ impl AiModel {
                 "<start_of_turn>",
                 "<end_of_turn>",
                 "<eos>",
+            ],
+            Self::Qwen3_4B => &[
+                "<|im_end|>",
+                "<|im_start|>",
+                "<|endoftext|>",
             ],
         }
     }
@@ -227,8 +254,10 @@ impl AiAssistant {
             },
         )?;
 
+        // Qwen 3 (base) иногда эмитит <think>...</think> reasoning-блоки перед
+        // настоящим ответом. В Instruct-2507 этого быть не должно, но защищаемся.
+        let mut cleaned = strip_think_blocks(&response_text);
         // Чистим спецтокены конкретной модели.
-        let mut cleaned = response_text;
         for tok in self.kind.cleanup_tokens() {
             cleaned = cleaned.replace(tok, "");
         }
@@ -247,4 +276,33 @@ impl AiAssistant {
     pub fn cancel() {
         CANCEL_TOKEN.store(true, Ordering::Relaxed);
     }
+}
+
+/// Вырезать все `<think>...</think>` блоки (multi-line, non-greedy).
+/// Используется для Qwen 3 thinking-режима — оставляем только финальный ответ.
+fn strip_think_blocks(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        match rest.find("<think>") {
+            None => {
+                out.push_str(rest);
+                break;
+            }
+            Some(start) => {
+                out.push_str(&rest[..start]);
+                let after = &rest[start + "<think>".len()..];
+                match after.find("</think>") {
+                    None => {
+                        // Незакрытый блок — выбрасываем весь хвост (это reasoning).
+                        break;
+                    }
+                    Some(end) => {
+                        rest = &after[end + "</think>".len()..];
+                    }
+                }
+            }
+        }
+    }
+    out
 }

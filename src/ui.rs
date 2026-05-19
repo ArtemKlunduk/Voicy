@@ -23,6 +23,87 @@ use wry::WebViewBuilderExtWindows;
 
 const UI_HTML: &str = include_str!("ui.html");
 
+// ── Handoff assets (Шу mascot + logo). Эмбедятся в exe через include_bytes!
+mod handoff_assets {
+    use base64::Engine;
+
+    pub const LOGO_MARK: &[u8] = include_bytes!("../assets/logo-mark.svg");
+    pub const SHU_HELLO: &[u8] = include_bytes!("../assets/shu/hello.svg");
+    pub const SHU_IDLE: &[u8] = include_bytes!("../assets/shu/idle.svg");
+    pub const SHU_LISTENING: &[u8] = include_bytes!("../assets/shu/listening.svg");
+    pub const SHU_SENDING: &[u8] = include_bytes!("../assets/shu/sending.svg");
+    pub const SHU_SENT: &[u8] = include_bytes!("../assets/shu/sent.svg");
+    pub const SHU_SHY: &[u8] = include_bytes!("../assets/shu/shy.svg");
+    pub const SHU_SLEEP: &[u8] = include_bytes!("../assets/shu/sleep.svg");
+    pub const SHU_TILT: &[u8] = include_bytes!("../assets/shu/tilt.svg");
+
+    /// Сматчить URL path → байтовый контент SVG. None если путь не известен.
+    /// wry/WebView2 может присылать path как с leading slash, так и без —
+    /// нормализуем, обрезая ведущий '/'.
+    pub fn lookup(path: &str) -> Option<&'static [u8]> {
+        let p = path.trim_start_matches('/');
+        match p {
+            "assets/logo-mark.svg" => Some(LOGO_MARK),
+            "assets/shu/hello.svg" => Some(SHU_HELLO),
+            "assets/shu/idle.svg" => Some(SHU_IDLE),
+            "assets/shu/listening.svg" => Some(SHU_LISTENING),
+            "assets/shu/sending.svg" => Some(SHU_SENDING),
+            "assets/shu/sent.svg" => Some(SHU_SENT),
+            "assets/shu/shy.svg" => Some(SHU_SHY),
+            "assets/shu/sleep.svg" => Some(SHU_SLEEP),
+            "assets/shu/tilt.svg" => Some(SHU_TILT),
+            _ => None,
+        }
+    }
+
+    /// Сделать data: URI из SVG-байтов (base64). WebView2 custom protocol
+    /// глючит для img src — data URI работает 100%.
+    fn to_data_uri(bytes: &[u8]) -> String {
+        format!(
+            "data:image/svg+xml;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        )
+    }
+
+    /// Подставить data URI'ы вместо `voicy://localhost/assets/...` ссылок
+    /// в UI_HTML. Также injectit global `window.__SHU_URLS` map чтобы JS мог
+    /// менять src динамически без зависимости от custom protocol (которая
+    /// глючит для img src в WebView2).
+    pub fn inline_data_uris(html: &str) -> String {
+        let pairs: &[(&str, &str, &[u8])] = &[
+            ("voicy://localhost/assets/logo-mark.svg", "logo", LOGO_MARK),
+            ("voicy://localhost/assets/shu/hello.svg", "hello", SHU_HELLO),
+            ("voicy://localhost/assets/shu/idle.svg", "idle", SHU_IDLE),
+            ("voicy://localhost/assets/shu/listening.svg", "listening", SHU_LISTENING),
+            ("voicy://localhost/assets/shu/sending.svg", "sending", SHU_SENDING),
+            ("voicy://localhost/assets/shu/sent.svg", "sent", SHU_SENT),
+            ("voicy://localhost/assets/shu/shy.svg", "shy", SHU_SHY),
+            ("voicy://localhost/assets/shu/sleep.svg", "sleep", SHU_SLEEP),
+            ("voicy://localhost/assets/shu/tilt.svg", "tilt", SHU_TILT),
+        ];
+        let mut out = html.to_string();
+        // 1) Statический заменитель для img src в HTML
+        for (key, _name, bytes) in pairs {
+            out = out.replace(key, &to_data_uri(bytes));
+        }
+        // 2) JS-map для runtime смены src — injectim перед закрывающим </head>
+        let mut js = String::from("\n<script>window.__SHU_URLS = {");
+        for (_key, name, bytes) in pairs {
+            js.push_str(&format!("'{}':'{}',", name, to_data_uri(bytes)));
+        }
+        js.push_str("};</script>\n");
+        out = out.replace("</head>", &format!("{}</head>", js));
+        out
+    }
+}
+
+/// UI HTML с подставленными data URI вместо voicy://... ссылок.
+/// Lazy — считается один раз при первом обращении.
+fn ui_html_with_assets() -> &'static str {
+    static CACHED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CACHED.get_or_init(|| handoff_assets::inline_data_uris(UI_HTML)).as_str()
+}
+
 /// Минимальный тест: HTML который пытается отправить IPC сразу на load.
 /// Если в stderr появится `[ui-ipc] raw: TEST-HELLO` — IPC работает.
 /// Если нет — wry не инжектит window.ipc и нужно искать обходной путь.
@@ -95,6 +176,19 @@ struct LoginInProgress {
     qr_url: Option<String>,
     /// Финальный статус: "waiting" | "authorized" | "expired" | "2fa" | "error: ..."
     qr_status: Option<String>,
+}
+
+/// Глобальный EventLoopProxy для модулей, у которых нет прямого доступа
+/// (browser_action, music). Инициализируется при старте UI loop в `run()`.
+/// Используется через `eval_js()` чтобы дёргать JS из любого треда.
+static GLOBAL_PROXY: std::sync::OnceLock<EventLoopProxy<UiLoopEvent>> = std::sync::OnceLock::new();
+
+/// Выполнить JS-код в WebView. Безопасно вызывать из любого треда.
+/// No-op если UI loop ещё не стартовал.
+pub fn eval_js(js: impl Into<String>) {
+    if let Some(p) = GLOBAL_PROXY.get() {
+        let _ = p.send_event(UiLoopEvent::EvalJs(js.into()));
+    }
 }
 
 #[derive(Default)]
@@ -205,6 +299,10 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
     let listener_ipc = listener.clone();
     let proxy = event_loop.create_proxy();
     let proxy_listener = proxy.clone();
+    // Глобальный proxy для модулей которые не получают его аргументом
+    // (например browser_action::dispatch, music). Используется чтобы
+    // дёргать JS из любого места: `crate::ui::eval_js(...)`.
+    GLOBAL_PROXY.set(proxy.clone()).ok();
 
     // Клоны для graceful shutdown при закрытии окна
     let client_shutdown = client_slot.clone();
@@ -262,7 +360,24 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
     }
     let webview = webview_builder
         .with_url("voicy://localhost/index.html")
-        .with_custom_protocol("voicy".into(), |_req| {
+        .with_custom_protocol("voicy".into(), |req| {
+            let path = req.uri().path();
+            // /assets/* → handoff SVG assets (Шу, logo)
+            if let Some(bytes) = handoff_assets::lookup(path) {
+                return wry::http::Response::builder()
+                    .header("Content-Type", "image/svg+xml")
+                    .header("Cache-Control", "public, max-age=3600")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(std::borrow::Cow::Borrowed(bytes))
+                    .unwrap();
+            }
+            // Diagnostic: всё что не main HTML и не asset — логируем, чтобы
+            // понять какие пути приходят (на случай если wry/WebView2 шлёт
+            // unexpected формат вроде authority в path).
+            if path != "/" && path != "/index.html" && !path.is_empty() {
+                tracing::warn!("[custom-protocol] unknown path → '{}' (full uri: {})", path, req.uri());
+            }
+            // Всё остальное → главный HTML (нет роутинга, single page).
             wry::http::Response::builder()
                 .header("Content-Type", "text/html; charset=utf-8")
                 // Разрешаем inline-скрипты (WebView2 по умолчанию для нестандартных схем
@@ -272,9 +387,9 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                     "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; \
                      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://s.ytimg.com; \
                      style-src 'self' 'unsafe-inline'; \
-                     connect-src *; img-src * data: https://i.ytimg.com https://s.ytimg.com; frame-src https://www.youtube.com",
+                     connect-src *; img-src * data: voicy: https://i.ytimg.com https://s.ytimg.com; frame-src https://www.youtube.com",
                 )
-                .body(std::borrow::Cow::Borrowed(UI_HTML.as_bytes()))
+                .body(std::borrow::Cow::Borrowed(ui_html_with_assets().as_bytes()))
                 .unwrap()
         })
         .with_ipc_handler(ipc_handler)
@@ -332,7 +447,35 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                     *flow = ControlFlow::Exit;
                 }
                 UiLoopEvent::WindowDrag => {
-                    let _ = window.drag_window();
+                    // tao's drag_window() использует PostMessage (async) — на момент
+                    // обработки сообщения mouse button уже может быть отпущен и drag
+                    // не стартует. Делаем SendMessage напрямую (синхронно) с
+                    // ReleaseCapture перед ним. Передаём фактические координаты
+                    // курсора в lParam — без этого OS не понимает откуда начался
+                    // drag и не стартует операцию.
+                    #[cfg(windows)]
+                    {
+                        use tao::platform::windows::WindowExtWindows;
+                        use windows_sys::Win32::Foundation::{HWND, POINT};
+                        use windows_sys::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
+                        use windows_sys::Win32::UI::WindowsAndMessaging::{
+                            GetCursorPos, SendMessageW, HTCAPTION, WM_NCLBUTTONDOWN,
+                        };
+                        let hwnd = window.hwnd() as HWND;
+                        unsafe {
+                            let mut pt = POINT { x: 0, y: 0 };
+                            GetCursorPos(&mut pt);
+                            // lParam: low word = x, high word = y (screen coords).
+                            let lparam = ((pt.x & 0xFFFF) | ((pt.y & 0xFFFF) << 16)) as isize;
+                            info!("[drag] SendMessage HTCAPTION at ({},{})", pt.x, pt.y);
+                            ReleaseCapture();
+                            SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION as usize, lparam);
+                        }
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        let _ = window.drag_window();
+                    }
                 }
             },
             _ => {}
@@ -427,6 +570,7 @@ fn dispatch(
         "ai_assistant_set" => cmd_ai_assistant_set(cfg, cfg_path, &msg.payload),
         "ai_model_status" => cmd_ai_model_status(cfg),
         "ai_model_download" => cmd_ai_model_download(cfg),
+        "ai_model_download_state" => cmd_ai_model_download_state(),
         "ai_model_get" => cmd_ai_model_get(cfg),
         "ai_model_set" => cmd_ai_model_set(cfg, cfg_path, &msg.payload),
         "gemini_key_get" => cmd_gemini_key_get(cfg),
@@ -449,6 +593,9 @@ fn dispatch(
         "feedback_config_get" => cmd_feedback_config_get(cfg),
         "feedback_config_set" => cmd_feedback_config_set(cfg, cfg_path, &msg.payload),
         "feedback_send" => cmd_feedback_send(rt, client, cfg, &msg.payload),
+        "models_root_get" => cmd_models_root_get(cfg),
+        "models_root_set" => cmd_models_root_set(cfg, cfg_path, &msg.payload),
+        "models_root_pick" => cmd_models_root_pick(),
         "_window_close" => {
             let _ = proxy.send_event(UiLoopEvent::WindowClose);
             serde_json::json!({ "ok": true })
@@ -458,7 +605,12 @@ fn dispatch(
             serde_json::json!({ "ok": true })
         }
         "_window_drag" => {
+            info!("[ipc] _window_drag payload={}", msg.payload);
             let _ = proxy.send_event(UiLoopEvent::WindowDrag);
+            serde_json::json!({ "ok": true })
+        }
+        "_log_dbg" => {
+            info!("[dbg] {}", msg.payload);
             serde_json::json!({ "ok": true })
         }
         _ => err(format!("unknown cmd: {}", msg.cmd)),
@@ -613,6 +765,12 @@ fn cmd_ai_model_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
                 "ram_mb": ai_assistant::AiModel::Gemma2_2B.approx_ram_mb(),
                 "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Gemma2_2B),
             },
+            {
+                "id": "qwen3-4b",
+                "name": ai_assistant::AiModel::Qwen3_4B.display_name(),
+                "ram_mb": ai_assistant::AiModel::Qwen3_4B.approx_ram_mb(),
+                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Qwen3_4B),
+            },
         ],
     })
 }
@@ -634,6 +792,81 @@ fn cmd_ai_model_set(
     }
     info!("[ui] ai_model set → {}", kind.id());
     serde_json::json!({ "ok": true, "model_id": kind.id(), "model_name": kind.display_name() })
+}
+
+fn cmd_models_root_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    let default = dirs::home_dir()
+        .map(|h| h.join(".cache").join("huggingface"))
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let current = c.models_root.trim().to_string();
+    serde_json::json!({
+        "ok": true,
+        "path": current,
+        "default": default,
+        "effective": if current.is_empty() { default } else { c.models_root.clone() },
+    })
+}
+
+fn cmd_models_root_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let val = payload.get("path").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    // Пустая строка — сброс на дефолт.
+    let mut c = cfg.lock();
+    c.models_root = val.clone();
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    // ВНИМАНИЕ: HF_HOME уже зафиксирован при старте — смена применится после
+    // рестарта Voicy. Можно перевыставить env прямо сейчас, но уже загруженные
+    // в RAM модели не переедут — это всё равно требует перезапуска.
+    if !val.is_empty() {
+        std::env::set_var("HF_HOME", &val);
+        std::env::set_var("HF_HUB_CACHE", std::path::PathBuf::from(&val).join("hub"));
+    }
+    info!("[ui] models_root → {:?} (применится после рестарта)", val);
+    serde_json::json!({ "ok": true, "path": val, "needs_restart": true })
+}
+
+#[cfg(windows)]
+fn cmd_models_root_pick() -> serde_json::Value {
+    // Используем PowerShell + Windows Forms FolderBrowserDialog. Это самый
+    // простой и надёжный способ без новых зависимостей — System.Windows.Forms
+    // встроен во все Win10/11. Скрипт пишется в stdin процесса.
+    let ps_script = r#"
+        Add-Type -AssemblyName System.Windows.Forms | Out-Null
+        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dlg.Description = 'Voicy — куда скачивать AI-модели'
+        $dlg.ShowNewFolderButton = $true
+        $result = $dlg.ShowDialog()
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+            Write-Output $dlg.SelectedPath
+        }
+    "#;
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps_script])
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if path.is_empty() {
+                serde_json::json!({ "ok": true, "cancelled": true })
+            } else {
+                serde_json::json!({ "ok": true, "path": path })
+            }
+        }
+        Ok(o) => err(format!("powershell exit {}: {}", o.status, String::from_utf8_lossy(&o.stderr))),
+        Err(e) => err(format!("powershell spawn: {}", e)),
+    }
+}
+
+#[cfg(not(windows))]
+fn cmd_models_root_pick() -> serde_json::Value {
+    err("folder picker available only on Windows")
 }
 
 fn cmd_gemini_key_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
@@ -964,20 +1197,84 @@ fn cmd_music_user_next(proxy: &EventLoopProxy<UiLoopEvent>) -> serde_json::Value
     }
 }
 
+/// Глобальное состояние текущего AI-model скачивания. Один download за раз.
+#[derive(Debug, Clone)]
+struct AiDownloadState {
+    model_id: String,
+    in_progress: bool,
+    done: bool,
+    error: Option<String>,
+    started_at: std::time::Instant,
+}
+
+fn ai_download_slot() -> &'static Mutex<Option<AiDownloadState>> {
+    static SLOT: std::sync::OnceLock<Mutex<Option<AiDownloadState>>> = std::sync::OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
 fn cmd_ai_model_download(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
     let kind = ai_assistant::AiModel::from_config_str(&cfg.lock().ai_model);
     if ai_assistant::AiAssistant::is_model_cached(kind) {
         return serde_json::json!({ "ok": true, "cached": true, "model_id": kind.id() });
     }
-    match ai_assistant::AiAssistant::download_model_sync(kind) {
-        Ok(path) => {
-            info!("[ui] AI model {} downloaded: {}", kind.id(), path.display());
-            serde_json::json!({ "ok": true, "path": path.display().to_string(), "model_id": kind.id() })
+    // Уже идёт скачивание — отказ.
+    {
+        let slot = ai_download_slot().lock();
+        if let Some(s) = slot.as_ref() {
+            if s.in_progress {
+                return serde_json::json!({
+                    "ok": true,
+                    "started": false,
+                    "in_progress": true,
+                    "model_id": s.model_id.clone(),
+                });
+            }
         }
-        Err(e) => {
-            warn!("[ui] AI model {} download failed: {}", kind.id(), e);
-            err(format!("download: {}", e))
+    }
+    // Стартуем download в фоне.
+    let model_id = kind.id().to_string();
+    *ai_download_slot().lock() = Some(AiDownloadState {
+        model_id: model_id.clone(),
+        in_progress: true,
+        done: false,
+        error: None,
+        started_at: std::time::Instant::now(),
+    });
+    std::thread::spawn(move || {
+        info!("[ui] AI model {} download starting (background)", model_id);
+        let result = ai_assistant::AiAssistant::download_model_sync(kind);
+        let mut slot = ai_download_slot().lock();
+        if let Some(s) = slot.as_mut() {
+            s.in_progress = false;
+            s.done = result.is_ok();
+            s.error = result.as_ref().err().map(|e| e.to_string());
+            let dt = s.started_at.elapsed().as_secs_f32();
+            match &result {
+                Ok(p) => info!("[ui] AI model {} downloaded in {:.1}s: {}", s.model_id, dt, p.display()),
+                Err(e) => warn!("[ui] AI model {} download failed after {:.1}s: {}", s.model_id, dt, e),
+            }
         }
+    });
+    serde_json::json!({
+        "ok": true,
+        "started": true,
+        "model_id": kind.id(),
+    })
+}
+
+/// Опросить состояние текущего/последнего скачивания AI-модели.
+fn cmd_ai_model_download_state() -> serde_json::Value {
+    let slot = ai_download_slot().lock();
+    match slot.as_ref() {
+        Some(s) => serde_json::json!({
+            "ok": true,
+            "model_id": s.model_id,
+            "in_progress": s.in_progress,
+            "done": s.done,
+            "error": s.error,
+            "elapsed_secs": s.started_at.elapsed().as_secs_f32(),
+        }),
+        None => serde_json::json!({ "ok": true, "in_progress": false, "done": false }),
     }
 }
 
@@ -1703,6 +2000,10 @@ fn cmd_listener_start(
                                 warn!("[ai] tts error: {}", e);
                                 push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
                             }
+                            // Терминальный маркер для onboarding-теста AI:
+                            // фиксирует, что TTS отыграл до конца — только тогда
+                            // считаем шаг успешно завершённым.
+                            push_event(&proxy, "log", "🤖 ✓ done");
                             flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
                         }
                         Err(e) => {
@@ -1731,6 +2032,10 @@ fn cmd_listener_start(
                                 warn!("[ai] tts error: {}", e);
                                 push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
                             }
+                            // Терминальный маркер для onboarding-теста AI:
+                            // фиксирует, что TTS отыграл до конца — только тогда
+                            // считаем шаг успешно завершённым.
+                            push_event(&proxy, "log", "🤖 ✓ done");
                             flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
                         }
                         Err(e) => {
@@ -1925,6 +2230,18 @@ fn cmd_listener_start(
             }
 
             info!("[listener] trying contacts::parse_command with text='{}'", text);
+            // Silent no-op для онбординг-теста: «test»/«тест»/«check»/«проверка»
+            // одним словом — это просто проверка ASR работает. Не показываем
+            // красный × «команда не распознана», иначе на 1-м шаге гайда мигает
+            // ошибка прямо при успешной транскрипции.
+            let trimmed_lower = text.trim().to_lowercase();
+            let single = trimmed_lower.trim_end_matches(|c: char| !c.is_alphanumeric()).to_string();
+            if matches!(single.as_str(), "test" | "тест" | "check" | "проверка" | "hello" | "привет") {
+                info!("[listener] silent no-op for onboarding test word: '{}'", single);
+                push_event(&proxy, "activity", "");
+                return;
+            }
+
             let (uid, message) = match tg_intent_resolved {
                 Some(x) => x,
                 None => match cts::parse_command(&text, &contacts) {
@@ -1960,7 +2277,6 @@ fn cmd_listener_start(
                 flash_overlay(&proxy, UiLoopEvent::OverlayError);
                 return;
             }
-            push_event(&proxy, "activity", &format!("→ {} «{}»…", uid, message));
             let client = match client_slot.lock().as_ref() {
                 Some(c) => c.clone(),
                 None => {
@@ -1971,7 +2287,26 @@ fn cmd_listener_start(
                     return;
                 }
             };
-            let res = rt.block_on(async { telegram::send_message(&client, uid, &message).await });
+            // Резолвим SELF_SENTINEL_UID в реальный user_id залогиненного юзера
+            // (Saved Messages / «избранное» — это чат с самим собой в Telegram).
+            let resolved_uid = if uid == cts::SELF_SENTINEL_UID {
+                match rt.block_on(async { client.get_me().await }) {
+                    Ok(me) => me.id(),
+                    Err(e) => {
+                        warn!("[listener] get_me для SELF: {}", e);
+                        push_event(&proxy, "log", &format!("✗ get_me: {}", e));
+                        push_event(&proxy, "activity", "");
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                        return;
+                    }
+                }
+            } else { uid };
+            // Pre-send лог с УЖЕ резолвнутым uid (положительные цифры) — onboarding
+            // pattern /^→ \d+ «/ матчится сразу, не ждём пока Telegram реально отправит.
+            push_event(&proxy, "log", &format!("→ {} «{}»…", resolved_uid, message));
+            push_event(&proxy, "activity", &format!("→ {} «{}»…", resolved_uid, message));
+            let res = rt.block_on(async { telegram::send_message(&client, resolved_uid, &message).await });
+            let uid = resolved_uid; // для логов ниже
             match res {
                 Ok(()) => {
                     info!("[listener] ✅ → {} «{}»", uid, message);

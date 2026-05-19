@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+
+  <defs>
+    <linearGradient id="shu-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E2EFDA"></stop>
+      <stop offset="1" stop-color="#A8C8A0"></stop>
+    </linearGradient>
+    <linearGradient id="shu-wave-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5E8B62"></stop>
+      <stop offset="1" stop-color="#5E8B62" stop-opacity="0.4"></stop>
+    </linearGradient>
+  </defs>
+  <ellipse cx="100" cy="186" rx="58" ry="5" fill="#1B2421" opacity="0.07"></ellipse>
+  <g>
+    <path d="M 30 110 C 30 60, 60 38, 100 38 C 140 38, 170 60, 170 110 C 170 168, 138 178, 100 178 C 62 178, 30 168, 30 110 Z" fill="url(#shu-body)" stroke="#1B2421" stroke-width="1.5" stroke-opacity="0.16"></path>
+    <ellipse cx="78" cy="178" rx="10" ry="4" fill="#1B2421" opacity="0.14"></ellipse>
+    <ellipse cx="122" cy="178" rx="10" ry="4" fill="#1B2421" opacity="0.14"></ellipse>
+    <path d="M 50 82 C 56 82, 58 78, 64 78 C 70 78, 74 86, 82 86 C 90 86, 94 78, 102 78 C 110 78, 114 84, 122 84 C 130 84, 134 80, 140 80 C 146 80, 148 82, 150 82" stroke="url(#shu-wave-grad)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+    <g fill="#1B2421">
+        <circle cx="78" cy="122" r="4"></circle>
+        <circle cx="122" cy="122" r="4"></circle>
+      </g>
+    <g fill="none" stroke="#5E8B62" stroke-width="2" stroke-linecap="round" opacity="0.6">
+      <path d="M 175 95 q 5 5 0 12"></path>
+      <path d="M 185 88 q 8 9 0 22"></path>
+    </g>
+    
+  </g>
+</svg>

@@ -7,8 +7,8 @@ use serde_json::json;
 const API_URL: &str =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
-const SYSTEM_PROMPT_RU: &str = "Ты голосовой ассистент. Отвечай кратко, по существу, максимум 2 предложения. Говори естественно, как человек.";
-const SYSTEM_PROMPT_EN: &str = "You are a voice assistant. Answer briefly and to the point, maximum 2 sentences. Speak naturally, like a human.";
+const SYSTEM_PROMPT_RU: &str = "Ты голосовой ассистент. ВСЕГДА отвечай на РУССКОМ языке. Отвечай кратко, по существу, максимум 2 предложения. Говори естественно, как человек.";
+const SYSTEM_PROMPT_EN: &str = "You are a voice assistant. ALWAYS answer in ENGLISH only — never French, German, or any other language. Answer briefly, max 2 sentences. Speak naturally, like a human.";
 
 /// Спросить Gemini. Возвращает готовый текст ответа.
 pub fn ask(api_key: &str, question: &str, language: &str) -> Result<String> {

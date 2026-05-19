@@ -167,11 +167,15 @@ fn composite_score(query: &str, r: &crate::youtube_internal::YtSearchResult) -> 
         _ => {}
     }
 
-    // 5a. Бонус/штраф за musicVideoType — официальные источники приоритизируем агрессивно
+    // 5a. Бонус/штраф за musicVideoType — официальные источники приоритизируем агрессивно.
+    // Пустой music_video_type + пустой music_type = видео НЕ помечено YT Music ноткой,
+    // т.е. это, скорее всего, не песня вовсе (летсплей, обзор, мем). Большой штраф.
     match r.music_video_type.as_str() {
         "MUSIC_VIDEO_TYPE_ATV" => score += 40,
         "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC" => score += 60,
+        "MUSIC_VIDEO_TYPE_OMV" => score += 30,
         "MUSIC_VIDEO_TYPE_UGC" => score -= 30,
+        "" if r.music_type.is_empty() => score -= 50,
         _ => {}
     }
 
@@ -250,8 +254,34 @@ fn search_deezer(query: &str) -> Option<DeezerTrack> {
 }
 
 /// Искать трек по запросу.
-/// Новая логика: Deezer → точный запрос на YouTube → fallback на прямой поиск.
+/// Логика: Deezer → строгий YT Music. Если оба провалились и запрос длинный,
+/// пробуем ещё раз с первым словом (артистом) — ASR часто склеивает имя
+/// артиста с шумом в начале фразы.
 pub fn search_track(query: &str) -> Result<TrackInfo> {
+    // Первая попытка — full query
+    let first_err = match search_track_one(query) {
+        Ok(t) => return Ok(t),
+        Err(e) => e,
+    };
+
+    // Fallback: если в query 2+ слова, пробуем только первое слово (артист).
+    // «кизару илон маск» → «кизару» → Deezer находит трек Kizaru.
+    let words: Vec<&str> = query.split_whitespace().collect();
+    if words.len() >= 2 {
+        let artist_only = words[0];
+        if artist_only.chars().count() >= 3 {
+            info!("[music] retry with artist-only: '{}'", artist_only);
+            if let Ok(t) = search_track_one(artist_only) {
+                return Ok(t);
+            }
+        }
+    }
+
+    Err(first_err)
+}
+
+/// Один проход поиска без artist-fallback.
+fn search_track_one(query: &str) -> Result<TrackInfo> {
     // Stage 1: спрашиваем Deezer — там нет мемов и каверов, только официальные релизы.
     // Если Deezer дал точный artist + title, ищем на YouTube уже по чистому запросу.
     if let Some(dz) = search_deezer(query) {
@@ -288,33 +318,79 @@ pub fn search_track(query: &str) -> Result<TrackInfo> {
         }
     }
 
-    // Stage 2: fallback — прямой поиск на YouTube (старая логика)
-    info!("[music] Deezer miss or empty results, falling back to direct YouTube search for '{}'", query);
+    // Stage 2: fallback — прямой поиск на YouTube + STRICT-фильтр.
+    // Логика: Deezer не дал ответ → query, скорее всего, плохой
+    // (искажение ASR / неточное название). В этом режиме НЕ играем что попало,
+    // а требуем чтобы YT Music (WEB_REMIX) признала видео музыкальным —
+    // т.е. music_video_type или music_type должны быть заполнены.
+    info!("[music] Deezer miss — strict YouTube search for '{}'", query);
+
+    // Сначала ходим в WEB_REMIX — он отдаёт ТОЛЬКО музыкальные результаты
+    // (отсюда «нотка» в результатах обычного поиска YT).
+    let remix_results = crate::youtube_internal::search_music_remix(query, 10)
+        .unwrap_or_default();
+    let remix_map: std::collections::HashMap<String, (String, String, String)> = remix_results
+        .iter()
+        .map(|r| (
+            r.video_id.clone(),
+            (r.channel.clone(), r.music_type.clone(), r.music_video_type.clone()),
+        ))
+        .collect();
+
+    // Если YT Music совсем НИЧЕГО не вернул — это сигнал что запрос мусорный.
+    // НЕ играем рандомное видео. Возвращаем понятную ошибку.
+    if remix_map.is_empty() {
+        anyhow::bail!(
+            "не нашёл музыкальный трек для «{}» — попробуй сказать имя артиста чётче",
+            query
+        );
+    }
+
     let mut web_results = crate::youtube_internal::search_results(query, 15)
         .context("music search (WEB)")?;
 
-    if let Ok(remix) = crate::youtube_internal::search_music_remix(query, 10) {
-        let remix_map: std::collections::HashMap<String, (String, String)> = remix
-            .into_iter()
-            .map(|r| (r.video_id.clone(), (r.channel, r.music_type)))
-            .collect();
-        for r in &mut web_results {
-            if let Some((artist, mtype)) = remix_map.get(&r.video_id) {
-                if !artist.trim().is_empty() && !artist.eq_ignore_ascii_case("video") && !artist.eq_ignore_ascii_case("song") {
-                    r.channel = artist.clone();
-                }
-                if !mtype.trim().is_empty() {
-                    r.music_type = mtype.clone();
-                }
+    // Обогащаем WEB-результаты данными из WEB_REMIX.
+    for r in &mut web_results {
+        if let Some((artist, mtype, mvtype)) = remix_map.get(&r.video_id) {
+            if !artist.trim().is_empty()
+                && !artist.eq_ignore_ascii_case("video")
+                && !artist.eq_ignore_ascii_case("song")
+            {
+                r.channel = artist.clone();
+            }
+            if !mtype.trim().is_empty() {
+                r.music_type = mtype.clone();
+            }
+            if !mvtype.trim().is_empty() {
+                r.music_video_type = mvtype.clone();
             }
         }
     }
 
-    if web_results.is_empty() {
-        anyhow::bail!("не найдено ни одного трека");
+    // STRICT: оставляем только те, что распознаны YT Music как music_video.
+    let music_only: Vec<_> = web_results
+        .iter()
+        .filter(|r| !r.music_video_type.is_empty() || !r.music_type.is_empty())
+        .cloned()
+        .collect();
+
+    // Если в WEB ни одного «музыкального» — дополняем напрямую WEB_REMIX'ом
+    // (там данных меньше: часто нет duration, но видео гарантированно музыкальное).
+    let candidates = if music_only.is_empty() {
+        info!("[music] strict: no music-tagged WEB results, falling back to WEB_REMIX-only");
+        remix_results
+    } else {
+        music_only
+    };
+
+    if candidates.is_empty() {
+        anyhow::bail!(
+            "не нашёл музыкальный трек для «{}» — попробуй сказать имя артиста чётче",
+            query
+        );
     }
 
-    let item = pick_best(query, web_results)?;
+    let item = pick_best(query, candidates)?;
     Ok(TrackInfo {
         video_id: item.video_id,
         title: item.title,
@@ -326,13 +402,16 @@ pub fn search_track(query: &str) -> Result<TrackInfo> {
 
 /// Выбрать лучший результат из списка с учётом фильтров и релевантности.
 fn pick_best(query: &str, results: Vec<crate::youtube_internal::YtSearchResult>) -> Result<crate::youtube_internal::YtSearchResult> {
-    // Фильтруем явный мусор
+    // Жёсткий cap на длительность: 8 минут.
+    // Песни редко длиннее 7 мин, всё что больше — летсплеи / часовые сборники / реакции.
+    const MAX_TRACK_SECS: u32 = 480;
+
     let mut filtered: Vec<_> = results.iter()
         .filter(|r| {
             let not_junk = !is_low_quality(&r.title);
-            // Для WEB-поиска duration есть и работает; для WEB_REMIX часто пустая — не фильтруем
             let secs = parse_duration(&r.duration);
-            let duration_ok = r.duration.is_empty() || secs <= 900;
+            // duration может быть пустой (WEB_REMIX) — тогда не фильтруем по ней.
+            let duration_ok = r.duration.is_empty() || secs <= MAX_TRACK_SECS;
             not_junk && duration_ok
         })
         .cloned()
@@ -351,7 +430,19 @@ fn pick_best(query: &str, results: Vec<crate::youtube_internal::YtSearchResult>)
         score_b.cmp(&score_a)
     });
 
-    filtered.into_iter().next().ok_or_else(|| anyhow::anyhow!("не удалось выбрать лучший результат (список пуст)"))
+    // Минимальный score-floor: меньше — точно мусор (никаких слов запроса в title).
+    // Берём первый, но логируем score для дебага и отказываем при явном провале.
+    let best = filtered.into_iter().next()
+        .ok_or_else(|| anyhow::anyhow!("не удалось выбрать лучший результат (список пуст)"))?;
+    let best_score = composite_score(query, &best);
+    info!("[music] pick_best: '{}' — {} (score={})", best.title, best.channel, best_score);
+    if best_score < 0 {
+        anyhow::bail!(
+            "не нашёл подходящий трек для «{}» (best score={}, всё что нашлось — не песни)",
+            query, best_score
+        );
+    }
+    Ok(best)
 }
 
 /// Пытается вытащить имя артиста из названия трека вида "Artist - Title".

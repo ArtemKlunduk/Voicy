@@ -84,6 +84,12 @@ pub struct Config {
     /// Telegram User ID разработчика для прямой отправки feedback.
     #[serde(default = "default_feedback_dev_uid")]
     pub feedback_dev_uid: i64,
+    /// Кастомная папка для HuggingFace моделей (AI ассистент: GGUF + tokenizer).
+    /// None / пусто — используется дефолтный `~/.cache/huggingface/hub`.
+    /// При установке Voicy через инсталлер юзер может выбрать другую папку
+    /// (например `D:\AI\models`) — путь пишется сюда и применяется как HF_HOME.
+    #[serde(default)]
+    pub models_root: String,
 }
 
 fn default_theme() -> String { "light".into() }
@@ -130,6 +136,7 @@ impl Default for Config {
             ai_model: "qwen-0.5b".into(),
             feedback_dev_username: String::new(),
             feedback_dev_uid: default_feedback_dev_uid(),
+            models_root: String::new(),
         }
     }
 }

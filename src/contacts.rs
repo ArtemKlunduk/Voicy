@@ -8,6 +8,12 @@ use tracing::{info, warn};
 
 pub type Contacts = HashMap<String, i64>;
 
+/// Sentinel uid возвращаемый parse_command для «себе/saved messages».
+/// Вызывающий код должен подставить реальный user_id залогиненного аккаунта
+/// (`client.get_me().await?.id()`). Выбран i64::MIN — реальный Telegram uid
+/// никогда не отрицательный.
+pub const SELF_SENTINEL_UID: i64 = i64::MIN;
+
 /// Structured-вид контакта для UI: имя + список алиасов + uid.
 /// Первый алиас в файле — это «display name», остальные — голосовые синонимы.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -151,6 +157,12 @@ const TRIGGERS: &[&str] = &[
     // English
     "write", "right", "wright", "rite",
     "text", "send", "message",
+    // Кириллический фонетический английский — Whisper/Parakeet иногда
+    // транскрибирует «write to myself» как «врайт ту майселф».
+    "врайт", "райт", "райте",
+    "сенд", "сэнд", "сэнт",
+    "тэкст", "текст",
+    "месседж", "месэдж",
 ];
 
 /// Распарсить распознанный текст: «<триггер> имя текст» → (uid, message) или ошибка.
@@ -212,6 +224,34 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
         }
     }
 
+    // Шаг 1c: триггер во 2-м или 3-м токене (whisper иногда вставляет в начало
+    // слова-артефакты вида «в», «и», «а» — «в райт ту майселф» вместо «врайт…»).
+    // Если первые 1-2 токена короткие (≤2 символов) и за ними идёт триггер —
+    // принимаем как trigger.
+    if found.is_none() {
+        let toks: Vec<&str> = t.split_whitespace().collect();
+        // Сколько лидирующих коротких артефактов пропустить (max 2).
+        let mut skip = 0usize;
+        for tk in toks.iter().take(2) {
+            if tk.chars().count() <= 2 {
+                skip += 1;
+            } else {
+                break;
+            }
+        }
+        if skip > 0 && toks.len() > skip {
+            let candidate = toks[skip..].join(" ");
+            for &&trig in &sorted_triggers {
+                if candidate.starts_with(trig) {
+                    let rest = candidate[trig.len()..].trim_start().to_string();
+                    info!("[parse] skip-prefix trigger: skipped {} short tokens, '{}' matches '{}'", skip, &toks[..skip].join(" "), trig);
+                    found = Some((trig, rest));
+                    break;
+                }
+            }
+        }
+    }
+
     let Some((used, rest)) = found else {
         return Err(format!(
             "команда не распознана (ожидалось «напиши» / «отправь»): «{}»",
@@ -251,6 +291,47 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
     }
 
     info!("[parse] text='{}' (trig='{}') → name='{}' message='{}'", text, used, name, message);
+
+    // Спец-кейс: «себе/себя/сам/saved/избранное/myself/me/...» → Saved Messages.
+    // Возвращаем sentinel UID = SELF_SENTINEL_UID, вызывающий код подставит
+    // реальный user_id текущего залогиненного аккаунта.
+    if matches!(name.as_str(),
+        "себе" | "себя" | "сам" |
+        "saved" | "избранное" | "избранные" | "favorites" |
+        "self" | "myself" | "myselve" | "me" |
+        // Кириллический фонетический английский ASR
+        "майселф" | "майсельф" | "майселв" | "мисельф" | "мисельв" |
+        "ту майселф" | "ту майсельф"
+    ) {
+        info!("[parse] SELF match → SavedMessages");
+        return Ok((SELF_SENTINEL_UID, message));
+    }
+    // Whisper часто разбивает «myself» на «my self» (или «my-self» → после
+    // нормализации становится «my self»). Парсер вытащит name="my" message=
+    // "self [rest]". Распознаём и режем «self» из message.
+    if name == "my" || name == "май" {
+        let msg_words: Vec<&str> = message.split_whitespace().collect();
+        if !msg_words.is_empty() && matches!(msg_words[0].to_lowercase().as_str(),
+            "self" | "selve" | "селф" | "сельф" | "селв"
+        ) {
+            let real_msg = msg_words[1..].join(" ");
+            info!("[parse] SELF match (my + self split) → SavedMessages, msg='{}'", real_msg);
+            return Ok((SELF_SENTINEL_UID, real_msg));
+        }
+    }
+    // Также: «ту майселф» — «to» как соединительная частица перед получателем
+    // («write TO myself»). Если name=«ту» и first message word=«майселф» —
+    // считаем что это self.
+    if name == "ту" || name == "to" {
+        let msg_words: Vec<&str> = message.split_whitespace().collect();
+        if !msg_words.is_empty() && matches!(msg_words[0].to_lowercase().as_str(),
+            "myself" | "myselve" | "self" | "майселф" | "майсельф" | "мисельф" | "себе" | "себя"
+        ) {
+            let real_msg = msg_words[1..].join(" ");
+            info!("[parse] SELF match (to + myself split) → SavedMessages, msg='{}'", real_msg);
+            return Ok((SELF_SENTINEL_UID, real_msg));
+        }
+    }
 
     // Точное совпадение по алиасу
     if let Some(&uid) = contacts.get(&name) {
