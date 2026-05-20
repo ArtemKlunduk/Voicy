@@ -40,7 +40,9 @@ Settings → System → toggle **Run at startup**. Voicy will launch in backgrou
 
 ### 5. (Optional) Use your own Telegram app credentials
 
-The shipped credentials are shared across all Voicy users — fine for most cases, but if you want isolation (e.g. privacy, or you don't trust upstream rotation), see **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)**. 2 minutes to register your own app at my.telegram.org and override via `voicy.toml`.
+Voicy ships with Telegram app credentials embedded in the binary, so normal users do not need to register anything. These credentials identify the Voicy app to Telegram; they are not your Telegram account login.
+
+If you want to use your own Telegram app identity instead, see **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)**. It takes about 2 minutes to register an app at my.telegram.org and override the bundled credentials via `voicy.toml`.
 
 ---
 
@@ -86,6 +88,8 @@ For the bundled distribution layout (with all DLLs in one folder), run `scripts\
 - `voicy_dialogs.cache` — cached Telegram dialogs
 - `models/` — Parakeet / Canary ONNX weights
 - `whisper/` — whisper.cpp binaries + ggml weights
+
+Voicy does not send this local data to any Voicy server. Telegram messages are sent directly through Telegram, and optional Gemini features call Google's Gemini API only when you configure a Gemini API key.
 
 To start completely fresh: stop Voicy, delete `%APPDATA%\voicy\`, restart.
 

@@ -24,11 +24,17 @@ Voice-to-action for Windows. No typing, no opening apps — just a hotkey and yo
 - 👤 **Real contacts** — pulled from your Telegram with avatars
 - 🪶 **3 MB binary** — pure Rust, no Electron, runs offline
 
+## Privacy
+
+Voicy stores your Telegram session, contacts cache, dialog cache, downloaded ASR/AI models, and settings locally on your PC. Nothing is uploaded to Voicy servers.
+
+The bundled Telegram `api_id` / `api_hash` identify the Voicy app to Telegram, similar to other Telegram desktop clients. They are not your Telegram login. Your account authorization is stored in your local session file and should not be shared.
+
 ## Quick install
 
 1. **Download** the latest release: [Releases page](https://github.com/ArtemKlunduk/Voicy/releases)
 2. **Unzip** anywhere (e.g. `C:\Voicy\`)
-3. **Run** `voicy.exe` — that's it. Telegram credentials are pre-embedded.
+3. **Run** `voicy.exe` — that's it. Telegram app credentials are pre-embedded.
 4. On the **Telegram** tab → click **QR** → scan with your phone (Telegram → Settings → Devices → Link Desktop).
 5. Hold `Alt+X` and say "write `<contact>` hi" to test.
 

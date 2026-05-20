@@ -4,6 +4,12 @@
 >
 > This document is for people who want to use their **own** Telegram app credentials instead — either for privacy, or because the shipped ones got banned/rotated.
 
+## What is stored locally
+
+Voicy stores your Telegram authorization session, contact cache, dialog cache, settings, and downloaded models locally in `%APPDATA%\voicy\`.
+
+The bundled `api_id` / `api_hash` only identify the Voicy application to Telegram. They do not grant access to your Telegram account by themselves. Your actual account authorization is the local `voicy_session.session` file, and you should never share it.
+
 ## Why have your own credentials?
 
 Telegram tracks abuse per-application. The credentials shipped with Voicy are shared across all users — if someone abuses the API through their own client masquerading as "Voicy", Telegram might ban our `api_id` and everyone's install temporarily breaks until we rotate.
@@ -47,7 +53,7 @@ You'll see a page with:
 - **App api_id** — an integer like `12345678`
 - **App api_hash** — a 32-character hex string like `a1b2c3d4e5f6...`
 
-Keep them secret — anyone with both can write a client that impersonates "Voicy" as your app.
+Treat them as app identity, not as your Telegram password. Anyone with both can write a client that identifies as your app, so do not publish personal app credentials unless you intentionally want them shared.
 
 ### 6. Paste into voicy.toml
 
