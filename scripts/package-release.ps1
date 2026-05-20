@@ -72,9 +72,12 @@ foreach ($dll in $Dlls) {
 # ── 5. voicy.toml.example ───────────────────────────────────────────────────
 $TomlExample = @'
 # Voicy configuration file.
-# Place this file next to voicy.exe (rename from voicy.toml.example to voicy.toml).
+# Optional: place this file next to voicy.exe (rename from voicy.toml.example to voicy.toml)
+# if you want to override defaults.
 #
-# Telegram API credentials are required. Get them free at:
+# Telegram app credentials are embedded in the official release build.
+# You only need to fill [telegram] if you want to use your own Telegram app identity.
+# Get your own credentials free at:
 #   https://my.telegram.org → API development tools → Create application
 # See docs/TELEGRAM_SETUP.md for the full walkthrough.
 
@@ -92,8 +95,8 @@ modifiers = ["alt"]
 key = "x"
 
 [telegram]
-api_id = 0                       # ← REPLACE with your api_id from my.telegram.org
-api_hash = ""                    # ← REPLACE with your api_hash
+api_id = 0                       # optional: your api_id from my.telegram.org
+api_hash = ""                    # optional: your api_hash
 session = "voicy_session"
 '@
 Set-Content (Join-Path $StagingDir "voicy.toml.example") -Value $TomlExample -Encoding UTF8
@@ -106,18 +109,20 @@ Voicy v$Version — Voice-to-Telegram for Windows
 
 QUICK START (5 minutes):
 
-1. Get Telegram API credentials (free):
-   https://my.telegram.org → API development tools → Create application
-   See: https://github.com/ArtemKlunduk/Voicy/blob/main/docs/TELEGRAM_SETUP.md
+1. Double-click voicy.exe.
 
-2. Rename voicy.toml.example → voicy.toml.
-   Edit the [telegram] section with your api_id + api_hash.
+2. In the Settings UI → Telegram tab → click QR → scan with your phone.
 
-3. Double-click voicy.exe.
+3. Voicy stores your session, contacts cache, dialog cache, settings, and
+   downloaded models locally on this PC. Do not share voicy_session.session.
 
-4. In the Settings UI → Telegram tab → click QR → scan with your phone.
+4. Hold Alt+X and say "write <contact> hi" to test.
 
-5. Hold Alt+X and say "write <contact> hi" to test.
+OPTIONAL:
+  The official release includes Telegram app credentials. If you want to use
+  your own Telegram app identity, rename voicy.toml.example → voicy.toml and
+  fill the [telegram] section. See:
+  https://github.com/ArtemKlunduk/Voicy/blob/main/docs/TELEGRAM_SETUP.md
 
 
 DOCS:
