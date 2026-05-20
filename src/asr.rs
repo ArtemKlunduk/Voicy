@@ -151,6 +151,15 @@ pub fn nemo_model_dir(name: &str) -> PathBuf {
     voicy_models_dir().join(name)
 }
 
+/// Путь хранения модели с учетом движка.
+pub fn model_storage_path(name: &str) -> Option<PathBuf> {
+    let meta = model_meta(name)?;
+    Some(match meta.engine {
+        "whisper" => model_path(name),
+        _ => nemo_model_dir(name),
+    })
+}
+
 /// Скачана ли модель. Для whisper — наличие ggml-файла. Для Parakeet —
 /// ВСЕ 4 нужных ONNX-файла, иначе ParakeetModel::load запаникует.
 pub fn model_is_downloaded(name: &str) -> bool {
@@ -462,11 +471,7 @@ fn transcribe_wav_parakeet(wav: &Path, model: &str) -> Result<String> {
             model_dir.display()
         ));
     }
-    if !onnxruntime_dll_path().exists() {
-        return Err(anyhow!(
-            "onnxruntime.dll отсутствует рядом с exe."
-        ));
-    }
+    ensure_onnxruntime().context("prepare onnxruntime.dll")?;
 
     // Жёсткий timeout: запускаем инференс в отдельном треде, ждём ≤90 секунд.
     // Если ort ABI на gnullvm подвис — пайплайн всё равно выйдет с ошибкой,

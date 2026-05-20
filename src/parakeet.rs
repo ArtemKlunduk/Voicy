@@ -6,7 +6,7 @@
 //!
 //! Mel-спектрограмма зашита в `nemo128.onnx` — мы просто кормим f32 PCM 16kHz.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::OnceLock;

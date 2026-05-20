@@ -182,6 +182,10 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
         let cfg = cfg.clone();
         let slot = client_slot.clone();
         rt.spawn(async move {
+            if !cfg.has_telegram_credentials() {
+                warn!("[ui-boot] Telegram credentials missing; login disabled until configured");
+                return;
+            }
             match telegram::connect(&cfg).await {
                 Ok(c) => {
                     let snap = telegram::refresh_auth_snapshot(&c).await;
@@ -584,29 +588,19 @@ fn cmd_ai_model_status(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
 fn cmd_ai_model_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
     let c = cfg.lock();
     let kind = ai_assistant::AiModel::from_config_str(&c.ai_model);
+    let available: Vec<_> = ai_assistant::AiModel::all()
+        .iter()
+        .map(|m| serde_json::json!({
+            "id": m.id(),
+            "name": m.display_name(),
+            "ram_mb": m.approx_ram_mb(),
+            "cached": ai_assistant::AiAssistant::is_model_cached(*m),
+        }))
+        .collect();
     serde_json::json!({
         "ok": true,
         "current": kind.id(),
-        "available": [
-            {
-                "id": "qwen-0.5b",
-                "name": ai_assistant::AiModel::Qwen05B.display_name(),
-                "ram_mb": ai_assistant::AiModel::Qwen05B.approx_ram_mb(),
-                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Qwen05B),
-            },
-            {
-                "id": "llama-3.2-1b",
-                "name": ai_assistant::AiModel::Llama32_1B.display_name(),
-                "ram_mb": ai_assistant::AiModel::Llama32_1B.approx_ram_mb(),
-                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Llama32_1B),
-            },
-            {
-                "id": "gemma-2-2b",
-                "name": ai_assistant::AiModel::Gemma2_2B.display_name(),
-                "ram_mb": ai_assistant::AiModel::Gemma2_2B.approx_ram_mb(),
-                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Gemma2_2B),
-            },
-        ],
+        "available": available,
     })
 }
 

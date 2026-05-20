@@ -1338,6 +1338,10 @@ var _cb = {};
 var LONG_TIMEOUT_CMDS = { model_download: 1800000, ai_model_download: 1800000, telegram_dialogs: 180000 };
 function callIpc(cmd, payload) {
   return new Promise(function (resolve) {
+    if (!window.ipc || !window.ipc.postMessage) {
+      resolve({ok:false,error:"Voicy IPC unavailable"});
+      return;
+    }
     var id = Math.random().toString(36).slice(2);
     _cb[id] = resolve;
     var t = LONG_TIMEOUT_CMDS[cmd] || 30000;
@@ -1545,6 +1549,10 @@ var _saveTimer = null;
 // ── refresh loop ──
 async function refresh() {
   var info = await callIpc("info");
+  if (!info.ok) {
+    appendLog(info.error || "IPC unavailable");
+    return;
+  }
   if (info.ui_theme) applyTheme(info.ui_theme);
   document.getElementById("brand-meta").textContent = "v" + info.version + " · " + (info.exe_size_kb/1024).toFixed(2) + " MB";
 
