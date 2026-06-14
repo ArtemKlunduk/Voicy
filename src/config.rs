@@ -56,50 +56,29 @@ pub struct Config {
     /// Загружать ASR-модель в RAM сразу при старте listener'а.
     #[serde(default = "default_preload")]
     pub preload_model: bool,
-    /// Включить голосового ИИ-ассистента (команда "дай ответ").
-    #[serde(default = "default_ai_enabled")]
-    pub ai_assistant_enabled: bool,
-    /// Загружать ИИ-модель в RAM при старте listener'а.
-    #[serde(default = "default_ai_preload")]
-    pub ai_preload: bool,
+    /// Режим диктовки: фраза БЕЗ send-триггера («напиши/отправь/…») печатается
+    /// в активное окно (как Handy), а не трактуется как Telegram-команда.
+    #[serde(default = "default_dictation")]
+    pub dictation_enabled: bool,
     /// Запускать приложение при старте Windows.
     #[serde(default = "default_startup_launch")]
     pub startup_launch: bool,
     /// Язык интерфейса: "ru" | "en".
     #[serde(default = "default_language")]
     pub language: String,
-    /// API ключ для Google Gemini (голосовой ассистент).
-    #[serde(default)]
-    pub gemini_api_key: String,
-    /// Язык голосового ассистента: "ru" | "en".
-    #[serde(default = "default_ai_language")]
-    pub ai_language: String,
-    /// Локальная ИИ-модель: "qwen-0.5b" | "llama-3.2-1b" | "gemma-2-2b".
-    /// Дефолт — qwen-0.5b (минимальный RAM-overhead ~400 МБ).
-    #[serde(default = "default_ai_model")]
-    pub ai_model: String,
     /// Telegram username разработчика для вкладки Feedback (без @).
     #[serde(default)]
     pub feedback_dev_username: String,
     /// Telegram User ID разработчика для прямой отправки feedback.
     #[serde(default = "default_feedback_dev_uid")]
     pub feedback_dev_uid: i64,
-    /// Кастомная папка для HuggingFace моделей (AI ассистент: GGUF + tokenizer).
-    /// None / пусто — используется дефолтный `~/.cache/huggingface/hub`.
-    /// При установке Voicy через инсталлер юзер может выбрать другую папку
-    /// (например `D:\AI\models`) — путь пишется сюда и применяется как HF_HOME.
-    #[serde(default)]
-    pub models_root: String,
 }
 
 fn default_theme() -> String { "light".into() }
 fn default_preload() -> bool { true }
-fn default_ai_enabled() -> bool { true }
-fn default_ai_preload() -> bool { false }
+fn default_dictation() -> bool { true }
 fn default_startup_launch() -> bool { false }
 fn default_language() -> String { "en".into() }
-fn default_ai_language() -> String { "en".into() }
-fn default_ai_model() -> String { "qwen-0.5b".into() }
 fn default_feedback_dev_uid() -> i64 { 882983468 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,16 +106,11 @@ impl Default for Config {
             recognition_language: "auto".into(),
             ui_theme: "light".into(),
             preload_model: true,
-            ai_assistant_enabled: true,
-            ai_preload: false,
+            dictation_enabled: true,
             startup_launch: false,
             language: "en".into(),
-            gemini_api_key: String::new(),
-            ai_language: "en".into(),
-            ai_model: "qwen-0.5b".into(),
             feedback_dev_username: String::new(),
             feedback_dev_uid: default_feedback_dev_uid(),
-            models_root: String::new(),
         }
     }
 }

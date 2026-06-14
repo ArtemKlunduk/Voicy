@@ -849,10 +849,6 @@ dialog label {
 }
 .onboarding-visual svg { width:90px; height:90px; }
 .onboarding-visual.v1 { background:linear-gradient(135deg, #D6E6CF 0%, #A8C8A0 100%); }
-.onboarding-visual.v2 { background:linear-gradient(135deg, #F1E3C8 0%, #E4E9DA 100%); }
-.onboarding-visual.v3 { background:linear-gradient(135deg, #E4E9DA 0%, #D6E6CF 100%); }
-.onboarding-visual.v4 { background:linear-gradient(135deg, #A8C8A0 0%, #5E8B62 100%); }
-.onboarding-visual.v4 svg { color:#fff; }
 .onboarding-slide h3 {
   font-size:17px; font-weight:600; color:var(--ink); margin:0 0 6px; line-height:1.25;
 }
@@ -1314,95 +1310,6 @@ dialog label {
   0% { left:-30%; }
   100% { left:100%; }
 }
-/* ── music player widget (bottom bar) ── */
-.music-player {
-  position:fixed; bottom:0; left:0; right:0; z-index:100;
-  background:var(--paper-2); border-top:1px solid var(--hair);
-  padding:8px 12px; display:flex; align-items:center; gap:10px;
-  transform:translateY(100%); transition:transform .35s var(--ease);
-  /* Контролы (volume slider + close ×) у правого края не должны уходить за
-     рамку окна и не должны иметь мёртвой зоны рядом. overflow:hidden +
-     min-width:0 на детях гарантируют что layout уложится. */
-  overflow:hidden;
-  box-sizing:border-box;
-}
-.music-player.show { transform:translateY(0); }
-.music-cover {
-  width:44px; height:44px; border-radius:6px; object-fit:cover;
-  background:var(--hair-vsoft); flex-shrink:0;
-}
-.music-info { min-width:0; flex:1 1 120px; }
-.music-title { font-size:13px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.music-artist { font-size:11px; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
-.music-seek {
-  flex:1 1 100px; min-width:60px; max-width:180px;
-  -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
-  background:var(--hair); outline:none; cursor:pointer;
-}
-.music-seek::-webkit-slider-thumb {
-  -webkit-appearance:none; appearance:none; width:12px; height:12px; border-radius:50%;
-  background:var(--accent-deep); cursor:pointer;
-}
-.music-time { font-family:var(--mono); font-size:11px; color:var(--ink-3); white-space:nowrap; min-width:70px; text-align:center; }
-.music-controls {
-  display:inline-flex; align-items:center; gap:8px;
-  flex-shrink:0;
-}
-.music-btn, .music-close {
-  width:44px; height:44px; padding:0; border:0; border-radius:12px;
-  background:var(--hair-vsoft); color:var(--ink-2); cursor:pointer;
-  display:inline-flex; align-items:center; justify-content:center;
-  transition:background .15s, color .15s, transform .1s;
-  flex-shrink:0; font-size:16px; line-height:1;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-.music-btn:hover, .music-close:hover { background:var(--accent-bg); color:var(--accent-deep); }
-.music-btn:active, .music-close:active { transform:scale(0.9); }
-.music-close {
-  width:44px; height:44px; background:transparent; color:var(--ink-3); font-size:22px; font-weight:500;
-  /* z-index выше чем у volume slider (z:1) и thumb. margin-left:6px
-     резервирует gap от thumb'а volume-slider'а который может торчать
-     на ~9px вправо за пределы своего box'а. Без этого левый край × мог
-     быть перекрыт thumb'ом и клики туда не доходили. */
-  position:relative; z-index:5;
-  flex-shrink:0;
-  margin-left:6px;
-}
-.music-close:hover { background:var(--danger-soft); color:var(--danger); }
-.music-volume {
-  /* Ширина и высота — реальный hit-area для клика. WebKit считает
-     клик-зону по полной box'е input'а range. Делаем 100px×28px чтобы
-     было легко попасть в любую часть. */
-  width:100px; height:28px; border-radius:6px;
-  -webkit-appearance:none; appearance:none;
-  background:transparent; outline:none; cursor:pointer;
-  flex-shrink:0;
-  position:relative; z-index:1;
-  padding:0; margin:0;
-}
-/* Визуальный track — узкая полоска по центру, но клики ловит вся
-   28px высота input'а (см. выше). */
-.music-volume::-webkit-slider-runnable-track {
-  height:6px; border-radius:3px; background:var(--hair);
-  cursor:pointer;
-}
-.music-volume::-moz-range-track {
-  height:6px; border-radius:3px; background:var(--hair);
-  cursor:pointer;
-}
-.music-volume::-webkit-slider-thumb {
-  -webkit-appearance:none; appearance:none; width:14px; height:14px; border-radius:50%;
-  background:var(--accent-deep); cursor:pointer; border:2px solid var(--paper-2);
-  box-shadow:0 1px 4px rgba(0,0,0,0.3);
-  /* track 6px + центрировать 14px thumb: margin-top = (6-14)/2 = -4px */
-  margin-top:-4px;
-}
-.music-volume::-moz-range-thumb {
-  width:14px; height:14px; border-radius:50%;
-  background:var(--accent-deep); cursor:pointer; border:2px solid var(--paper-2);
-  box-shadow:0 1px 4px rgba(0,0,0,0.3);
-}
 .vy-btn {
   display:inline-flex; align-items:center; justify-content:center;
   padding:8px 16px; border-radius:10px; border:none;
@@ -1519,85 +1426,6 @@ dialog label {
                 <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               <div class="vy-select__menu" hidden></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="section-label"><span data-i18n="sec_ai">AI Assistant</span></div>
-
-        <div class="item">
-          <div class="k" data-i18n="ai_assistant">Voice assistant
-            <span class="d" data-i18n="ai_assistant_desc">Say "give answer" → ask a question by voice → AI replies by voice. Model ~350 MB.</span>
-          </div>
-          <div class="v" style="gap:10px;">
-            <span class="toggle" id="ai-toggle"></span>
-            <span id="ai-status" style="font-size:11px; color:var(--ink-3);"></span>
-            <span class="help-icon" id="ai-help">?</span>
-          </div>
-        </div>
-
-        <div class="item">
-          <div class="k" data-i18n="gemini_key">Gemini API key
-            <span class="d" data-i18n="gemini_key_desc">Google Gemini 2.0 Flash — fast replies (~1-2 sec). Free tier: 1500 requests/day. If empty — uses local model.</span>
-          </div>
-          <div class="v" style="gap:8px; flex-wrap:wrap;">
-            <input type="password" id="gemini-key-input" placeholder="AIza..." style="width:180px; font-size:12px; padding:4px 8px; border-radius:5px; border:1px solid var(--hair); background:var(--surface); color:var(--ink);" />
-            <span class="help-icon" id="gemini-key-help">?</span>
-            <button class="link" id="gemini-key-save" data-i18n="btn_save">save</button>
-            <button class="link" id="gemini-key-check" data-i18n="btn_check">check</button>
-            <span id="gemini-key-status" style="font-size:11px; color:var(--ink-3);"></span>
-          </div>
-        </div>
-
-        <div class="item">
-          <div class="k" data-i18n="ai_language_label">Assistant language
-            <span class="d" data-i18n="ai_language_desc">Language the AI will speak in.</span>
-          </div>
-          <div class="v">
-            <div class="vy-select" id="ai-language-select" data-vy-select="ai-language">
-              <button type="button" class="vy-select__trigger" aria-expanded="false">
-                <span class="label">…</span>
-                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
-              <div class="vy-select__menu" hidden></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="item">
-          <div class="k" data-i18n="ai_model_label">Local AI model
-            <span class="d" data-i18n="ai_model_desc">Local fallback when Gemini is unavailable. Bigger = better quality, more RAM.</span>
-            <span class="d" data-i18n="models_root_desc" style="margin-top:6px;">Where GGUF and tokenizer files are downloaded. Empty = default HuggingFace cache.</span>
-          </div>
-          <div class="v" style="gap:8px; flex-wrap:wrap; flex-direction:column; align-items:stretch;">
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <div class="vy-select" id="ai-model-select">
-                <button type="button" class="vy-select__trigger" id="ai-model-trigger" aria-expanded="false">
-                  <span class="label" id="ai-model-label-text">…</span>
-                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-                <div class="vy-select__menu" id="ai-model-menu" hidden></div>
-              </div>
-              <span id="ai-model-status" style="font-size:11px; color:var(--ink-3);"></span>
-              <button class="link" id="ai-model-download-btn" data-i18n="btn_download">download</button>
-            </div>
-            <!-- Прогресс-бар для скачивания AI-модели. По дефолту скрыт. -->
-            <div id="ai-model-progress-wrap" style="display:none; width:100%;">
-              <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--ink-3); margin-bottom:4px;">
-                <span id="ai-model-progress-label">downloading…</span>
-                <span id="ai-model-progress-pct">0%</span>
-              </div>
-              <div style="position:relative; width:100%; height:4px; background:var(--hair); border-radius:999px; overflow:hidden;">
-                <div id="ai-model-progress-bar" style="position:absolute; left:0; top:0; height:100%; width:0%; background:linear-gradient(90deg, #A8C8A0 0%, #7DAE82 100%); border-radius:999px; transition:width 200ms ease;"></div>
-                <div id="ai-model-progress-shimmer" style="position:absolute; left:0; top:0; height:100%; width:30%; background:linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%); animation:vy-shimmer 1.4s linear infinite;"></div>
-              </div>
-            </div>
-            <!-- Папка для AI-моделей: input + Browse + save. Сразу под dropdown'ом. -->
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-              <input type="text" id="models-root-input" class="val-mono" placeholder="…"
-                     style="flex:1; min-width:220px; padding:6px 10px; border-radius:6px; border:1px solid var(--hair); background:var(--paper); color:var(--ink); font-size:11px;" />
-              <button class="link" id="models-root-browse" data-i18n="browse">Browse…</button>
-              <button class="link" id="models-root-save" data-i18n="btn_save">save</button>
             </div>
           </div>
         </div>
@@ -1747,27 +1575,6 @@ dialog label {
   </div>
 </main>
 
-<!-- Music player widget -->
-<div class="music-player" id="music-player">
-  <img class="music-cover" id="music-cover" src="" alt="" />
-  <div class="music-info">
-    <div class="music-title" id="music-title">—</div>
-    <div class="music-artist" id="music-artist">—</div>
-  </div>
-  <input type="range" class="music-seek" id="music-seek" min="0" max="100" value="0" />
-  <span class="music-time" id="music-time">0:00 / 0:00</span>
-  <div class="music-controls">
-    <button class="music-btn" id="music-playpause" title="Play/Pause">▶</button>
-    <input type="range" class="music-volume" id="music-volume" min="0" max="100" value="100" title="Volume" />
-    <button class="music-close" id="music-close" title="Close">×</button>
-  </div>
-</div>
-
-<!-- Hidden YouTube iframe container -->
-<div id="yt-music-container" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;">
-  <div id="yt-music-player"></div>
-</div>
-
 <!-- Login dialog -->
 <dialog id="dlg-login">
   <h2>Telegram login</h2>
@@ -1823,31 +1630,6 @@ dialog label {
   </div>
 </div>
 
-<!-- Modal overlay for AI assistant help -->
-<div class="modal-overlay" id="ai-help-modal">
-  <div class="modal-card">
-    <h3 data-i18n="help_ai_title">Голосовой ассистент</h3>
-    <p data-i18n="help_ai_body"><b>Как работает:</b> скажи «дай ответ» → задай вопрос голосом → ИИ отвечает кратко и озвучивает ответ.<br><br>
-    <b>Gemini API (основной):</b> введи ключ в настройках — ответы за 1–2 секунды, бесплатный tier 1500 запросов/день.<br>
-    <b>Fallback:</b> без ключа используется локальная модель (работает офлайн, но медленнее — ~30–50 сек).</p>
-    <div class="row-actions">
-      <button class="btn btn-primary" id="ai-help-modal-close" data-i18n="btn_gotit">Понятно</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal overlay for Gemini key help -->
-<div class="modal-overlay" id="gemini-help-modal">
-  <div class="modal-card">
-    <h3 data-i18n="help_gemini_title">How to get a Gemini key</h3>
-    <p data-i18n="help_gemini_why"><b>Why?</b> With a Gemini key the AI answers in 1–2 seconds with excellent quality. Without a key it falls back to a slow local model (~30–50 s per answer).</p>
-    <p data-i18n="help_gemini_body" style="margin-top:10px;">1. Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);">aistudio.google.com/app/apikey</a><br>2. Click <b>"Create API key"</b><br>3. Copy the key (starts with <b>AIza...</b>)<br>4. Paste into the <b>"Gemini API key"</b> field in Voicy settings<br>5. Click <b>"check"</b> → should show ✓</p>
-    <div class="row-actions">
-      <button class="btn btn-primary" id="gemini-help-modal-close" data-i18n="btn_gotit">Got it</button>
-    </div>
-  </div>
-</div>
-
 <!-- Модальная плашка «идёт загрузка модели» -->
 <div class="dl-banner hidden" id="dl-banner">
   <div class="dl-banner-card">
@@ -1880,82 +1662,14 @@ dialog label {
             </svg>
           </div>
           <h3 data-i18n="ob_tg_title">Отправляй сообщения голосом</h3>
-          <p data-i18n="ob_tg_desc">Сначала залогинься в Telegram через QR-код: открой Telegram на телефоне, зайди в Settings → Devices → Link Desktop Device и отсканируй код во вкладке Telegram. Потом добавь друзей кнопкой «Импорт из Telegram» и задай каждому короткий алиас — вместо длинного имени просто «Даник». Теперь говори: «Напиши Данику привет, как дела?» — и сообщение уйдёт моментально.</p>
-          <span class="onboarding-example" data-i18n="ob_tg_ex">«Напиши Данику привет»</span>
+          <p data-i18n="ob_tg_desc">Сначала залогинься в Telegram через QR-код: открой Telegram на телефоне, зайди в Settings → Devices → Link Desktop Device и отсканируй код во вкладке Telegram. Потом добавь друзей кнопкой «Импорт из Telegram» и задай каждому короткий алиас — вместо длинного имени просто «Иван». Теперь говори: «Напиши Ивану привет, как дела?» — и сообщение уйдёт моментально.</p>
+          <span class="onboarding-example" data-i18n="ob_tg_ex">«Напиши Ивану привет»</span>
         </div>
-
-        <!-- Slide 2: YouTube & Web -->
-        <div class="onboarding-slide">
-          <div class="onboarding-visual v2">
-            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="10" y="18" width="80" height="64" rx="6" stroke="#5E4B2B" stroke-width="2.5"/>
-              <line x1="10" y1="32" x2="90" y2="32" stroke="#5E4B2B" stroke-width="2"/>
-              <circle cx="22" cy="25" r="3" fill="#B6604D"/>
-              <circle cx="32" cy="25" r="3" fill="#C28B3E"/>
-              <circle cx="42" cy="25" r="3" fill="#5E8B62"/>
-              <rect x="22" y="42" width="56" height="30" rx="4" fill="#F1E3C8"/>
-              <polygon points="48,52 58,57 48,62" fill="#5E4B2B"/>
-              <rect x="22" y="38" width="34" height="5" rx="2.5" fill="#E4E9DA"/>
-            </svg>
-          </div>
-          <h3 data-i18n="ob_web_title">Открывай сайты голосом</h3>
-          <p data-i18n="ob_web_desc">Не нужна мышка и клавиатура — просто скажи. «Открой ютуб котики» — и YouTube сразу откроется с поиском котиков. Работает с YouTube, Google, TikTok и Twitch. Можно уточнять: «Открой гугл погода в москве» — браузер откроется с готовыми результатами. Говори естественно, как будто просишь друга.</p>
-          <span class="onboarding-example" data-i18n="ob_web_ex">«Открой ютуб котики»</span>
-        </div>
-
-        <!-- Slide 3: Music -->
-        <div class="onboarding-slide">
-          <div class="onboarding-visual v3">
-            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="18" y="28" width="64" height="44" rx="8" fill="var(--sage-soft)" stroke="var(--moss)" stroke-width="2.5"/>
-              <rect x="28" y="38" width="24" height="24" rx="4" fill="var(--sage)"/>
-              <path d="M38 46v10" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
-              <circle cx="35" cy="56" r="3.5" fill="#fff"/>
-              <rect x="58" y="42" width="18" height="4" rx="2" fill="var(--line-strong)"/>
-              <rect x="58" y="42" width="10" height="4" rx="2" fill="var(--sage-deep)"/>
-              <rect x="58" y="52" width="18" height="3" rx="1.5" fill="var(--line-strong)"/>
-              <circle cx="34" cy="68" r="5" fill="var(--moss)"/>
-              <polygon points="32,66 32,70 37,68" fill="#fff"/>
-              <rect x="56" y="64" width="16" height="8" rx="4" fill="var(--moss)"/>
-            </svg>
-          </div>
-          <h3 data-i18n="ob_music_title">Включай музыку без рук</h3>
-          <p data-i18n="ob_music_desc">Скажи «включи» и назови трек — например, «включи Кизару дежавю». Voicy найдёт песню на YouTube Music и запустит встроенный плеер с обложкой и регулятором громкости. Управляй кнопками: пауза, следующий трек. Хочешь ещё от этого исполнителя? Скажи «включи что-нибудь похожее» — включит следующий трек автоматически.</p>
-          <span class="onboarding-example" data-i18n="ob_music_ex">«Включи Кизару дежавю»</span>
-        </div>
-
-        <!-- Slide 4: AI Assistant -->
-        <div class="onboarding-slide">
-          <div class="onboarding-visual v4">
-            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M50 18 Q68 13 74 30 Q84 40 74 55 Q68 72 50 68 Q32 72 26 55 Q16 40 26 30 Q32 13 50 18Z" stroke="#fff" stroke-width="2.5" fill="none"/>
-              <circle cx="50" cy="28" r="3.5" fill="#fff"/>
-              <circle cx="36" cy="40" r="3.5" fill="#fff"/>
-              <circle cx="64" cy="40" r="3.5" fill="#fff"/>
-              <circle cx="42" cy="55" r="3.5" fill="#fff"/>
-              <circle cx="58" cy="55" r="3.5" fill="#fff"/>
-              <line x1="50" y1="31.5" x2="36" y2="36.5" stroke="#fff" stroke-width="1.5"/>
-              <line x1="50" y1="31.5" x2="64" y2="36.5" stroke="#fff" stroke-width="1.5"/>
-              <line x1="36" y1="43.5" x2="42" y2="51.5" stroke="#fff" stroke-width="1.5"/>
-              <line x1="64" y1="43.5" x2="58" y2="51.5" stroke="#fff" stroke-width="1.5"/>
-              <line x1="50" y1="31.5" x2="50" y2="24" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="50" cy="21" r="2" fill="#fff"/>
-              <path d="M45 74 Q50 82 55 74" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
-            </svg>
-          </div>
-          <h3 data-i18n="ob_ai_title">Голосовой ИИ-ассистент</h3>
-          <p data-i18n="ob_ai_desc">Скажи «дай ответ» и задай любой вопрос — например, «дай ответ что такое чёрная дыра». Локальная нейросеть найдёт ответ и Voicy озвучит его вслух. Всё работает офлайн — не нужен интернет и не нужен API-ключ. На вкладке Models можешь выбрать модель: Qwen (быстрая), Llama (сбалансированная) или Gemma (мощная).</p>
-          <span class="onboarding-example" data-i18n="ob_ai_ex">«Дай ответ что такое чёрная дыра»</span>
-        </div>
-
       </div>
     </div>
 
     <div class="onboarding-dots" id="ob-dots">
       <button class="onboarding-dot active" data-idx="0" aria-label="1"></button>
-      <button class="onboarding-dot" data-idx="1" aria-label="2"></button>
-      <button class="onboarding-dot" data-idx="2" aria-label="3"></button>
-      <button class="onboarding-dot" data-idx="3" aria-label="4"></button>
     </div>
 
     <div class="onboarding-footer">
@@ -2226,8 +1940,8 @@ var locales = {
     dl_banner_desc: 'Качаю с HuggingFace (~{{size}}). Может занять 1-3 минуты. После завершения модель автоматически активируется.',
     error: 'ошибка',
     ob_tg_title: 'Отправляй сообщения голосом',
-    ob_tg_desc: 'Сначала залогинься в Telegram через QR-код: открой Telegram на телефоне, зайди в Settings → Devices → Link Desktop Device и отсканируй код во вкладке Telegram. Потом добавь друзей кнопкой «Импорт из Telegram» и задай каждому короткий алиас — вместо длинного имени просто «Даник». Теперь говори: «Напиши Данику привет, как дела?» — и сообщение уйдёт моментально.',
-    ob_tg_ex: '«Напиши Данику привет»',
+    ob_tg_desc: 'Сначала залогинься в Telegram через QR-код: открой Telegram на телефоне, зайди в Settings → Devices → Link Desktop Device и отсканируй код во вкладке Telegram. Потом добавь друзей кнопкой «Импорт из Telegram» и задай каждому короткий алиас — вместо длинного имени просто «Иван». Теперь говори: «Напиши Ивану привет, как дела?» — и сообщение уйдёт моментально.',
+    ob_tg_ex: '«Напиши Ивану привет»',
     ob_web_title: 'Открывай сайты голосом',
     ob_web_desc: 'Не нужна мышка и клавиатура — просто скажи. «Открой ютуб котики» — и YouTube сразу откроется с поиском котиков. Работает с YouTube, Google, TikTok и Twitch. Можно уточнять: «Открой гугл погода в москве» — браузер откроется с готовыми результатами. Говори естественно, как будто просишь друга.',
     ob_web_ex: '«Открой ютуб котики»',
@@ -2370,8 +2084,8 @@ var locales = {
     dl_banner_desc: 'Downloading from HuggingFace (~{{size}}). May take 1-3 minutes. The model will be activated automatically when finished.',
     error: 'error',
     ob_tg_title: 'Send messages by voice',
-    ob_tg_desc: 'First, log in to Telegram via QR code: open Telegram on your phone, go to Settings → Devices → Link Desktop Device and scan the code in the Telegram tab. Then add friends using the "Import from Telegram" button and give each a short alias — instead of a long name, just "Dan". Now say: "Write Dan hi, how are you?" — and the message will be sent instantly.',
-    ob_tg_ex: '"Write Dan hello"',
+    ob_tg_desc: 'First, log in to Telegram via QR code: open Telegram on your phone, go to Settings → Devices → Link Desktop Device and scan the code in the Telegram tab. Then add friends using the "Import from Telegram" button and give each a short alias — instead of a long name, just "Ivan". Now say: "Write Ivan hi, how are you?" — and the message will be sent instantly.',
+    ob_tg_ex: '"Write Ivan hello"',
     ob_web_title: 'Open websites by voice',
     ob_web_desc: 'No mouse or keyboard needed — just say it. "Open YouTube cats" — and YouTube will open with a cat search. Works with YouTube, Google, TikTok and Twitch. You can be specific: "Open Google weather in Moscow" — the browser opens with ready results. Speak naturally, like you\'re asking a friend.',
     ob_web_ex: '"Open YouTube cats"',
@@ -2659,11 +2373,7 @@ async function refresh() {
   // явно выбирал) — иначе lang picker сделает всё сам.
   try {
     if (localStorage.getItem('voicy_lang_chosen')) {
-      var aiLang = (await callIpc('ai_language_get')).language;
       var recLang = (await callIpc('rec_lang_get')).language;
-      if (aiLang && aiLang !== _lang) {
-        await callIpc('ai_language_set', { language: _lang });
-      }
       if (recLang && recLang !== _lang && recLang !== 'auto') {
         await callIpc('rec_lang_set', { language: _lang });
       }
@@ -2678,7 +2388,6 @@ async function refresh() {
     _lang,
     async function(v){
       await callIpc("language_set", { language: v });
-      await callIpc("ai_language_set", { language: v });
       await callIpc("rec_lang_set", { language: v });
       refresh();
     }
@@ -2709,85 +2418,6 @@ async function refresh() {
   var preloadToggle = document.getElementById("preload-toggle");
   if (preloadToggle && preloadRes.ok) {
     preloadToggle.classList.toggle("off", !preloadRes.preload);
-  }
-
-  // AI assistant toggle
-  var aiRes = await callIpc("ai_assistant_get");
-  var aiToggle = document.getElementById("ai-toggle");
-  var aiStatus = document.getElementById("ai-status");
-  if (aiToggle && aiRes.ok) {
-    aiToggle.classList.toggle("off", !aiRes.enabled);
-    if (aiStatus) {
-      if (aiRes.model_cached) {
-        aiStatus.textContent = t('ai_status_ready');
-        aiStatus.style.color = "var(--sage-deep)";
-      } else {
-        aiStatus.textContent = t('ai_status_needs_download');
-        aiStatus.style.color = "var(--warn)";
-      }
-    }
-  }
-
-  // AI assistant language vy-select
-  var aiLangRes = await callIpc("ai_language_get");
-  if (aiLangRes.ok) {
-    mountVySelect("ai-language-select",
-      [{value:"en", label:"English"}, {value:"ru", label:"Русский"}],
-      aiLangRes.language || "en",
-      async function(v){ await callIpc("ai_language_set", { language: v }); refresh(); }
-    );
-  }
-
-  // Local AI model selector (vy-select v3 — кастомный dropdown)
-  var aiModelRes = await callIpc("ai_model_get");
-  var aiModelMenu = document.getElementById("ai-model-menu");
-  var aiModelLabel = document.getElementById("ai-model-label-text");
-  var aiModelTrigger = document.getElementById("ai-model-trigger");
-  var aiModelStatusEl = document.getElementById("ai-model-status");
-  var aiModelDownloadBtn = document.getElementById("ai-model-download-btn");
-  if (aiModelMenu && aiModelRes.ok && aiModelRes.available) {
-    var current = aiModelRes.available.find(function(m){ return m.id === aiModelRes.current; });
-    var currentRam = current ? (current.ram_mb < 1000 ? (current.ram_mb + ' MB') : ((current.ram_mb/1000).toFixed(1) + ' GB')) : '';
-    if (current && aiModelLabel) aiModelLabel.textContent = current.name + ' · ' + currentRam;
-
-    // Перерисовываем items — без галочки на selected (всё равно selected
-     // подсвечивается через aria-selected/.is-active в CSS). "✓ скачана"
-     // бейдж справа от trigger'а уже несёт информацию о cached-state —
-     // дубликаты только шумят.
-    aiModelMenu.innerHTML = aiModelRes.available.map(function(m){
-      var ram = m.ram_mb < 1000 ? (m.ram_mb + ' MB') : ((m.ram_mb/1000).toFixed(1) + ' GB');
-      var isSel = m.id === aiModelRes.current;
-      var metaSuffix = m.cached ? '' : ' · ' + t('ai_model_not_cached');
-      return '<div class="vy-select__item" data-id="' + m.id + '"' + (isSel ? ' aria-selected="true"' : '') + '>'
-        + '<span>' + m.name
-          + '<span class="vy-select__meta">' + ram + metaSuffix + '</span>'
-        + '</span>'
-        + '</div>';
-    }).join('');
-
-    if (aiModelStatusEl && current) {
-      if (current.cached) {
-        // Soft sage badge с галочкой — per v3 patch spec
-        aiModelStatusEl.innerHTML = '<span class="lang-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' + t('ai_model_cached') + '</span>';
-      } else {
-        aiModelStatusEl.textContent = t('ai_model_not_cached');
-        aiModelStatusEl.style.color = "var(--warn)";
-      }
-    }
-    if (aiModelDownloadBtn) {
-      aiModelDownloadBtn.style.display = current && current.cached ? 'none' : '';
-    }
-  }
-
-  // Gemini API key
-  var geminiRes = await callIpc("gemini_key_get");
-  var geminiInput = document.getElementById("gemini-key-input");
-  var geminiStatus = document.getElementById("gemini-key-status");
-  if (geminiInput && geminiRes.ok) {
-    geminiInput.value = geminiRes.key || "";
-    if (geminiStatus) {
-      geminiStatus.textContent = "";
-    }
   }
 
   // Startup toggle
@@ -3203,40 +2833,11 @@ document.addEventListener("click", async function (e) {
     await callIpc("preload_set", { preload: !cur });
     refresh(); return;
   }
-  // AI assistant toggle
-  if (t.id === "ai-toggle") {
-    var cur = !t.classList.contains("off");
-    await callIpc("ai_assistant_set", { enabled: !cur });
-    refresh(); return;
-  }
   // Startup toggle
   if (t.id === "startup-toggle") {
     var cur = !t.classList.contains("off");
     await callIpc("startup_set", { startup: !cur });
     refresh(); return;
-  }
-  // (legacy AI model download button removed — Gemini is primary)
-  // Gemini API key
-  if (t.id === "gemini-key-save") {
-    var inp = document.getElementById("gemini-key-input");
-    if (inp) {
-      var key = inp.value.trim();
-      var sr = await callIpc("gemini_key_set", { key: key });
-      if (sr.ok) { flashOK(); }
-      else { appendLog("gemini_key_set: " + (sr.error || "?")); }
-    }
-    return;
-  }
-  if (t.id === "gemini-key-check") {
-    var st = document.getElementById("gemini-key-status");
-    if (st) { st.textContent = t('listener_checking'); st.style.color = "var(--ink-3)"; }
-    var cr = await callIpc("gemini_key_check");
-    if (st) {
-      if (cr.ok && cr.valid) { st.textContent = t('gemini_key_ok'); st.style.color = "var(--sage-deep)"; }
-      else if (cr.ok && !cr.valid) { st.textContent = t('gemini_key_bad'); st.style.color = "var(--warn)"; }
-      else { st.textContent = (cr.error || "?"); st.style.color = "var(--warn)"; }
-    }
-    return;
   }
   // listener — раздел убран из UI, кнопок больше нет; auto-start в refresh()
   // hotkey
@@ -3450,565 +3051,6 @@ function renderDialogList(filter) {
 })();
 
 // ── AI help modal ──
-(function(){
-  var modal = document.getElementById("ai-help-modal");
-  var help = document.getElementById("ai-help");
-  var closeBtn = document.getElementById("ai-help-modal-close");
-  function openModal() { if (modal) modal.classList.add("show"); }
-  function closeModal() { if (modal) modal.classList.remove("show"); }
-  if (help) help.addEventListener("click", openModal);
-  if (closeBtn) closeBtn.addEventListener("click", closeModal);
-  if (modal) modal.addEventListener("click", function(e) {
-    if (e.target === modal) closeModal();
-  });
-})();
-
-// ── Gemini key help modal ──
-(function(){
-  var modal = document.getElementById("gemini-help-modal");
-  var help = document.getElementById("gemini-key-help");
-  var closeBtn = document.getElementById("gemini-help-modal-close");
-  function openModal() { if (modal) modal.classList.add("show"); }
-  function closeModal() { if (modal) modal.classList.remove("show"); }
-  if (help) help.addEventListener("click", openModal);
-  if (closeBtn) closeBtn.addEventListener("click", closeModal);
-  if (modal) modal.addEventListener("click", function(e) {
-    if (e.target === modal) closeModal();
-  });
-})();
-
-// ui-lang / rec-lang / ai-language теперь vy-select — биндятся через
-// mountVySelect() внутри refresh(), отдельные change-handler'ы не нужны.
-
-// ai-model select (vy-select v3 — кастомный dropdown)
-(function() {
-  var trigger = document.getElementById("ai-model-trigger");
-  var menu = document.getElementById("ai-model-menu");
-
-  function closeMenu() {
-    if (menu) menu.hidden = true;
-    if (trigger) trigger.setAttribute("aria-expanded", "false");
-  }
-  function openMenu() {
-    if (menu) menu.hidden = false;
-    if (trigger) trigger.setAttribute("aria-expanded", "true");
-  }
-  function toggleMenu() {
-    if (!menu) return;
-    if (menu.hidden) openMenu(); else closeMenu();
-  }
-
-  if (trigger) trigger.addEventListener("click", function(e) {
-    e.stopPropagation();
-    toggleMenu();
-  });
-
-  // Клик по item'у → ai_model_set
-  if (menu) menu.addEventListener("click", async function(e) {
-    var item = e.target.closest(".vy-select__item");
-    if (!item) return;
-    var id = item.getAttribute("data-id");
-    closeMenu();
-    var r = await callIpc("ai_model_set", { id: id });
-    if (r && r.ok) appendLog("🤖 модель: " + (r.model_name || id));
-    refresh();
-  });
-
-  // Закрытие по клику вне dropdown'а или по Escape
-  document.addEventListener("click", function(e) {
-    if (!menu || menu.hidden) return;
-    if (!e.target.closest("#ai-model-select")) closeMenu();
-  });
-  document.addEventListener("keydown", function(e) {
-    if (e.key === "Escape" && menu && !menu.hidden) closeMenu();
-  });
-  var btn = document.getElementById("ai-model-download-btn");
-  var progWrap   = document.getElementById("ai-model-progress-wrap");
-  var progBar    = document.getElementById("ai-model-progress-bar");
-  var progPct    = document.getElementById("ai-model-progress-pct");
-  var progLabel  = document.getElementById("ai-model-progress-label");
-
-  function showDownloadProgress() {
-    if (progWrap) progWrap.style.display = "block";
-    if (progBar)  progBar.style.width = "0%";
-    if (progPct)  progPct.textContent  = "";
-    if (progLabel) progLabel.textContent = t('ai_model_downloading') || "downloading…";
-  }
-  function hideDownloadProgress() {
-    if (progWrap) progWrap.style.display = "none";
-  }
-  // Indeterminate "creeping" анимация ширины 0→90% за ~30 секунд.
-  // Реального прогресса от candelabra мы не получаем — но shimmer + ползущая
-  // полоса визуально передают что что-то происходит. На done — сразу 100%.
-  var _progCreepTimer = null;
-  function startCreep() {
-    var w = 0;
-    stopCreep();
-    _progCreepTimer = setInterval(function() {
-      if (!progBar) return;
-      // Асимптотически приближается к 90% — никогда не достигнет 100% без события.
-      w = w + (90 - w) * 0.04;
-      progBar.style.width = w.toFixed(1) + "%";
-    }, 600);
-  }
-  function stopCreep() {
-    if (_progCreepTimer) { clearInterval(_progCreepTimer); _progCreepTimer = null; }
-  }
-  function setProgressDone() {
-    stopCreep();
-    if (progBar) progBar.style.width = "100%";
-    if (progPct) progPct.textContent = "100%";
-    setTimeout(hideDownloadProgress, 700);
-  }
-
-  async function pollDownloadState() {
-    var s = await callIpc("ai_model_download_state", {});
-    if (!s || !s.ok) return null;
-    return s;
-  }
-
-  if (btn) {
-    btn.addEventListener("click", async function() {
-      btn.disabled = true;
-      var statusEl = document.getElementById("ai-model-status");
-      if (statusEl) {
-        statusEl.textContent = t('ai_model_downloading');
-        statusEl.style.color = "var(--ink-3)";
-      }
-      showDownloadProgress();
-      startCreep();
-      appendLog("⬇ скачиваю локальную модель ИИ…");
-      var r = await callIpc("ai_model_download", {});
-      if (!r || !r.ok) {
-        stopCreep();
-        hideDownloadProgress();
-        btn.disabled = false;
-        appendLog("✗ скачивание: " + (r && r.error ? r.error : "fail"));
-        return;
-      }
-      // Если уже cached — мгновенный успех.
-      if (r.cached) {
-        setProgressDone();
-        btn.disabled = false;
-        refresh();
-        return;
-      }
-      // Polling: state каждые 700 ms пока in_progress=true.
-      var pollInterval = setInterval(async function() {
-        var s = await pollDownloadState();
-        if (!s) return;
-        if (s.in_progress) return; // ещё качается — продолжаем ждать
-        // Завершилось — успех или ошибка
-        clearInterval(pollInterval);
-        btn.disabled = false;
-        if (s.done) {
-          setProgressDone();
-          appendLog("✅ модель скачана");
-        } else {
-          stopCreep();
-          hideDownloadProgress();
-          appendLog("✗ скачивание: " + (s.error || "fail"));
-        }
-        refresh();
-      }, 700);
-    });
-  }
-
-  // ── Models folder (HF cache) input + Browse + Save ──────────────────────
-  var mrInput  = document.getElementById("models-root-input");
-  var mrBrowse = document.getElementById("models-root-browse");
-  var mrSave   = document.getElementById("models-root-save");
-  async function loadModelsRoot() {
-    var r = await callIpc("models_root_get", {});
-    if (!r || !r.ok) return;
-    if (mrInput) mrInput.value = r.path || "";
-    if (mrInput) mrInput.placeholder = r.default || "default HF cache";
-  }
-  loadModelsRoot();
-  if (mrBrowse) {
-    mrBrowse.addEventListener("click", async function() {
-      mrBrowse.disabled = true;
-      var r = await callIpc("models_root_pick", {});
-      mrBrowse.disabled = false;
-      if (r && r.ok && r.path) {
-        if (mrInput) mrInput.value = r.path;
-      }
-    });
-  }
-  if (mrSave) {
-    mrSave.addEventListener("click", async function() {
-      var val = mrInput ? mrInput.value.trim() : "";
-      var r = await callIpc("models_root_set", { path: val });
-      if (r && r.ok) {
-        appendLog(val ? ("📁 AI models folder: " + val + " (рестарт для применения)") : "📁 AI models folder: default");
-      } else {
-        appendLog("✗ models_root_set: " + (r && r.error ? r.error : "fail"));
-      }
-    });
-  }
-})();
-
-// ── Feedback tab handlers ──
-(function(){
-  var fbText = document.getElementById("feedback-text");
-  var fbSendBtn = document.getElementById("feedback-send-btn");
-  var fbLink = document.getElementById("feedback-tg-link");
-  var fbStatus = document.getElementById("feedback-status");
-
-  function updateFbPlaceholder() {
-    if (fbText) fbText.placeholder = t('feedback_placeholder') || "Write to developer";
-  }
-  // Initial placeholder set + re-set on lang change if needed
-  updateFbPlaceholder();
-  window._updateFbPlaceholder = updateFbPlaceholder;
-
-  // Send button
-  if (fbSendBtn && fbText) {
-    fbSendBtn.addEventListener("click", async function() {
-      var text = fbText.value.trim();
-      if (!text) return;
-      fbSendBtn.disabled = true;
-      fbSendBtn.textContent = t('feedback_sending') || "Sending…";
-      if (fbStatus) { fbStatus.style.display = "block"; fbStatus.style.color = "var(--ink-3)"; fbStatus.textContent = t('feedback_sending') || "Sending…"; }
-      var res = await callIpc("feedback_send", { text: text });
-      fbSendBtn.disabled = false;
-      fbSendBtn.textContent = t('feedback_send') || "Send";
-      if (res && res.ok) {
-        fbText.value = "";
-        if (fbStatus) { fbStatus.style.color = "var(--accent)"; fbStatus.textContent = t('feedback_sent') || "Sent!"; }
-        setTimeout(function(){ if(fbStatus) fbStatus.style.display = "none"; }, 3000);
-      } else {
-        if (fbStatus) { fbStatus.style.color = "var(--warn)"; fbStatus.textContent = (res && res.error) ? res.error : (t('feedback_send_fail') || "Failed to send"); }
-      }
-    });
-  }
-
-  // Ctrl+Enter to send
-  if (fbText) {
-    fbText.addEventListener("keydown", function(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        if (fbSendBtn && !fbSendBtn.disabled) fbSendBtn.click();
-      }
-    });
-  }
-
-  // Telegram link with pre-filled text
-  if (fbLink && fbText) {
-    fbLink.addEventListener("click", function(e) {
-      var text = fbText.value.trim();
-      var href = fbLink.getAttribute("href") || "";
-      var m = href.match(/^https:\/\/t\.me\/([^\/\?]+)/);
-      if (m && text) {
-        e.preventDefault();
-        window.open("https://t.me/" + encodeURIComponent(m[1]) + "?text=" + encodeURIComponent(text), "_blank");
-      }
-    });
-  }
-})();
-
-refresh();
-setInterval(refresh, 5000);
-// ── Music player (YouTube IFrame API) ──
-(function() {
-  var musicPlayer = null;
-  var musicState = 'stopped';
-  var timeInterval = null;
-  var currentDuration = 0;
-
-  var elPlayer = document.getElementById('music-player');
-  var elCover = document.getElementById('music-cover');
-  var elTitle = document.getElementById('music-title');
-  var elArtist = document.getElementById('music-artist');
-  var elSeek = document.getElementById('music-seek');
-  var elTime = document.getElementById('music-time');
-  var elPlayPause = document.getElementById('music-playpause');
-  var elNext = document.getElementById('music-next');
-  var elClose = document.getElementById('music-close');
-  var elVolume = document.getElementById('music-volume');
-
-  // (диагностический listener убран — нашли что #flash toast перекрывал
-  // клики; фикс — pointer-events:none в .flash CSS)
-
-  function formatTime(sec) {
-    if (!sec || sec < 0) sec = 0;
-    var m = Math.floor(sec / 60);
-    var s = Math.floor(sec % 60);
-    return m + ':' + (s < 10 ? '0' + s : s);
-  }
-
-  function updateWidget(currentTime) {
-    if (!currentTime || currentTime < 0) currentTime = 0;
-    elSeek.value = currentTime;
-    elTime.textContent = formatTime(currentTime) + ' / ' + formatTime(currentDuration);
-  }
-
-  function showWidget() {
-    if (elPlayer) elPlayer.classList.add('show');
-  }
-  function hideWidget() {
-    if (elPlayer) elPlayer.classList.remove('show');
-  }
-
-  function onPlayerReady(event) {
-    event.target.playVideo();
-    if (elVolume) {
-      var vol = parseInt(elVolume.value, 10);
-      if (!isNaN(vol)) event.target.setVolume(vol);
-    }
-  }
-
-  function onPlayerStateChange(event) {
-    // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
-    if (event.data === 1) {
-      var wasPlaying = (musicState === 'playing');
-      musicState = 'playing';
-      if (elPlayPause) elPlayPause.textContent = '⏸';
-      // Сигнал в лог для onboarding-теста музыки. Только при первом
-      // переходе в playing — иначе будет спам при unpause.
-      if (!wasPlaying && typeof window.appendLog === 'function') {
-        try { window.appendLog('▶ music playing'); } catch(e){}
-      }
-    } else if (event.data === 2) {
-      musicState = 'paused';
-      if (elPlayPause) elPlayPause.textContent = '▶';
-    } else if (event.data === 0) {
-      musicState = 'stopped';
-      stopMusic();
-      return;
-    }
-    // Отправляем событие в Rust
-    if (window.ipc) {
-      window.ipc.postMessage(JSON.stringify({
-        id: 'music-event-' + Date.now(),
-        cmd: 'music_event',
-        payload: { type: musicState === 'playing' ? 'play' : (musicState === 'paused' ? 'pause' : 'ended') }
-      }));
-    }
-  }
-
-  window.voicyMusicPlay = function(videoId, title, artist, thumbnail, duration) {
-    if (musicPlayer) {
-      try { musicPlayer.destroy(); } catch(e) {}
-      musicPlayer = null;
-    }
-    musicState = 'loading';
-    currentDuration = 0;
-    if (elCover) elCover.src = thumbnail || '';
-    if (elTitle) elTitle.textContent = title || '—';
-    if (elArtist) elArtist.textContent = artist || '—';
-    if (elSeek) { elSeek.value = 0; elSeek.max = 100; }
-    if (elTime) elTime.textContent = '0:00 / 0:00';
-    showWidget();
-
-    // Парсим duration "5:55" → 355 сек
-    if (duration) {
-      var parts = duration.split(':');
-      if (parts.length === 2) currentDuration = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-      else if (parts.length === 3) currentDuration = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
-      if (elSeek) elSeek.max = currentDuration;
-    }
-
-    if (timeInterval) clearInterval(timeInterval);
-
-    // Создаём YT.Player
-    musicPlayer = new YT.Player('yt-music-player', {
-      height: '1',
-      width: '1',
-      videoId: videoId,
-      playerVars: {
-        autoplay: 1,
-        controls: 0,
-        modestbranding: 1,
-        rel: 0,
-        playsinline: 1
-      },
-      events: {
-        onReady: onPlayerReady,
-        onStateChange: onPlayerStateChange
-      }
-    });
-
-    timeInterval = setInterval(function() {
-      if (musicPlayer && musicPlayer.getCurrentTime) {
-        var ct = musicPlayer.getCurrentTime();
-        if (typeof ct === 'number') updateWidget(ct);
-      }
-    }, 1000);
-  };
-
-  window.voicyMusicStop = function() {
-    stopMusic();
-  };
-
-  window.voicyMusicSeek = function(seconds) {
-    if (musicPlayer && musicPlayer.seekTo) {
-      musicPlayer.seekTo(seconds, true);
-      updateWidget(seconds);
-    }
-  };
-
-  window.voicyMusicPause = function() {
-    if (musicPlayer && musicPlayer.pauseVideo) musicPlayer.pauseVideo();
-  };
-
-  window.voicyMusicResume = function() {
-    if (musicPlayer && musicPlayer.playVideo) musicPlayer.playVideo();
-  };
-
-  function stopMusic() {
-    if (timeInterval) { clearInterval(timeInterval); timeInterval = null; }
-    if (musicPlayer) {
-      try { musicPlayer.stopVideo(); musicPlayer.destroy(); } catch(e) {}
-      musicPlayer = null;
-    }
-    musicState = 'stopped';
-    hideWidget();
-    if (window.ipc) {
-      window.ipc.postMessage(JSON.stringify({
-        id: 'music-event-' + Date.now(),
-        cmd: 'music_event',
-        payload: { type: 'stop' }
-      }));
-    }
-  }
-
-  if (elPlayPause) {
-    elPlayPause.addEventListener('click', function() {
-      if (!musicPlayer) return;
-      if (musicState === 'playing') {
-        musicPlayer.pauseVideo();
-      } else {
-        musicPlayer.playVideo();
-      }
-    });
-  }
-
-  if (elNext) {
-    elNext.addEventListener('click', function() {
-      if (window.ipc) {
-        window.ipc.postMessage(JSON.stringify({
-          id: 'music-next-' + Date.now(),
-          cmd: 'music_user_next',
-          payload: {}
-        }));
-      }
-    });
-  }
-
-  if (elClose) {
-    // Используем mousedown (НЕ click) — клик может перехватываться если
-    // прозрачный элемент сверху "съел" mouseup. mousedown срабатывает
-    // первым в event-chain. + stopPropagation чтобы не bubblе'илось на
-    // document-level drag handler (был случай — overlay-listener воровал).
-    var closeHandler = function(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      stopMusic();
-      if (window.ipc) {
-        window.ipc.postMessage(JSON.stringify({
-          id: 'music-close-' + Date.now(),
-          cmd: 'music_user_stop',
-          payload: {}
-        }));
-      }
-    };
-    elClose.addEventListener('mousedown', closeHandler);
-    elClose.addEventListener('click', closeHandler);
-  }
-
-  if (elSeek) {
-    elSeek.addEventListener('input', function() {
-      if (!musicPlayer) return;
-      var val = parseFloat(elSeek.value);
-      musicPlayer.seekTo(val, true);
-      updateWidget(val);
-    });
-    elSeek.addEventListener('change', function() {
-      if (!musicPlayer || !window.ipc) return;
-      window.ipc.postMessage(JSON.stringify({
-        id: 'music-seek-' + Date.now(),
-        cmd: 'music_user_seek',
-        payload: { seconds: parseFloat(elSeek.value) }
-      }));
-    });
-  }
-
-  if (elVolume) {
-    elVolume.addEventListener('input', function() {
-      if (!musicPlayer || !musicPlayer.setVolume) return;
-      var vol = parseInt(elVolume.value, 10);
-      if (!isNaN(vol)) musicPlayer.setVolume(vol);
-    });
-    // CRITICAL: на WebView2 input[range] не всегда отвечает на click по
-    // треку — только drag по thumb'у работает. Перехватываем mousedown
-    // и вычисляем value вручную: x относительно bounding rect → percentage.
-    // Сразу делаем pointerdown chain через JS — обновляем value, дёргаем
-    // input event для setVolume.
-    function trackClickToValue(e) {
-      var rect = elVolume.getBoundingClientRect();
-      var x = (e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX) || 0) - rect.left;
-      var pct = Math.max(0, Math.min(1, x / rect.width));
-      var newVal = Math.round(pct * (parseFloat(elVolume.max) || 100));
-      elVolume.value = newVal;
-      elVolume.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    elVolume.addEventListener('mousedown', function(e) {
-      trackClickToValue(e);
-      // Continue tracking until mouseup для drag behavior.
-      var moveHandler = function(ev) { trackClickToValue(ev); };
-      var upHandler = function() {
-        document.removeEventListener('mousemove', moveHandler);
-        document.removeEventListener('mouseup', upHandler);
-      };
-      document.addEventListener('mousemove', moveHandler);
-      document.addEventListener('mouseup', upHandler);
-      e.preventDefault();
-    });
-  }
-
-  // Аналогично для seek (top-level) — тот же баг с click vs drag.
-  if (elSeek) {
-    function seekClickToValue(e) {
-      var rect = elSeek.getBoundingClientRect();
-      var x = (e.clientX !== undefined ? e.clientX : 0) - rect.left;
-      var pct = Math.max(0, Math.min(1, x / rect.width));
-      var newVal = Math.round(pct * (parseFloat(elSeek.max) || 100));
-      elSeek.value = newVal;
-      elSeek.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    elSeek.addEventListener('mousedown', function(e) {
-      seekClickToValue(e);
-      var moveHandler = function(ev) { seekClickToValue(ev); };
-      var upHandler = function() {
-        document.removeEventListener('mousemove', moveHandler);
-        document.removeEventListener('mouseup', upHandler);
-      };
-      document.addEventListener('mousemove', moveHandler);
-      document.addEventListener('mouseup', upHandler);
-      e.preventDefault();
-    });
-  }
-
-  // ── Hooks для голосовых команд (browser_action::dispatch когда music_active) ──
-  // Из Rust шлются через eval_js — здесь принимаем и шуруем в YT IFrame API.
-  window.voicyMusicVolumeDelta = function(delta) {
-    if (!musicPlayer || !musicPlayer.setVolume || !musicPlayer.getVolume) return;
-    var cur = musicPlayer.getVolume();
-    var next = Math.max(0, Math.min(100, cur + delta));
-    musicPlayer.setVolume(next);
-    if (elVolume) elVolume.value = next;
-  };
-  window.voicyMusicMute = function() {
-    if (!musicPlayer || !musicPlayer.isMuted || !musicPlayer.mute || !musicPlayer.unMute) return;
-    if (musicPlayer.isMuted()) musicPlayer.unMute(); else musicPlayer.mute();
-  };
-  window.voicyMusicSeekDelta = function(seconds) {
-    if (!musicPlayer || !musicPlayer.getCurrentTime || !musicPlayer.seekTo) return;
-    var cur = musicPlayer.getCurrentTime();
-    musicPlayer.seekTo(Math.max(0, cur + seconds), true);
-  };
-})();
 
 refresh();
 setInterval(refresh, 5000);
@@ -4048,8 +3090,12 @@ setInterval(refresh, 5000);
   var btnNext = document.getElementById('ob-next');
   var btnStart = document.getElementById('ob-start');
   var btnSkip = document.getElementById('ob-skip');
-  var total = 4;
+  var total = 1;
   var idx = 0;
+
+  // На один слайд точки навигации не нужны — прячем (кнопка «Далее» и так
+  // скрыта на последнем слайде, остаётся «Начать»).
+  if (dotsWrap && total <= 1) dotsWrap.style.display = 'none';
 
   function setSlide(n) {
     idx = Math.max(0, Math.min(n, total - 1));
@@ -4136,7 +3182,7 @@ setInterval(refresh, 5000);
  * Использует те же localStorage keys что и старая v2 (back-compat).
  *
  * Bridge methods (window.voicyBridge):
- *   - saveLanguage(lang)        → IPC language_set + ai_language_set + rec_lang_set
+ *   - saveLanguage(lang)        → IPC language_set + rec_lang_set
  *   - sendCode(phone)           → TODO: tg_send_code IPC (пока fake-delay)
  *   - checkCode(phone, code)    → TODO: tg_check_code IPC (пока fake-delay)
  * ============================================================================= */
@@ -4145,7 +3191,6 @@ window.voicyBridge = {
     if (!window.ipc) return;
     _lang = lang; applyLanguage();
     window.ipc.postMessage(JSON.stringify({id:'lp-ui-'+Date.now(),  cmd:'language_set',     payload:{language:lang}}));
-    window.ipc.postMessage(JSON.stringify({id:'lp-ai-'+Date.now(),  cmd:'ai_language_set',  payload:{language:lang}}));
     window.ipc.postMessage(JSON.stringify({id:'lp-rec-'+Date.now(), cmd:'rec_lang_set',     payload:{language:lang}}));
   },
   _legacy_sendCode: function(phone) {
@@ -4278,26 +3323,18 @@ window.voicyBridge = {
   var STEPS_RU = [
     { mascot: 'hello',     bubble: 'Привет. Я Шу — помогу тебе писать в Telegram голосом и не только.', kind: 'cta', cta: 'Начнём', sub: 'минута, не больше' },
     { mascot: 'shy',       bubble: 'Сначала войди в Telegram. Открой QR-код и отсканируй с телефона.', kind: 'qr',  cta: 'Открыть QR-вход', sub: 'сессия остаётся у тебя на компьютере' },
-    { mascot: 'listening', bubble: 'Тест 1/4 — Telegram. Зажми Alt+X и скажи: «напиши себе тест».', kind: 'voice', sub: 'я отправлю тебе самому сообщение «тест»', pattern: /^→ \d+ «/ },
-    { mascot: 'tilt',      bubble: 'Тест 2/4 — ИИ-ассистент. Зажми Alt+X и скажи: «дай ответ сколько будет два плюс два».', kind: 'voice', sub: 'Gemini или локальная модель ответит вслух', pattern: /^🤖 ✓ done$/ },
-    // Browser-тест ДО Music — потому что «открой ютуб» открывает YouTube
-    // в браузере, а потом Music-тест проиграет трек в встроенном виджете.
-    { mascot: 'sending',   bubble: 'Тест 3/4 — Браузер. Зажми Alt+X и скажи: «открой ютуб котики».', kind: 'voice', sub: 'откроется YouTube с поиском', pattern: /^✅ YouTube → / },
-    { mascot: 'idle',      bubble: 'Тест 4/4 — Музыка. Зажми Alt+X и скажи: «включи Дежавю» (или любую песню).', kind: 'voice', sub: 'трек заиграет в встроенном плеере', pattern: /^▶ music playing$/ },
+    { mascot: 'listening', bubble: 'Тест — Telegram. Зажми Alt+X и скажи: «напиши себе тест».', kind: 'voice', sub: 'я отправлю тебе самому сообщение «тест»', pattern: /^→ \d+ «/ },
     { mascot: 'sent',      bubble: 'Готово! Полный список команд — в Help. Удачи 🎉', kind: 'final', cta: 'Поехали', sub: '' }
   ];
   var STEPS_EN = [
     { mascot: 'hello',     bubble: "Hi. I'm Shu — I'll help you write to Telegram with your voice (and more).", kind: 'cta', cta: "Let's go", sub: 'a minute, no more' },
     { mascot: 'shy',       bubble: 'First — sign in to Telegram. Open QR and scan with your phone.',            kind: 'qr',  cta: 'Open QR sign-in', sub: 'session stays on your computer' },
-    { mascot: 'listening', bubble: 'Test 1/4 — Telegram. Hold Alt+X and say: "write to myself test".',          kind: 'voice', sub: 'I will send you the message "test"', pattern: /^→ \d+ «/ },
-    { mascot: 'tilt',      bubble: 'Test 2/4 — AI assistant. Hold Alt+X and say: "give answer what is two plus two".', kind: 'voice', sub: 'Gemini or local model will answer aloud', pattern: /^🤖 ✓ done$/ },
-    { mascot: 'sending',   bubble: 'Test 3/4 — Browser. Hold Alt+X and say: "open YouTube cats".',              kind: 'voice', sub: 'opens YouTube search in your browser', pattern: /^✅ YouTube → / },
-    { mascot: 'idle',      bubble: 'Test 4/4 — Music. Hold Alt+X and say: "play Bohemian Rhapsody" (or any song).', kind: 'voice', sub: 'track will play in the built-in widget', pattern: /^▶ music playing$/ },
+    { mascot: 'listening', bubble: 'Test — Telegram. Hold Alt+X and say: "write to myself test".',          kind: 'voice', sub: 'I will send you the message "test"', pattern: /^→ \d+ «/ },
     { mascot: 'sent',      bubble: 'Done! Full command list — in Help. Have fun 🎉', kind: 'final', cta: "Let's go", sub: '' }
   ];
   function steps() { return currentLang() === 'en' ? STEPS_EN : STEPS_RU; }
 
-  var TOTAL_VISIBLE = 6; // welcome + QR + 4 tests (final doesn't get a dot)
+  var TOTAL_VISIBLE = steps().length - 1; // все шаги кроме финального получают точку
   var stepIdx = 0;
 
   function renderDots(activeIdx) {
@@ -4380,11 +3417,22 @@ window.voicyBridge = {
       var lblSkip = lang === 'en' ? 'Skip step'  : 'Пропустить шаг';
       var lblFin  = lang === 'en' ? 'Finish'      : 'Закрыть';
       skipRow.style.display = 'flex';
+      skipRow.style.justifyContent = 'space-between';
       skipRow.innerHTML =
         '<button class="vy-btn vy-btn--ghost" id="fr-skip-step" style="font-size:12px; color:var(--text-3);">' + lblSkip + '</button>' +
         '<button class="vy-btn vy-btn--ghost" id="fr-skip-all"  style="font-size:12px; color:var(--text-3);">' + lblFin + '</button>';
       document.getElementById('fr-skip-step').onclick = function() { goToOnb(n + 1); };
       document.getElementById('fr-skip-all').onclick  = finishOnboarding;
+    } else if (s.kind === 'qr') {
+      // QR-шаг блокирует прогресс (нужен внешний логин в Telegram), поэтому
+      // даём явную возможность закрыть онбординг — вернуться к нему можно
+      // позже через «показать гайд». finishOnboarding помечает done.
+      var lblQrSkip = currentLang() === 'en' ? 'Skip for now' : 'Пропустить';
+      skipRow.style.display = 'flex';
+      skipRow.style.justifyContent = 'center';
+      skipRow.innerHTML =
+        '<button class="vy-btn vy-btn--ghost" id="fr-skip-all" style="font-size:12px; color:var(--text-3);">' + lblQrSkip + '</button>';
+      document.getElementById('fr-skip-all').onclick = finishOnboarding;
     } else {
       skipRow.style.display = 'none';
     }
@@ -4884,7 +3932,6 @@ window.showReplaySpotlight = function() {
 })();
 </script>
 
-<script src="https://www.youtube.com/iframe_api"></script>
 
 </body>
 </html>

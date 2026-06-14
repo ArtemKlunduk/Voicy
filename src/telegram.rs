@@ -21,10 +21,6 @@ fn cache() -> &'static Mutex<HashMap<i64, PackedChat>> {
     DIALOG_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub fn cached_size() -> usize {
-    cache().lock().len()
-}
-
 /// Кэш «кто я» — обновляется после connect/login, читается синхронно из `cmd_info`.
 /// Без него каждый refresh раз в 5 сек делает сетевой `is_authorized()` + `get_me()`,
 /// и UI висит пока MTProto-roundtrip не закончится.

@@ -14,28 +14,22 @@ use parking_lot::Mutex;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
-mod ai_assistant;
 mod asr;
-mod gemini;
 mod audio;
-mod browser;
-mod browser_action;
 mod config;
 mod contacts;
 mod hotkey;
-mod intent_ai;
 #[cfg(windows)]
 mod native_overlay;
 mod parakeet;
 #[cfg(windows)]
 mod startup;
 mod telegram;
-mod tts;
+#[cfg(windows)]
+mod typing;
 mod ui;
-mod youtube_internal;
-mod music;
 
 /// Переносит данные из старых путей (рядом с exe) в новые (%APPDATA%/voicy).
 fn migrate_legacy_data() {
@@ -68,27 +62,33 @@ fn migrate_legacy_data() {
     // Миграция папки models (Parakeet, Canary и др.)
     let old_models = exe_dir.join("models");
     let new_models = new_dir.join("models");
-    if old_models.exists() && old_models.is_dir() && !new_models.exists() {
-        if let Err(e) = copy_dir_all(&old_models, &new_models) {
-            warn!("[migrate] failed to copy models dir: {}", e);
-        } else {
-            info!("[migrate] copied models {} → {}", old_models.display(), new_models.display());
+    // Раньше тут стоял `&& !new_models.exists()` — и если папка models уже
+    // существовала (даже с пустым/частичным parakeet-v3), миграция целиком
+    // пропускалась, а ASR молча падал на whisper. Теперь дозаполняем
+    // недостающие файлы даже в уже существующей папке.
+    if old_models.exists() && old_models.is_dir() {
+        match copy_dir_missing(&old_models, &new_models) {
+            Ok(()) => info!("[migrate] models dir synced {} → {}", old_models.display(), new_models.display()),
+            Err(e) => warn!("[migrate] failed to sync models dir: {}", e),
         }
     }
 
     // Миграция папки whisper (whisper-cli + ggml-модели)
     let old_whisper = exe_dir.join("whisper");
     let new_whisper = new_dir.join("whisper");
-    if old_whisper.exists() && old_whisper.is_dir() && !new_whisper.exists() {
-        if let Err(e) = copy_dir_all(&old_whisper, &new_whisper) {
-            warn!("[migrate] failed to copy whisper dir: {}", e);
-        } else {
-            info!("[migrate] copied whisper {} → {}", old_whisper.display(), new_whisper.display());
+    if old_whisper.exists() && old_whisper.is_dir() {
+        match copy_dir_missing(&old_whisper, &new_whisper) {
+            Ok(()) => info!("[migrate] whisper dir synced {} → {}", old_whisper.display(), new_whisper.display()),
+            Err(e) => warn!("[migrate] failed to sync whisper dir: {}", e),
         }
     }
 }
 
-fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+/// Рекурсивно копирует из `src` в `dst` только НЕДОСТАЮЩИЕ или отличающиеся по
+/// размеру файлы. Безопасно вызывать когда `dst` уже существует (например, есть
+/// пустая/частичная папка models): дозаполняет пропуски, не затирая актуальные
+/// файлы и не перекопируя сотни МБ на каждом старте.
+fn copy_dir_missing(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
@@ -96,87 +96,20 @@ fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         if ty.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
+            copy_dir_missing(&src_path, &dst_path)?;
         } else {
-            std::fs::copy(&src_path, &dst_path)?;
+            // Копируем если файла нет или его размер отличается (битая/обрезанная копия).
+            let src_len = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            let need = match std::fs::metadata(&dst_path) {
+                Ok(m) => m.len() != src_len,
+                Err(_) => true,
+            };
+            if need {
+                std::fs::copy(&src_path, &dst_path)?;
+            }
         }
     }
     Ok(())
-}
-
-/// Спросить ИИ-ассистента. Локальная модель — первый выбор (нет API-ключей).
-/// Gemini используется только если пользователь явно настроил ключ
-/// и локальная модель недоступна/упала.
-pub(crate) fn ask_ai_assistant(
-    cfg: &config::Config,
-    ai_slot: &Arc<Mutex<Option<ai_assistant::AiAssistant>>>,
-    question: &str,
-) -> anyhow::Result<String> {
-    // 1. Локальная модель (офлайн, не требует ключей — основной путь для массового пользователя)
-    let kind = ai_assistant::AiModel::from_config_str(&cfg.ai_model);
-    let mut ai_guard = ai_slot.lock();
-    if let Some(ref a) = *ai_guard {
-        if a.kind() != kind {
-            info!("[ai] config changed: {} → {}, reloading", a.kind().id(), kind.id());
-            *ai_guard = None;
-        }
-    }
-    if ai_guard.is_none() {
-        if !ai_assistant::AiAssistant::is_model_cached(kind) {
-            info!("[ai] локальная модель {} не найдена, скачиваем…", kind.id());
-            ai_assistant::AiAssistant::download_model_sync(kind)
-                .map_err(|e| anyhow::anyhow!("download: {}", e))?;
-        }
-        let assistant = ai_assistant::AiAssistant::load_if_cached(kind)
-            .map_err(|e| anyhow::anyhow!("load: {}", e))?
-            .ok_or_else(|| anyhow::anyhow!("model not available after download"))?;
-        *ai_guard = Some(assistant);
-    }
-
-    if let Some(ref mut assistant) = *ai_guard {
-        let system = ai_assistant::system_prompt(&cfg.ai_language);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            assistant.ask(&system, question)
-        }));
-        match result {
-            Ok(Ok(response)) => {
-                info!("[ai] local ответ: {} ({} tok/s)", response.text, response.tokens_per_second);
-                return Ok(response.text);
-            }
-            Ok(Err(e)) => {
-                warn!("[ai] local inference failed: {}", e);
-            }
-            Err(panic_payload) => {
-                *ai_guard = None;
-                let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                    s.to_string()
-                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "unknown panic".into()
-                };
-                warn!("[ai] local LLM panic caught: {}", msg);
-            }
-        }
-    }
-
-    // 2. Fallback: Gemini API (только если пользователь явно настроил ключ)
-    if !cfg.gemini_api_key.is_empty() {
-        warn!("[ai] falling back to Gemini API");
-        match gemini::ask(&cfg.gemini_api_key, question, &cfg.ai_language) {
-            Ok(text) => {
-                info!("[ai] Gemini ответ: {}", text);
-                return Ok(text);
-            }
-            Err(e) => {
-                warn!("[ai] Gemini also failed: {}", e);
-            }
-        }
-    }
-
-    Err(anyhow::anyhow!(
-        "ИИ-ассистент недоступен. Убедись, что модель скачалась (Settings → AI Model), либо настрой Gemini API key."
-    ))
 }
 
 fn main() -> Result<()> {
@@ -217,19 +150,6 @@ fn main() -> Result<()> {
         warn!("⚠ {}", config::Config::credentials_setup_hint());
     }
 
-    // Кастомная папка для AI-моделей: переопределяем HF_HOME до того как
-    // hf-hub::Api инициализируется в любом downstream-вызове.
-    if !cfg.models_root.trim().is_empty() {
-        let p = std::path::PathBuf::from(cfg.models_root.trim());
-        if let Err(e) = std::fs::create_dir_all(&p) {
-            warn!("[boot] models_root «{}» mkdir fail: {}", p.display(), e);
-        } else {
-            std::env::set_var("HF_HOME", &p);
-            std::env::set_var("HF_HUB_CACHE", p.join("hub"));
-            info!("[boot] models_root → HF_HOME={}", p.display());
-        }
-    }
-
     #[cfg(windows)]
     startup::sync_with_config(cfg.startup_launch);
 
@@ -260,6 +180,22 @@ fn main() -> Result<()> {
                 anyhow::bail!("usage: voicy send <uid> <text>");
             }
             cmd_send_tg(&cfg, uid, &text)
+        }
+        "parse" => {
+            let text = args.iter().skip(2).cloned().collect::<Vec<_>>().join(" ");
+            cmd_parse(&text)
+        }
+        "type" => {
+            // Диагностика режима диктовки: печатает текст в активное окно через
+            // Win32 SendInput (тот же путь, что и диктовка из listener'а).
+            let text = args.iter().skip(2).cloned().collect::<Vec<_>>().join(" ");
+            #[cfg(windows)]
+            {
+                println!("typing «{}» in 2s — переключись в целевое окно…", text);
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                typing::type_text(&text);
+            }
+            Ok(())
         }
         other => {
             eprintln!("unknown command: {}", other);
@@ -316,10 +252,6 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
     fn show_error() {
         #[cfg(windows)]
         native_overlay::send(native_overlay::State::Error);
-    }
-    fn hide_overlay() {
-        #[cfg(windows)]
-        native_overlay::send(native_overlay::State::Hidden);
     }
 
     // Один tokio-runtime на жизнь процесса; в нём — один Telegram-client.
@@ -397,10 +329,6 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
     );
     let contact_map = Arc::new(contact_map);
 
-    // ИИ-ассистент: ленивая загрузка (только при первом использовании)
-    let ai_assistant: Arc<Mutex<Option<ai_assistant::AiAssistant>>> = Arc::new(Mutex::new(None));
-    let ai_assistant_thr = ai_assistant.clone();
-
     // Прогрев ASR-модели в RAM если включено в настройках
     if cfg.preload_model {
         if let Some(meta) = asr::model_meta(&cfg.model) {
@@ -425,10 +353,6 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
     let session: Arc<Mutex<Option<RecordingSession>>> = Arc::new(Mutex::new(None));
     let session_press = session.clone();
 
-    // Состояние ИИ-ассистента: ждём вопрос после команды "дай ответ"
-    let waiting_for_ai = Arc::new(AtomicBool::new(false));
-    let waiting_for_ai_release = waiting_for_ai.clone();
-
     let on_press = move || {
         let mut slot = session_press.lock();
         if slot.is_some() {
@@ -451,7 +375,6 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
     let client_thr = client.clone();
     let rt_thr = rt.clone();
     let contacts_thr = contact_map.clone();
-    let ai_assistant_release = ai_assistant_thr.clone();
     let on_release = move || {
         let s = session_release.lock().take();
         let Some(s) = s else { return };
@@ -462,8 +385,6 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
         let client = client_thr.clone();
         let rt = rt_thr.clone();
         let contacts = contacts_thr.clone();
-        let waiting = waiting_for_ai_release.clone();
-        let ai = ai_assistant_release.clone();
         std::thread::spawn(move || {
             let samples = match res {
                 Ok(Ok(s)) => s,
@@ -498,404 +419,27 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                     return;
                 }
             };
-            info!("[hotkey] 📝 «{}»", text);
+            debug!("[hotkey] 📝 «{}»", text);
 
-            // --- ИИ-ассистент ---
-            if cfg.ai_assistant_enabled {
-                let ai_trigger = ["дай ответ", "ответь", "вопрос", "спроси",
-                                    "give answer", "give an answer", "give me answer",
-                                    "answer", "question", "ask"];
-                // Нормализация ASR-текста: пунктуация → пробелы, схлопываем дубли.
-                // Это ловит случаи когда whisper/parakeet выдаёт запятую или тире
-                // между словами: «дай, ответ» → «дай ответ».
-                let normalized: String = text
-                    .to_lowercase()
-                    .chars()
-                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '\t' { c } else { ' ' })
-                    .collect();
-                let text_lower: String = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
-
-                // Проверяем: сказали ли триггер + вопрос сразу (одной фразой)
-                let mut question_immediate: Option<String> = None;
-                info!("[ai] checking triggers against: '{}'", text_lower);
-                for trigger in &ai_trigger {
-                    if let Some(pos) = text_lower.find(trigger) {
-                        let after = text_lower[pos + trigger.len()..].trim();
-                        info!("[ai] trigger matched: '{}' → after='{}'", trigger, after);
-                        if !after.is_empty() {
-                            question_immediate = Some(after.to_string());
-                        }
-                        break;
-                    }
-                }
-                if question_immediate.is_none() {
-                    info!("[ai] no immediate question found");
-                }
-
-                // Если триггер + вопрос сразу — отправляем без режима ожидания
-                if let Some(question) = question_immediate {
-                    info!("[ai] вопрос сразу: {}", question);
+            // Единая маршрутизация через contacts::classify (как в GUI-listener):
+            // диктовка (нет триггера) → печать в активное окно; иначе Telegram.
+            let (uid, message) = match contacts::classify(&text, &contacts) {
+                contacts::Utterance::Dictation(dictated) if cfg.dictation_enabled => {
+                    info!("[hotkey] dictation → typing ({} символов)", dictated.chars().count());
                     #[cfg(windows)]
-                    native_overlay::send(native_overlay::State::AiThinking);
-
-                    match ask_ai_assistant(&cfg, &ai, &question) {
-                        Ok(response) => {
-                            info!("[ai] ответ: {}", response);
-                            #[cfg(windows)]
-                            native_overlay::send(native_overlay::State::Success);
-                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
-                                warn!("[ai] tts error: {}", e);
-                            }
-                            schedule_hide();
-                        }
-                        Err(e) => {
-                            warn!("[ai] generation failed: {}", e);
-                            show_error();
-                            schedule_hide();
-                        }
-                    }
-                    return;
-                }
-
-                // Если мы уже ждём вопрос — отправляем его в LLM
-                if waiting.load(Ordering::Relaxed) {
-                    waiting.store(false, Ordering::Relaxed);
-                    #[cfg(windows)]
-                    native_overlay::send(native_overlay::State::AiThinking);
-
-                    match ask_ai_assistant(&cfg, &ai, &text) {
-                        Ok(response) => {
-                            info!("[ai] ответ: {}", response);
-                            #[cfg(windows)]
-                            native_overlay::send(native_overlay::State::Success);
-                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
-                                warn!("[ai] tts error: {}", e);
-                            }
-                            schedule_hide();
-                        }
-                        Err(e) => {
-                            warn!("[ai] generation failed: {}", e);
-                            show_error();
-                            schedule_hide();
-                        }
-                    }
-                    return;
-                }
-
-                // Только триггер без вопроса — активируем режим ожидания
-                if ai_trigger.iter().any(|t| text_lower.contains(t)) {
-                    waiting.store(true, Ordering::Relaxed);
-                    info!("[ai] активирован режим вопроса");
-                    #[cfg(windows)]
-                    native_overlay::send(native_overlay::State::AiListening);
+                    typing::type_text(&dictated);
+                    show_success();
                     schedule_hide();
                     return;
                 }
-            }
-
-            // --- Видео-плеер управление (громче, тише, пауза, etc.) ---
-            if let Some(action) = browser_action::parse(&text) {
-                info!("[hotkey] browser_action → {:?}", action);
-                browser_action::dispatch(action);
-                show_success();
-                schedule_hide();
-                return;
-            }
-
-            // --- Включи X (универсальный: ordinal / YouTube / Music) ---
-            if let Some(req) = browser::parse_play_request(&text) {
-                match req {
-                    browser::PlayRequest::Ordinal(idx) => {
-                        info!("[hotkey] play_nth → index {}", idx);
-                        match browser::play_nth_youtube_result(idx) {
-                            Ok(url) => {
-                                info!("[hotkey] opened {}", url);
-                                show_success();
-                            }
-                            Err(e) => {
-                                warn!("[hotkey] play_nth: {}", e);
-                                show_error();
-                            }
-                        }
-                    }
-                    browser::PlayRequest::YouTube(kws) => {
-                        info!("[hotkey] play_by_title (YouTube) → {:?}", kws);
-                        match browser::play_youtube_by_title(&kws) {
-                            Ok(url) => {
-                                info!("[hotkey] opened {}", url);
-                                show_success();
-                            }
-                            Err(e) => {
-                                warn!("[hotkey] play_by_title: {}", e);
-                                show_error();
-                            }
-                        }
-                    }
-                    browser::PlayRequest::Music(kws) => {
-                        let query = kws.join(" ");
-                        info!("[hotkey] play_music → {}", query);
-                        match music::search_and_play(&query) {
-                            Ok(track) => {
-                                // В standalone-режиме нет WebView — открываем в браузере
-                                let url = music::watch_url(&track.video_id);
-                                if let Err(e) = browser::open(&url) {
-                                    warn!("[hotkey] music open: {}", e);
-                                    show_error();
-                                } else {
-                                    info!("[hotkey] opened {}", url);
-                                    show_success();
-                                }
-                            }
-                            Err(e) => {
-                                warn!("[hotkey] music: {}", e);
-                                show_error();
-                            }
-                        }
-                    }
-                }
-                schedule_hide();
-                return;
-            }
-
-            // --- Перейди на канал автора ---
-            if browser::parse_go_to_channel(&text) {
-                info!("[hotkey] go_to_channel");
-                match browser::go_to_channel() {
-                    Ok(url) => {
-                        info!("[hotkey] opened {}", url);
-                        show_success();
-                    }
-                    Err(e) => {
-                        warn!("[hotkey] go_to_channel: {}", e);
-                        show_error();
-                    }
-                }
-                schedule_hide();
-                return;
-            }
-
-            // --- Поисковые запросы (открой ютуб/google/tiktok/twitch) ---
-            if let Some(cmd) = browser::parse(&text) {
-                info!("[hotkey] browser → {}: {}", cmd.provider, cmd.query);
-                if let Err(e) = browser::open(&cmd.url) {
-                    warn!("[hotkey] browser open: {}", e);
-                    show_error();
-                } else {
-                    show_success();
-                }
-                schedule_hide();
-                return;
-            }
-
-            // --- AI intent fallback (Gemini) ---
-            if !cfg.gemini_api_key.is_empty() {
-                let ai_ctx = intent_ai::AiContext {
-                    contact_names: contacts.keys().cloned().collect(),
-                    has_recent_youtube: browser::last_youtube_query().is_some(),
-                };
-                match intent_ai::classify(&cfg.gemini_api_key, &text, &ai_ctx) {
-                    Ok(intent_ai::Intent::VolumeUp { n }) => {
-                        info!("[hotkey] AI intent → volume_up {}", n);
-                        browser_action::dispatch(browser_action::BrowserAction::VolumeUp(n));
-                        show_success();
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::VolumeDown { n }) => {
-                        info!("[hotkey] AI intent → volume_down {}", n);
-                        browser_action::dispatch(browser_action::BrowserAction::VolumeDown(n));
-                        show_success();
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::Fullscreen) => {
-                        info!("[hotkey] AI intent → fullscreen");
-                        browser_action::dispatch(browser_action::BrowserAction::Fullscreen);
-                        show_success();
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::PlayPause) => {
-                        info!("[hotkey] AI intent → play_pause");
-                        browser_action::dispatch(browser_action::BrowserAction::PlayPause);
-                        show_success();
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::SeekForward { n }) => {
-                        info!("[hotkey] AI intent → seek_forward {}", n);
-                        browser_action::dispatch(browser_action::BrowserAction::SeekForward(n));
-                        show_success();
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::SeekBackward { n }) => {
-                        info!("[hotkey] AI intent → seek_backward {}", n);
-                        browser_action::dispatch(browser_action::BrowserAction::SeekBackward(n));
-                        show_success();
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::Mute) => {
-                        info!("[hotkey] AI intent → mute");
-                        browser_action::dispatch(browser_action::BrowserAction::Mute);
-                        show_success();
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::OpenUrl { provider, query }) => {
-                        info!("[hotkey] AI intent → open_url {}: {}", provider, query);
-                        let url = match provider.as_str() {
-                            "youtube" | "ютуб" => {
-                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
-                                format!("https://www.youtube.com/results?search_query={}", enc)
-                            }
-                            "google" | "гугл" => {
-                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
-                                format!("https://www.google.com/search?q={}", enc)
-                            }
-                            "tiktok" | "тикток" => {
-                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
-                                format!("https://www.tiktok.com/search?q={}", enc)
-                            }
-                            "twitch" | "твич" => {
-                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
-                                format!("https://www.twitch.tv/search?term={}", enc)
-                            }
-                            _ => {
-                                let enc = url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>();
-                                format!("https://www.google.com/search?q={}", enc)
-                            }
-                        };
-                        if let Err(e) = browser::open(&url) {
-                            warn!("[hotkey] AI open_url: {}", e);
-                            show_error();
-                        } else {
-                            show_success();
-                        }
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::PlayNth { index }) => {
-                        info!("[hotkey] AI intent → play_nth {}", index);
-                        match browser::play_nth_youtube_result(index) {
-                            Ok(url) => {
-                                info!("[hotkey] opened {}", url);
-                                show_success();
-                            }
-                            Err(e) => {
-                                warn!("[hotkey] AI play_nth: {}", e);
-                                show_error();
-                            }
-                        }
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::PlayByTitle { keywords }) => {
-                        info!("[hotkey] AI intent → play_by_title {:?}", keywords);
-                        match browser::play_youtube_by_title(&keywords) {
-                            Ok(url) => {
-                                info!("[hotkey] opened {}", url);
-                                show_success();
-                            }
-                            Err(e) => {
-                                warn!("[hotkey] AI play_by_title: {}", e);
-                                show_error();
-                            }
-                        }
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::GoToChannel) => {
-                        info!("[hotkey] AI intent → go_to_channel");
-                        match browser::go_to_channel() {
-                            Ok(url) => {
-                                info!("[hotkey] opened {}", url);
-                                show_success();
-                            }
-                            Err(e) => {
-                                warn!("[hotkey] AI go_to_channel: {}", e);
-                                show_error();
-                            }
-                        }
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::SendTelegram { contact, message }) => {
-                        info!("[hotkey] AI intent → send_telegram {}: {}", contact, message);
-                        // Пытаемся найти контакт по имени из AI
-                        let found_uid = contacts.get(&contact.to_lowercase()).copied();
-                        if let Some(uid) = found_uid {
-                            let res = rt.block_on(async {
-                                telegram::send_message(&client, uid, &message).await
-                            });
-                            match res {
-                                Ok(()) => {
-                                    info!("[hotkey] ✅ → {} «{}»", uid, message);
-                                    show_success();
-                                }
-                                Err(e) => {
-                                    warn!("[hotkey] send: {}", e);
-                                    show_error();
-                                }
-                            }
-                        } else {
-                            warn!("[hotkey] AI contact '{}' not found", contact);
-                            show_error();
-                        }
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::AskAi { question }) => {
-                        info!("[hotkey] AI intent → ask_ai: {}", question);
-                        #[cfg(windows)]
-                        native_overlay::send(native_overlay::State::AiThinking);
-                        match ask_ai_assistant(&cfg, &ai, &question) {
-                            Ok(response) => {
-                                info!("[ai] ответ: {}", response);
-                                #[cfg(windows)]
-                                native_overlay::send(native_overlay::State::Success);
-                                if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
-                                    warn!("[ai] tts error: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                warn!("[ai] generation failed: {}", e);
-                                show_error();
-                            }
-                        }
-                        schedule_hide();
-                        return;
-                    }
-                    Ok(intent_ai::Intent::Unknown) => {
-                        // Не распознано AI — падаем в обычный parse (Telegram)
-                    }
-                    Err(e) => {
-                        warn!("[hotkey] intent_ai classify error: {}", e);
-                        // Падаем в обычный parse
-                    }
-                }
-            }
-
-            info!("[hotkey] trying contacts::parse_command with text='{}'", text);
-            let (uid, message) = match contacts::parse_command(&text, &contacts) {
-                Ok(x) => {
-                    info!("[hotkey] contacts parsed: uid={} msg='{}'", x.0, x.1);
-                    x
-                }
-                Err(e) => {
-                    warn!("[hotkey] {}", e);
+                contacts::Utterance::Telegram { uid, message } => (uid, message),
+                _ => {
+                    warn!("[hotkey] не распознано как команда отправки");
                     show_error();
                     schedule_hide();
                     return;
                 }
             };
-            if message.is_empty() {
-                warn!("[hotkey] пустое сообщение");
-                show_error();
-                schedule_hide();
-                return;
-            }
             // SELF sentinel → Saved Messages (chat with own user_id).
             let resolved_uid = if uid == contacts::SELF_SENTINEL_UID {
                 match rt.block_on(async { client.get_me().await }) {
@@ -931,13 +475,11 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
 }
 
 /// Через 1.8 секунды скрыть overlay.
-fn schedule_hide() {
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_millis(1800));
-        #[cfg(windows)]
-        native_overlay::send(native_overlay::State::Hidden);
-    });
-}
+/// Скрытие overlay теперь выполняет сам overlay-тред (auto-hide терминальных
+/// состояний Success/Error через AUTO_HIDE_MS). Оставлено пустым, чтобы не
+/// трогать все вызовы и не вернуть гонку, когда устаревший таймер скрывал
+/// оверлей прямо во время следующей записи. Recording держится до смены состояния.
+fn schedule_hide() {}
 
 fn cmd_model(sub: &str, name: &str) -> Result<()> {
     match sub {
@@ -996,6 +538,25 @@ fn cmd_send_tg(cfg: &config::Config, uid: i64, text: &str) -> Result<()> {
     })
 }
 
+/// Диагностика: прогнать текст через contacts::parse_command (продакшн-путь
+/// голосового конвейера) и напечатать (uid, грамотно оформленное сообщение).
+/// Без отправки — безопасно для прогона множества тестовых фраз.
+fn cmd_parse(text: &str) -> Result<()> {
+    let contacts = contacts::load(&contacts::default_path());
+    match contacts::parse_command(text, &contacts) {
+        Ok((uid, msg)) => {
+            let target = if uid == contacts::SELF_SENTINEL_UID {
+                "SELF (Saved Messages)".to_string()
+            } else {
+                uid.to_string()
+            };
+            println!("OK   uid={:<22} message=«{}»", target, msg);
+        }
+        Err(e) => println!("ERR  {}", e),
+    }
+    Ok(())
+}
+
 struct RecordingSession {
     stop: Arc<AtomicBool>,
     handle: std::thread::JoinHandle<Result<Vec<i16>>>,
@@ -1010,6 +571,15 @@ fn init_logging() {
     // Поэтому всегда дублируем логи в файл `<appdata>/voicy/voicy.log`.
     // В debug logs идут в обычный stderr.
     let log_path = log_file_path();
+    // Ротация по размеру на старте: если лог разросся (>5 МБ), отодвигаем его в
+    // voicy.log.1 (один бэкап) и начинаем заново. Без этого voicy.log рос
+    // безгранично (раздувался до сотен МБ) — логировались все IPC и тексты.
+    const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
+    if std::fs::metadata(&log_path).map(|m| m.len()).unwrap_or(0) > MAX_LOG_BYTES {
+        let backup = log_path.with_file_name("voicy.log.1");
+        let _ = std::fs::remove_file(&backup);
+        let _ = std::fs::rename(&log_path, &backup);
+    }
     let file_writer = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

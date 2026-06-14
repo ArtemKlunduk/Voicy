@@ -3,7 +3,7 @@
 //!          login_phone, login_code, login_password, logout,
 //!          hotkey_set.
 
-use crate::{ai_assistant, asr, audio, browser, config, contacts as cts, hotkey, music, startup, telegram, tts};
+use crate::{asr, audio, config, contacts as cts, hotkey, startup, telegram};
 use anyhow::Result;
 use grammers_client::Client;
 use grammers_client::types::PasswordToken;
@@ -16,7 +16,7 @@ use tao::dpi::LogicalSize;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 use tao::window::WindowBuilder;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use wry::WebViewBuilder;
 #[cfg(windows)]
 use wry::WebViewBuilderExtWindows;
@@ -178,19 +178,6 @@ struct LoginInProgress {
     qr_status: Option<String>,
 }
 
-/// Глобальный EventLoopProxy для модулей, у которых нет прямого доступа
-/// (browser_action, music). Инициализируется при старте UI loop в `run()`.
-/// Используется через `eval_js()` чтобы дёргать JS из любого треда.
-static GLOBAL_PROXY: std::sync::OnceLock<EventLoopProxy<UiLoopEvent>> = std::sync::OnceLock::new();
-
-/// Выполнить JS-код в WebView. Безопасно вызывать из любого треда.
-/// No-op если UI loop ещё не стартовал.
-pub fn eval_js(js: impl Into<String>) {
-    if let Some(p) = GLOBAL_PROXY.get() {
-        let _ = p.send_event(UiLoopEvent::EvalJs(js.into()));
-    }
-}
-
 #[derive(Default)]
 struct ListenerState {
     /// running — true когда листенер активен. Установка в false → rdev сам не остановится
@@ -212,12 +199,6 @@ enum UiLoopEvent {
     OverlaySuccess,
     /// Показать × крестик (ошибка)
     OverlayError,
-    /// Скрыть overlay
-    OverlayHide,
-    /// Показать ИИ-слушание (синий orb)
-    OverlayAiListening,
-    /// Показать ИИ-думает (оранжевый orb)
-    OverlayAiThinking,
     /// Свернуть главное окно (кнопка в кастомном titlebar)
     WindowMinimize,
     /// Закрыть приложение
@@ -299,10 +280,6 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
     let listener_ipc = listener.clone();
     let proxy = event_loop.create_proxy();
     let proxy_listener = proxy.clone();
-    // Глобальный proxy для модулей которые не получают его аргументом
-    // (например browser_action::dispatch, music). Используется чтобы
-    // дёргать JS из любого места: `crate::ui::eval_js(...)`.
-    GLOBAL_PROXY.set(proxy.clone()).ok();
 
     // Клоны для graceful shutdown при закрытии окна
     let client_shutdown = client_slot.clone();
@@ -311,7 +288,7 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
 
     let ipc_handler = move |req: wry::http::Request<String>| {
         let body = req.into_body();
-        info!("[ui-ipc] raw: {}", body);
+        debug!("[ui-ipc] raw: {}", body);
         let msg: Msg = match serde_json::from_str(&body) {
             Ok(m) => m,
             Err(e) => {
@@ -319,7 +296,7 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                 return;
             }
         };
-        info!("[ui-ipc] cmd={} payload={}", msg.cmd, msg.payload);
+        debug!("[ui-ipc] cmd={} payload={}", msg.cmd, msg.payload);
         let cfg_path = cfg_path_ipc.clone();
         let cfg = cfg_arc.clone();
         let rt = rt_ipc.clone();
@@ -426,18 +403,6 @@ pub fn run(cfg: config::Config, cfg_path: PathBuf) -> Result<()> {
                 UiLoopEvent::OverlayError => {
                     #[cfg(windows)]
                     crate::native_overlay::send(crate::native_overlay::State::Error);
-                }
-                UiLoopEvent::OverlayHide => {
-                    #[cfg(windows)]
-                    crate::native_overlay::send(crate::native_overlay::State::Hidden);
-                }
-                UiLoopEvent::OverlayAiListening => {
-                    #[cfg(windows)]
-                    crate::native_overlay::send(crate::native_overlay::State::AiListening);
-                }
-                UiLoopEvent::OverlayAiThinking => {
-                    #[cfg(windows)]
-                    crate::native_overlay::send(crate::native_overlay::State::AiThinking);
                 }
                 UiLoopEvent::WindowMinimize => {
                     window.set_minimized(true);
@@ -566,18 +531,6 @@ fn dispatch(
         "theme_set" => cmd_theme_set(cfg, cfg_path, &msg.payload),
         "preload_get" => cmd_preload_get(cfg),
         "preload_set" => cmd_preload_set(cfg, cfg_path, &msg.payload),
-        "ai_assistant_get" => cmd_ai_assistant_get(cfg),
-        "ai_assistant_set" => cmd_ai_assistant_set(cfg, cfg_path, &msg.payload),
-        "ai_model_status" => cmd_ai_model_status(cfg),
-        "ai_model_download" => cmd_ai_model_download(cfg),
-        "ai_model_download_state" => cmd_ai_model_download_state(),
-        "ai_model_get" => cmd_ai_model_get(cfg),
-        "ai_model_set" => cmd_ai_model_set(cfg, cfg_path, &msg.payload),
-        "gemini_key_get" => cmd_gemini_key_get(cfg),
-        "gemini_key_set" => cmd_gemini_key_set(cfg, cfg_path, &msg.payload),
-        "gemini_key_check" => cmd_gemini_key_check(cfg),
-        "ai_language_get" => cmd_ai_language_get(cfg),
-        "ai_language_set" => cmd_ai_language_set(cfg, cfg_path, &msg.payload),
         "startup_get" => cmd_startup_get(cfg),
         "startup_set" => cmd_startup_set(cfg, cfg_path, &msg.payload),
         "rec_lang_set" => cmd_rec_lang_set(cfg, cfg_path, &msg.payload),
@@ -586,16 +539,9 @@ fn dispatch(
         "avatars_get" => cmd_avatars_get(rt, client, &msg.payload),
         "language_get" => cmd_language_get(cfg),
         "language_set" => cmd_language_set(cfg, cfg_path, &msg.payload),
-        "music_event" => cmd_music_event(&msg.payload),
-        "music_user_seek" => cmd_music_user_seek(&msg.payload, &proxy),
-        "music_user_stop" => cmd_music_user_stop(&proxy),
-        "music_user_next" => cmd_music_user_next(&proxy),
         "feedback_config_get" => cmd_feedback_config_get(cfg),
         "feedback_config_set" => cmd_feedback_config_set(cfg, cfg_path, &msg.payload),
         "feedback_send" => cmd_feedback_send(rt, client, cfg, &msg.payload),
-        "models_root_get" => cmd_models_root_get(cfg),
-        "models_root_set" => cmd_models_root_set(cfg, cfg_path, &msg.payload),
-        "models_root_pick" => cmd_models_root_pick(),
         "_window_close" => {
             let _ = proxy.send_event(UiLoopEvent::WindowClose);
             serde_json::json!({ "ok": true })
@@ -697,248 +643,6 @@ fn cmd_preload_set(
     }
     info!("[ui] preload_model updated: {}", val);
     serde_json::json!({ "ok": true, "preload": val })
-}
-
-fn cmd_ai_assistant_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    let kind = ai_assistant::AiModel::from_config_str(&c.ai_model);
-    serde_json::json!({
-        "ok": true,
-        "enabled": c.ai_assistant_enabled,
-        "model_cached": ai_assistant::AiAssistant::is_model_cached(kind),
-        "model_id": kind.id(),
-        "model_name": kind.display_name(),
-        "model_ram_mb": kind.approx_ram_mb(),
-    })
-}
-
-fn cmd_ai_assistant_set(
-    cfg: &Arc<Mutex<config::Config>>,
-    cfg_path: &PathBuf,
-    payload: &serde_json::Value,
-) -> serde_json::Value {
-    let val = payload.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
-    let mut c = cfg.lock();
-    c.ai_assistant_enabled = val;
-    if let Err(e) = c.save(cfg_path) {
-        return err(format!("save: {}", e));
-    }
-    info!("[ui] ai_assistant_enabled updated: {}", val);
-    serde_json::json!({ "ok": true, "enabled": val })
-}
-
-fn cmd_ai_model_status(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    let kind = ai_assistant::AiModel::from_config_str(&c.ai_model);
-    serde_json::json!({
-        "ok": true,
-        "cached": ai_assistant::AiAssistant::is_model_cached(kind),
-        "model_id": kind.id(),
-        "model_name": kind.display_name(),
-        "model_ram_mb": kind.approx_ram_mb(),
-    })
-}
-
-/// Получить/выбрать локальную модель.
-fn cmd_ai_model_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    let kind = ai_assistant::AiModel::from_config_str(&c.ai_model);
-    serde_json::json!({
-        "ok": true,
-        "current": kind.id(),
-        "available": [
-            {
-                "id": "qwen-0.5b",
-                "name": ai_assistant::AiModel::Qwen05B.display_name(),
-                "ram_mb": ai_assistant::AiModel::Qwen05B.approx_ram_mb(),
-                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Qwen05B),
-            },
-            {
-                "id": "llama-3.2-1b",
-                "name": ai_assistant::AiModel::Llama32_1B.display_name(),
-                "ram_mb": ai_assistant::AiModel::Llama32_1B.approx_ram_mb(),
-                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Llama32_1B),
-            },
-            {
-                "id": "gemma-2-2b",
-                "name": ai_assistant::AiModel::Gemma2_2B.display_name(),
-                "ram_mb": ai_assistant::AiModel::Gemma2_2B.approx_ram_mb(),
-                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Gemma2_2B),
-            },
-            {
-                "id": "qwen3-4b",
-                "name": ai_assistant::AiModel::Qwen3_4B.display_name(),
-                "ram_mb": ai_assistant::AiModel::Qwen3_4B.approx_ram_mb(),
-                "cached": ai_assistant::AiAssistant::is_model_cached(ai_assistant::AiModel::Qwen3_4B),
-            },
-        ],
-    })
-}
-
-fn cmd_ai_model_set(
-    cfg: &Arc<Mutex<config::Config>>,
-    cfg_path: &PathBuf,
-    payload: &serde_json::Value,
-) -> serde_json::Value {
-    let id = match payload.get("id").and_then(|v| v.as_str()) {
-        Some(s) => s.to_string(),
-        None => return err("payload.id (string) required"),
-    };
-    let kind = ai_assistant::AiModel::from_config_str(&id);
-    let mut c = cfg.lock();
-    c.ai_model = kind.id().to_string();
-    if let Err(e) = c.save(cfg_path) {
-        return err(format!("save: {}", e));
-    }
-    info!("[ui] ai_model set → {}", kind.id());
-    serde_json::json!({ "ok": true, "model_id": kind.id(), "model_name": kind.display_name() })
-}
-
-fn cmd_models_root_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    let default = dirs::home_dir()
-        .map(|h| h.join(".cache").join("huggingface"))
-        .map(|p| p.display().to_string())
-        .unwrap_or_default();
-    let current = c.models_root.trim().to_string();
-    serde_json::json!({
-        "ok": true,
-        "path": current,
-        "default": default,
-        "effective": if current.is_empty() { default } else { c.models_root.clone() },
-    })
-}
-
-fn cmd_models_root_set(
-    cfg: &Arc<Mutex<config::Config>>,
-    cfg_path: &PathBuf,
-    payload: &serde_json::Value,
-) -> serde_json::Value {
-    let val = payload.get("path").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-    // Пустая строка — сброс на дефолт.
-    let mut c = cfg.lock();
-    c.models_root = val.clone();
-    if let Err(e) = c.save(cfg_path) {
-        return err(format!("save: {}", e));
-    }
-    // ВНИМАНИЕ: HF_HOME уже зафиксирован при старте — смена применится после
-    // рестарта Voicy. Можно перевыставить env прямо сейчас, но уже загруженные
-    // в RAM модели не переедут — это всё равно требует перезапуска.
-    if !val.is_empty() {
-        std::env::set_var("HF_HOME", &val);
-        std::env::set_var("HF_HUB_CACHE", std::path::PathBuf::from(&val).join("hub"));
-    }
-    info!("[ui] models_root → {:?} (применится после рестарта)", val);
-    serde_json::json!({ "ok": true, "path": val, "needs_restart": true })
-}
-
-#[cfg(windows)]
-fn cmd_models_root_pick() -> serde_json::Value {
-    // Используем PowerShell + Windows Forms FolderBrowserDialog. Это самый
-    // простой и надёжный способ без новых зависимостей — System.Windows.Forms
-    // встроен во все Win10/11. Скрипт пишется в stdin процесса.
-    let ps_script = r#"
-        Add-Type -AssemblyName System.Windows.Forms | Out-Null
-        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-        $dlg.Description = 'Voicy — куда скачивать AI-модели'
-        $dlg.ShowNewFolderButton = $true
-        $result = $dlg.ShowDialog()
-        if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-            Write-Output $dlg.SelectedPath
-        }
-    "#;
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps_script])
-        .output();
-    match output {
-        Ok(o) if o.status.success() => {
-            let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if path.is_empty() {
-                serde_json::json!({ "ok": true, "cancelled": true })
-            } else {
-                serde_json::json!({ "ok": true, "path": path })
-            }
-        }
-        Ok(o) => err(format!("powershell exit {}: {}", o.status, String::from_utf8_lossy(&o.stderr))),
-        Err(e) => err(format!("powershell spawn: {}", e)),
-    }
-}
-
-#[cfg(not(windows))]
-fn cmd_models_root_pick() -> serde_json::Value {
-    err("folder picker available only on Windows")
-}
-
-fn cmd_gemini_key_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    serde_json::json!({ "ok": true, "key": c.gemini_api_key })
-}
-
-fn cmd_gemini_key_set(
-    cfg: &Arc<Mutex<config::Config>>,
-    cfg_path: &PathBuf,
-    payload: &serde_json::Value,
-) -> serde_json::Value {
-    let val = payload.get("key").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let mut c = cfg.lock();
-    c.gemini_api_key = val.clone();
-    if let Err(e) = c.save(cfg_path) {
-        return err(format!("save: {}", e));
-    }
-    info!("[ui] gemini_api_key updated (len={})", val.len());
-    serde_json::json!({ "ok": true })
-}
-
-fn cmd_gemini_key_check(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    if c.gemini_api_key.is_empty() {
-        return serde_json::json!({ "ok": true, "valid": false, "reason": "empty" });
-    }
-    match crate::gemini::check_key(&c.gemini_api_key) {
-        Ok(true) => serde_json::json!({ "ok": true, "valid": true }),
-        Ok(false) => serde_json::json!({ "ok": true, "valid": false, "reason": "invalid" }),
-        Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
-    }
-}
-
-fn cmd_ai_language_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    serde_json::json!({ "ok": true, "language": c.ai_language })
-}
-
-fn cmd_ai_language_set(
-    cfg: &Arc<Mutex<config::Config>>,
-    cfg_path: &PathBuf,
-    payload: &serde_json::Value,
-) -> serde_json::Value {
-    let val = payload.get("language").and_then(|v| v.as_str()).unwrap_or("en").to_string();
-    let mut c = cfg.lock();
-    c.ai_language = val.clone();
-    if let Err(e) = c.save(cfg_path) {
-        return err(format!("save: {}", e));
-    }
-    info!("[ui] ai_language updated: {}", val);
-    serde_json::json!({ "ok": true, "language": val })
-}
-
-fn cmd_ai_preload_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let c = cfg.lock();
-    serde_json::json!({ "ok": true, "ai_preload": c.ai_preload })
-}
-
-fn cmd_ai_preload_set(
-    cfg: &Arc<Mutex<config::Config>>,
-    cfg_path: &PathBuf,
-    payload: &serde_json::Value,
-) -> serde_json::Value {
-    let val = payload.get("ai_preload").and_then(|v| v.as_bool()).unwrap_or(false);
-    let mut c = cfg.lock();
-    c.ai_preload = val;
-    if let Err(e) = c.save(cfg_path) {
-        return err(format!("save: {}", e));
-    }
-    info!("[ui] ai_preload updated: {}", val);
-    serde_json::json!({ "ok": true, "ai_preload": val })
 }
 
 fn cmd_startup_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
@@ -1108,174 +812,6 @@ fn cmd_language_set(
     }
     info!("[ui] language updated: {}", val);
     serde_json::json!({ "ok": true, "language": val })
-}
-
-fn cmd_music_event(payload: &serde_json::Value) -> serde_json::Value {
-    let evt_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
-    match evt_type {
-        "play" => {
-            crate::music::resume();
-            info!("[ui-music] JS event: play");
-        }
-        "pause" => {
-            crate::music::pause();
-            info!("[ui-music] JS event: pause");
-        }
-        "ended" => {
-            crate::music::stop();
-            info!("[ui-music] JS event: ended");
-        }
-        "stop" => {
-            crate::music::stop();
-            info!("[ui-music] JS event: stop");
-        }
-        _ => {
-            info!("[ui-music] JS event: {}", evt_type);
-        }
-    }
-    serde_json::json!({ "ok": true })
-}
-
-fn cmd_music_user_seek(
-    payload: &serde_json::Value,
-    _proxy: &EventLoopProxy<UiLoopEvent>,
-) -> serde_json::Value {
-    let seconds = payload.get("seconds").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    crate::music::seek(seconds as u32);
-    info!("[ui-music] user seek → {}s", seconds);
-    serde_json::json!({ "ok": true })
-}
-
-fn cmd_music_user_stop(proxy: &EventLoopProxy<UiLoopEvent>) -> serde_json::Value {
-    crate::music::stop();
-    info!("[ui-music] user stop");
-    // Отправляем обратно в JS чтобы скрыть виджет (на случай если остановка
-    // пришла из голосовой команды, а JS ещё не знает).
-    let js = "window.voicyMusicStop && window.voicyMusicStop();".to_string();
-    let _ = proxy.send_event(UiLoopEvent::EvalJs(js));
-    serde_json::json!({ "ok": true })
-}
-
-fn cmd_music_user_next(proxy: &EventLoopProxy<UiLoopEvent>) -> serde_json::Value {
-    let current = crate::music::current_track();
-    let (artist, title) = match current.as_ref() {
-        Some(t) => (t.artist.clone(), t.title.clone()),
-        None => {
-            warn!("[ui-music] next track requested but no current track");
-            return serde_json::json!({ "ok": false, "error": "no current track" });
-        }
-    };
-    // Если артист похож на UGC-канал, пытаемся вытащить реального артиста из title
-    let effective_artist = if crate::music::is_ugc_artist(&artist) {
-        crate::music::extract_artist_from_title(&title)
-            .unwrap_or_else(|| {
-                warn!("[ui-music] UGC artist '{}', could not extract from title '{}', falling back", artist, title);
-                artist
-            })
-    } else {
-        artist
-    };
-    let exclude = current.map(|t| t.video_id.clone());
-    match crate::music::play_random_by_artist(&effective_artist, exclude.as_deref()) {
-        Ok(track) => {
-            info!("[ui-music] next track → {} — {}", track.title, track.artist);
-            let js = format!(
-                "window.voicyMusicPlay && window.voicyMusicPlay({}, {}, {}, {}, {});",
-                serde_json::to_string(&track.video_id).unwrap_or_default(),
-                serde_json::to_string(&track.title).unwrap_or_default(),
-                serde_json::to_string(&track.artist).unwrap_or_default(),
-                serde_json::to_string(&track.thumbnail).unwrap_or_default(),
-                serde_json::to_string(&track.duration).unwrap_or_default()
-            );
-            let _ = proxy.send_event(UiLoopEvent::EvalJs(js));
-            serde_json::json!({ "ok": true })
-        }
-        Err(e) => {
-            warn!("[ui-music] next track failed: {}", e);
-            serde_json::json!({ "ok": false, "error": e.to_string() })
-        }
-    }
-}
-
-/// Глобальное состояние текущего AI-model скачивания. Один download за раз.
-#[derive(Debug, Clone)]
-struct AiDownloadState {
-    model_id: String,
-    in_progress: bool,
-    done: bool,
-    error: Option<String>,
-    started_at: std::time::Instant,
-}
-
-fn ai_download_slot() -> &'static Mutex<Option<AiDownloadState>> {
-    static SLOT: std::sync::OnceLock<Mutex<Option<AiDownloadState>>> = std::sync::OnceLock::new();
-    SLOT.get_or_init(|| Mutex::new(None))
-}
-
-fn cmd_ai_model_download(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
-    let kind = ai_assistant::AiModel::from_config_str(&cfg.lock().ai_model);
-    if ai_assistant::AiAssistant::is_model_cached(kind) {
-        return serde_json::json!({ "ok": true, "cached": true, "model_id": kind.id() });
-    }
-    // Уже идёт скачивание — отказ.
-    {
-        let slot = ai_download_slot().lock();
-        if let Some(s) = slot.as_ref() {
-            if s.in_progress {
-                return serde_json::json!({
-                    "ok": true,
-                    "started": false,
-                    "in_progress": true,
-                    "model_id": s.model_id.clone(),
-                });
-            }
-        }
-    }
-    // Стартуем download в фоне.
-    let model_id = kind.id().to_string();
-    *ai_download_slot().lock() = Some(AiDownloadState {
-        model_id: model_id.clone(),
-        in_progress: true,
-        done: false,
-        error: None,
-        started_at: std::time::Instant::now(),
-    });
-    std::thread::spawn(move || {
-        info!("[ui] AI model {} download starting (background)", model_id);
-        let result = ai_assistant::AiAssistant::download_model_sync(kind);
-        let mut slot = ai_download_slot().lock();
-        if let Some(s) = slot.as_mut() {
-            s.in_progress = false;
-            s.done = result.is_ok();
-            s.error = result.as_ref().err().map(|e| e.to_string());
-            let dt = s.started_at.elapsed().as_secs_f32();
-            match &result {
-                Ok(p) => info!("[ui] AI model {} downloaded in {:.1}s: {}", s.model_id, dt, p.display()),
-                Err(e) => warn!("[ui] AI model {} download failed after {:.1}s: {}", s.model_id, dt, e),
-            }
-        }
-    });
-    serde_json::json!({
-        "ok": true,
-        "started": true,
-        "model_id": kind.id(),
-    })
-}
-
-/// Опросить состояние текущего/последнего скачивания AI-модели.
-fn cmd_ai_model_download_state() -> serde_json::Value {
-    let slot = ai_download_slot().lock();
-    match slot.as_ref() {
-        Some(s) => serde_json::json!({
-            "ok": true,
-            "model_id": s.model_id,
-            "in_progress": s.in_progress,
-            "done": s.done,
-            "error": s.error,
-            "elapsed_secs": s.started_at.elapsed().as_secs_f32(),
-        }),
-        None => serde_json::json!({ "ok": true, "in_progress": false, "done": false }),
-    }
 }
 
 fn cmd_telegram_dialogs(
@@ -1458,7 +994,10 @@ fn cmd_login_phone(
             let c = telegram::connect(&cfg).await?;
             *client.lock() = Some(c);
         }
-        let c = client.lock().as_ref().unwrap().clone();
+        let c = match client.lock().as_ref() {
+            Some(c) => c.clone(),
+            None => return Err(anyhow::anyhow!("Telegram-клиент недоступен")),
+        };
         let tok = c.request_login_code(&phone).await?;
         Ok(tok)
     });
@@ -1566,12 +1105,12 @@ fn push_event(proxy: &EventLoopProxy<UiLoopEvent>, kind: &str, text: &str) {
 }
 
 fn flash_overlay(proxy: &EventLoopProxy<UiLoopEvent>, ev: UiLoopEvent) {
+    // Показываем терминальное состояние (Success/Error). Скрытие — задача самого
+    // overlay-треда (auto-hide через AUTO_HIDE_MS): новый Recording сбрасывает
+    // его таймер и тем самым отменяет отложенное скрытие. Раньше здесь спавнился
+    // поток со sleep+OverlayHide, и устаревший таймер скрывал оверлей во время
+    // следующей записи (значок пропадал, хотя запись ещё шла).
     let _ = proxy.send_event(ev);
-    let p = proxy.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(1800));
-        let _ = p.send_event(UiLoopEvent::OverlayHide);
-    });
 }
 
 /// Выбрать ASR-модель для inference: сначала проверяем скачанность
@@ -1703,20 +1242,12 @@ fn cmd_listener_start(
     running.store(true, Ordering::Release);
     let proxy_listener = proxy.clone();
 
-    // ИИ-ассистент: ленивая загрузка модели (только при первом использовании)
-    let ai_assistant_slot: Arc<Mutex<Option<ai_assistant::AiAssistant>>> = Arc::new(Mutex::new(None));
-    let ai_assistant_release = ai_assistant_slot.clone();
-
     let recording: Arc<Mutex<Option<(Arc<AtomicBool>, std::thread::JoinHandle<anyhow::Result<Vec<i16>>>)>>> =
         Arc::new(Mutex::new(None));
     // Single-flight: пока pipeline крутится (запись→ASR→TG), новые Alt+X
     // игнорятся. Иначе нажав 5 раз подряд получаем 5 параллельных тредов
     // на один и тот же микрофон и кэш модели.
     let processing: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-
-    // Состояние: ждём вопрос после "дай ответ"
-    let waiting_for_ai: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-    let waiting_for_ai_release = waiting_for_ai.clone();
 
     let rec_press = recording.clone();
     let running_press = running.clone();
@@ -1755,8 +1286,6 @@ fn cmd_listener_start(
     let cfg_arc = cfg.clone();
     let client_slot_thr = client.clone();
     let rt_thr = rt.clone();
-    let ai_slot_thr = ai_assistant_release.clone();
-    let waiting_ai_thr = waiting_for_ai_release.clone();
     let proxy_release = proxy_listener.clone();
     let on_release = move || {
         if !running_release.load(Ordering::Acquire) {
@@ -1769,8 +1298,6 @@ fn cmd_listener_start(
         let client_slot = client_slot_thr.clone();
         let rt = rt_thr.clone();
         let proxy = proxy_release.clone();
-        let waiting = waiting_ai_thr.clone();
-        let ai_slot = ai_slot_thr.clone();
         push_event(&proxy, "activity", "⏹ распознаю…");
         let proxy_panic = proxy.clone();
         // Поднимаем флаг — следующие Alt+X будут игнорироваться пока этот
@@ -1829,405 +1356,10 @@ fn cmd_listener_start(
                     return;
                 }
             };
-            info!("[listener] 📝 «{}» (через {})", text, cfg.model);
+            debug!("[listener] 📝 «{}» (через {})", text, cfg.model);
             push_event(&proxy, "log", &format!("📝 «{}» · engine: {}", text, cfg.model));
 
-            // Проверяем браузерную команду
-            if let Some(cmd) = browser::parse(&text) {
-                info!("[listener] browser → {}: {}", cmd.provider, cmd.query);
-                if let Err(e) = browser::open(&cmd.url) {
-                    warn!("[listener] browser open: {}", e);
-                    push_event(&proxy, "log", &format!("✗ browser: {}", e));
-                    push_event(&proxy, "activity", "");
-                    flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                } else {
-                    push_event(&proxy, "log", &format!("✅ {} → {}", cmd.provider, cmd.query));
-                    push_event(&proxy, "activity", &format!("→ {}", cmd.provider));
-                    flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                }
-                return;
-            }
-
-            // --- Универсальный play: ordinal / YouTube / Music ---
-            if let Some(req) = browser::parse_play_request(&text) {
-                match req {
-                    browser::PlayRequest::Ordinal(idx) => {
-                        info!("[listener] play-nth-youtube: idx={}", idx);
-                        match browser::play_nth_youtube_result(idx) {
-                            Ok(url) => {
-                                push_event(&proxy, "log", &format!("✅ YouTube #{} → {}", idx + 1, url));
-                                push_event(&proxy, "activity", &format!("→ video #{}", idx + 1));
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                            }
-                            Err(e) => {
-                                warn!("[listener] play-nth: {}", e);
-                                push_event(&proxy, "log", &format!("✗ play-nth: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                            }
-                        }
-                    }
-                    browser::PlayRequest::YouTube(kws) => {
-                        info!("[listener] play-by-title (YouTube): {:?}", kws);
-                        match browser::play_related_by_title(&kws) {
-                            Ok(url) => {
-                                push_event(&proxy, "log", &format!("✅ YT related «{}» → {}", kws.join(" "), url));
-                                push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                            }
-                            Err(_) => {
-                                match browser::play_youtube_by_title(&kws) {
-                                    Ok(url) => {
-                                        push_event(&proxy, "log", &format!("✅ YouTube «{}» → {}", kws.join(" "), url));
-                                        push_event(&proxy, "activity", &format!("→ {}", kws.join(" ")));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                    }
-                                    Err(e) => {
-                                        warn!("[listener] play-by-title: {}", e);
-                                        push_event(&proxy, "log", &format!("✗ play-by-title: {}", e));
-                                        push_event(&proxy, "activity", "");
-                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    browser::PlayRequest::Music(kws) => {
-                        let query = kws.join(" ");
-                        info!("[listener] play-music: {}", query);
-                        match music::search_and_play(&query) {
-                            Ok(track) => {
-                                // Отправляем IPC в UI WebView для запуска скрытого плеера
-                                let js = format!(
-                                    "window.voicyMusicPlay && window.voicyMusicPlay({}, {}, {}, {}, {});",
-                                    serde_json::to_string(&track.video_id).unwrap_or_default(),
-                                    serde_json::to_string(&track.title).unwrap_or_default(),
-                                    serde_json::to_string(&track.artist).unwrap_or_default(),
-                                    serde_json::to_string(&track.thumbnail).unwrap_or_default(),
-                                    serde_json::to_string(&track.duration).unwrap_or_default()
-                                );
-                                let _ = proxy.send_event(UiLoopEvent::EvalJs(js));
-                                push_event(&proxy, "log", &format!("✅ Music «{}» → {}", query, track.video_id));
-                                push_event(&proxy, "activity", &format!("→ {} — {}", track.title, track.artist));
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                            }
-                            Err(e) => {
-                                warn!("[listener] play-music: {}", e);
-                                push_event(&proxy, "log", &format!("✗ play-music: {}", e));
-                                push_event(&proxy, "activity", "");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                            }
-                        }
-                    }
-                }
-                return;
-            }
-
-            // In-video команды (громче/тише/пауза/полный экран/перемотка/mute) —
-            // через Win32 SendInput горячие клавиши YouTube/Twitch.
-            // Активное окно должно быть браузер с открытым видео.
-            if let Some(action) = crate::browser_action::parse(&text) {
-                info!("[listener] browser-action: {:?}", action);
-                crate::browser_action::dispatch(action.clone());
-                push_event(&proxy, "log", &format!("🎮 {:?}", action));
-                push_event(&proxy, "activity", "→ player");
-                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                return;
-            }
-
-            // Перейти на канал автора текущего видео
-            if browser::parse_go_to_channel(&text) {
-                info!("[listener] go-to-channel");
-                match browser::go_to_channel() {
-                    Ok(url) => {
-                        push_event(&proxy, "log", &format!("✅ channel → {}", url));
-                        push_event(&proxy, "activity", "→ channel");
-                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                    }
-                    Err(e) => {
-                        warn!("[listener] go-to-channel: {}", e);
-                        push_event(&proxy, "log", &format!("✗ channel: {}", e));
-                        push_event(&proxy, "activity", "");
-                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                    }
-                }
-                return;
-            }
-
-            // --- ИИ-ассистент ---
-            if cfg.ai_assistant_enabled {
-                let ai_trigger = ["дай ответ", "ответь", "вопрос", "спроси",
-                                    "give answer", "give an answer", "give me answer",
-                                    "answer", "question", "ask"];
-                // Нормализация ASR-текста: пунктуация → пробелы, схлопываем дубли.
-                let normalized: String = text
-                    .to_lowercase()
-                    .chars()
-                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '\t' { c } else { ' ' })
-                    .collect();
-                let text_lower: String = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
-
-                // Проверяем: сказали ли триггер + вопрос сразу (одной фразой)
-                let mut question_immediate: Option<String> = None;
-                info!("[ai] checking triggers against: '{}'", text_lower);
-                for trigger in &ai_trigger {
-                    if let Some(pos) = text_lower.find(trigger) {
-                        let after = text_lower[pos + trigger.len()..].trim();
-                        info!("[ai] trigger matched: '{}' → after='{}'", trigger, after);
-                        if !after.is_empty() {
-                            question_immediate = Some(after.to_string());
-                        }
-                        break;
-                    }
-                }
-                if question_immediate.is_none() {
-                    info!("[ai] no immediate question found");
-                }
-
-                // Если триггер + вопрос сразу — отправляем без режима ожидания
-                if let Some(question) = question_immediate {
-                    info!("[ai] вопрос сразу: {}", question);
-                    push_event(&proxy, "activity", "🤖 думаю...");
-                    push_event(&proxy, "log", &format!("🤖 вопрос: {}", question));
-                    let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
-
-                    match crate::ask_ai_assistant(&cfg, &ai_slot, &question) {
-                        Ok(response) => {
-                            info!("[ai] ответ: {}", response);
-                            push_event(&proxy, "log", &format!("🤖 {}", response));
-                            push_event(&proxy, "activity", "🤖 отвечаю...");
-                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
-                                warn!("[ai] tts error: {}", e);
-                                push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
-                            }
-                            // Терминальный маркер для onboarding-теста AI:
-                            // фиксирует, что TTS отыграл до конца — только тогда
-                            // считаем шаг успешно завершённым.
-                            push_event(&proxy, "log", "🤖 ✓ done");
-                            flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                        }
-                        Err(e) => {
-                            warn!("[ai] generation failed: {}", e);
-                            push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
-                            push_event(&proxy, "activity", "");
-                            flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                        }
-                    }
-                    return;
-                }
-
-                // Если ждём вопрос — отправляем в LLM
-                if waiting.load(Ordering::Relaxed) {
-                    waiting.store(false, Ordering::Relaxed);
-                    push_event(&proxy, "activity", "🤖 думаю...");
-                    push_event(&proxy, "log", &format!("🤖 вопрос: {}", text));
-                    let _ = proxy.send_event(UiLoopEvent::OverlayAiThinking);
-
-                    match crate::ask_ai_assistant(&cfg, &ai_slot, &text) {
-                        Ok(response) => {
-                            info!("[ai] ответ: {}", response);
-                            push_event(&proxy, "log", &format!("🤖 {}", response));
-                            push_event(&proxy, "activity", "🤖 отвечаю...");
-                            if let Err(e) = tts::speak_with_lang(&response, &cfg.ai_language) {
-                                warn!("[ai] tts error: {}", e);
-                                push_event(&proxy, "log", &format!("⚠ озвучка: {}", e));
-                            }
-                            // Терминальный маркер для onboarding-теста AI:
-                            // фиксирует, что TTS отыграл до конца — только тогда
-                            // считаем шаг успешно завершённым.
-                            push_event(&proxy, "log", "🤖 ✓ done");
-                            flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                        }
-                        Err(e) => {
-                            warn!("[ai] generation failed: {}", e);
-                            push_event(&proxy, "log", &format!("✗ ИИ: {}", e));
-                            push_event(&proxy, "activity", "");
-                            flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                        }
-                    }
-                    return;
-                }
-
-                // Только триггер без вопроса — активируем режим ожидания
-                if ai_trigger.iter().any(|t| text_lower.contains(t)) {
-                    waiting.store(true, Ordering::Relaxed);
-                    info!("[ai] активирован режим вопроса");
-                    push_event(&proxy, "log", "🤖 Слушаю вопрос...");
-                    push_event(&proxy, "activity", "🤖 Слушаю вопрос...");
-                    let _ = proxy.send_event(UiLoopEvent::OverlayAiListening);
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(2500));
-                        let _ = proxy.send_event(UiLoopEvent::OverlayHide);
-                    });
-                    return;
-                }
-            }
-
             let contacts = cts::load(&cts::default_path());
-
-            // ── AI-fallback (Gemini) для фуззи-команд которые rule-based не понял.
-            // Срабатывает только если есть Gemini API key. Возвращает структурный
-            // Intent — диспатчим прямо в существующие обработчики.
-            //
-            // Для SendTelegram резолвим contact-имя в uid через тот же contacts
-            // map (точное совпадение + русский стем) и продолжаем по обычному
-            // TG-флоу. Для всех остальных Intent'ов исполняем inline и return.
-            let mut tg_intent_resolved: Option<(i64, String)> = None;
-            let gemini_key = cfg.gemini_api_key.clone();
-            if !gemini_key.trim().is_empty() {
-                let ai_ctx = crate::intent_ai::AiContext {
-                    contact_names: contacts.keys()
-                        .filter(|k| k.chars().count() >= 2)
-                        .take(40)  // лимит чтобы не раздувать промпт
-                        .cloned()
-                        .collect(),
-                    has_recent_youtube: browser::last_youtube_query().is_some(),
-                };
-                match crate::intent_ai::classify(&gemini_key, &text, &ai_ctx) {
-                    Ok(intent) => {
-                        info!("[ai-intent] {:?}", intent);
-                        match intent {
-                            crate::intent_ai::Intent::VolumeUp { n } => {
-                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::VolumeUp(n));
-                                push_event(&proxy, "log", &format!("🤖→🎮 volume +{}", n));
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                return;
-                            }
-                            crate::intent_ai::Intent::VolumeDown { n } => {
-                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::VolumeDown(n));
-                                push_event(&proxy, "log", &format!("🤖→🎮 volume −{}", n));
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                return;
-                            }
-                            crate::intent_ai::Intent::Fullscreen => {
-                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::Fullscreen);
-                                push_event(&proxy, "log", "🤖→🎮 fullscreen");
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                return;
-                            }
-                            crate::intent_ai::Intent::PlayPause => {
-                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::PlayPause);
-                                push_event(&proxy, "log", "🤖→🎮 play/pause");
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                return;
-                            }
-                            crate::intent_ai::Intent::SeekForward { n } => {
-                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::SeekForward(n));
-                                push_event(&proxy, "log", &format!("🤖→🎮 +{}s", n * 5));
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                return;
-                            }
-                            crate::intent_ai::Intent::SeekBackward { n } => {
-                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::SeekBackward(n));
-                                push_event(&proxy, "log", &format!("🤖→🎮 −{}s", n * 5));
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                return;
-                            }
-                            crate::intent_ai::Intent::Mute => {
-                                crate::browser_action::dispatch(crate::browser_action::BrowserAction::Mute);
-                                push_event(&proxy, "log", "🤖→🎮 mute");
-                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                return;
-                            }
-                            crate::intent_ai::Intent::OpenUrl { provider, query } => {
-                                let fake_text = format!("открой {} {}", provider, query);
-                                if let Some(cmd) = browser::parse(&fake_text) {
-                                    if let Err(e) = browser::open(&cmd.url) {
-                                        push_event(&proxy, "log", &format!("✗ AI-open: {}", e));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                    } else {
-                                        push_event(&proxy, "log", &format!("🤖→{} «{}»", cmd.provider, cmd.query));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                    }
-                                } else {
-                                    push_event(&proxy, "log", &format!("✗ AI: неизвестный провайдер «{}»", provider));
-                                    flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                }
-                                return;
-                            }
-                            crate::intent_ai::Intent::PlayNth { index } => {
-                                match browser::play_nth_youtube_result(index) {
-                                    Ok(url) => {
-                                        push_event(&proxy, "log", &format!("🤖→YT #{} → {}", index + 1, url));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                    }
-                                    Err(e) => {
-                                        push_event(&proxy, "log", &format!("✗ AI play-nth: {}", e));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                    }
-                                }
-                                return;
-                            }
-                            crate::intent_ai::Intent::PlayByTitle { keywords } => {
-                                // Сначала ищем в related videos текущего видео (справа на странице watch),
-                                // fallback на кэшированные search-результаты.
-                                match browser::play_related_by_title(&keywords) {
-                                    Ok(url) => {
-                                        push_event(&proxy, "log", &format!("🤖→YT related «{}» → {}", keywords.join(" "), url));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                    }
-                                    Err(_) => {
-                                        match browser::play_youtube_by_title(&keywords) {
-                                            Ok(url) => {
-                                                push_event(&proxy, "log", &format!("🤖→YT «{}» → {}", keywords.join(" "), url));
-                                                flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                            }
-                                            Err(e) => {
-                                                push_event(&proxy, "log", &format!("✗ AI play-title: {}", e));
-                                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                            }
-                                        }
-                                    }
-                                }
-                                return;
-                            }
-                            crate::intent_ai::Intent::SendTelegram { contact, message } => {
-                                let key = contact.to_lowercase();
-                                let uid = contacts.get(&key)
-                                    .or_else(|| contacts.get(&cts::russian_stem(&key)))
-                                    .copied();
-                                if let Some(uid) = uid {
-                                    info!("[ai-intent] tg → contact «{}» = uid {}", contact, uid);
-                                    tg_intent_resolved = Some((uid, message));
-                                    // Не return — продолжаем по существующему TG-флоу ниже
-                                } else {
-                                    push_event(&proxy, "log", &format!("✗ AI: контакт «{}» не найден", contact));
-                                    flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                    return;
-                                }
-                            }
-                            crate::intent_ai::Intent::AskAi { question: _ } => {
-                                // AI-ассистент уже отрабатывает по «дай ответ» триггеру выше.
-                                // Если он сюда дошёл — значит юзер не сказал триггер, но
-                                // Gemini классифицировал. Не лезем — пусть юзер скажет «дай ответ».
-                                push_event(&proxy, "log", "🤖 для вопроса AI скажи «дай ответ <вопрос>»");
-                                flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                return;
-                            }
-                            crate::intent_ai::Intent::GoToChannel => {
-                                match browser::go_to_channel() {
-                                    Ok(url) => {
-                                        push_event(&proxy, "log", &format!("🤖→channel {}", url));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
-                                    }
-                                    Err(e) => {
-                                        push_event(&proxy, "log", &format!("✗ AI channel: {}", e));
-                                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                                    }
-                                }
-                                return;
-                            }
-                            crate::intent_ai::Intent::Unknown => {
-                                // Fall through к contacts::parse_command — может оно поймёт
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("[ai-intent] {}", e);
-                        // Fall through к contacts::parse_command
-                    }
-                }
-            }
 
             info!("[listener] trying contacts::parse_command with text='{}'", text);
             // Silent no-op для онбординг-теста: «test»/«тест»/«check»/«проверка»
@@ -2242,33 +1374,47 @@ fn cmd_listener_start(
                 return;
             }
 
-            let (uid, message) = match tg_intent_resolved {
-                Some(x) => x,
-                None => match cts::parse_command(&text, &contacts) {
-                Ok(x) => {
-                    info!("[listener] contacts parsed: uid={} msg='{}'", x.0, x.1);
-                    x
-                },
-                Err(e) => {
-                    warn!("[listener] {}", e);
-                    // Контакт не нашли → копируем распознанный текст в буфер
-                    // обмена, чтобы пользователь мог вставить его куда хочет.
-                    // Это спасает кейсы когда whisper-tiny исковеркал имя.
+            // Единая маршрутизация (cts::classify): диктовка (нет триггера) →
+            // печать в активное окно; Telegram-команда → отправка ниже; пусто/
+            // не распознано → текст в буфер обмена. Тот же classify зовёт voicy run.
+            let (uid, message) = match cts::classify(&text, &contacts) {
+                cts::Utterance::Dictation(dictated) if cfg.dictation_enabled => {
+                    debug!("[listener] dictation → typing «{}»", dictated);
+                    crate::typing::type_text(&dictated);
+                    push_event(&proxy, "log", &format!("⌨ напечатано: «{}»", dictated));
+                    push_event(&proxy, "activity", "⌨ продиктовано");
+                    flash_overlay(&proxy, UiLoopEvent::OverlaySuccess);
+                    return;
+                }
+                cts::Utterance::Telegram { uid, message } => (uid, message),
+                cts::Utterance::Empty => {
+                    warn!("[listener] пустое сообщение");
+                    push_event(&proxy, "log", "✗ пустое сообщение");
+                    push_event(&proxy, "activity", "");
+                    flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    return;
+                }
+                // Диктовка выключена ИЛИ контакт/команда не распознаны → в буфер обмена.
+                other => {
+                    let reason = match other {
+                        cts::Utterance::Unrecognized(e) => e,
+                        _ => "команда не распознана".to_string(),
+                    };
+                    warn!("[listener] {}", reason);
                     let to_copy = text.trim().to_string();
                     let copy_ok = arboard::Clipboard::new()
                         .and_then(|mut c| c.set_text(to_copy.clone()))
                         .is_ok();
                     if copy_ok {
-                        push_event(&proxy, "log", &format!("✗ {} · текст в буфере: «{}»", e, to_copy));
-                        push_event(&proxy, "activity", "✗ контакт не найден — текст в буфере");
+                        push_event(&proxy, "log", &format!("✗ {} · текст в буфере: «{}»", reason, to_copy));
+                        push_event(&proxy, "activity", "✗ не распознано — текст в буфере");
                     } else {
-                        push_event(&proxy, "log", &format!("✗ parse: {}", e));
+                        push_event(&proxy, "log", &format!("✗ parse: {}", reason));
                         push_event(&proxy, "activity", "");
                     }
                     flash_overlay(&proxy, UiLoopEvent::OverlayError);
                     return;
                 }
-                },
             };
             if message.is_empty() {
                 warn!("[listener] пустое сообщение");
@@ -2379,7 +1525,10 @@ fn cmd_login_qr_start(
                 Err(e) => return err(format!("connect: {}", e)),
             }
         }
-        slot.as_ref().unwrap().clone()
+        match slot.as_ref() {
+            Some(c) => c.clone(),
+            None => return err("Telegram-клиент недоступен"),
+        }
     };
 
     if rt.block_on(c.is_authorized()).unwrap_or(false) {

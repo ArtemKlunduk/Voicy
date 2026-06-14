@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tracing::{info, warn};
+use tracing::{debug, info};
 
 pub type Contacts = HashMap<String, i64>;
 
@@ -180,83 +180,25 @@ const TRIGGERS: &[&str] = &[
 ///   3) Если шаг 1 не нашёл триггер — допускаем DL≤1 на первом токене, на случай
 ///      whisper'овской ослышки.
 pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), String> {
-    // Нормализация: пунктуация (",.!?;:" итд) → пробелы, лишние пробелы схлопываются.
-    // «Напиши, тиме, привет.» → «напиши тиме привет»
-    let normalized: String = text
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '\t' { c } else { ' ' })
-        .collect();
-    let t: String = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Нормализация для матчинга: пунктуация → пробелы, lowercase, схлопывание.
+    // «Напиши, тиме, привет.» → «напиши тиме привет». Сам ТЕКСT сообщения позже
+    // восстанавливаем из оригинала (recover_original_message), чтобы не потерять
+    // регистр и пунктуацию модели.
+    let t = normalize_for_match(text);
     if t.is_empty() {
         return Err(format!("пустой текст: «{}»", text));
     }
 
-    // Триггеры в порядке убывания длины: «напишите» проверяется раньше «напиши»,
-    // чтобы префикс-матч не поглотил длинный триггер коротким.
-    let mut sorted_triggers: Vec<&&str> = TRIGGERS.iter().collect();
-    sorted_triggers.sort_by_key(|s| std::cmp::Reverse(s.len()));
-
-    // Шаг 1: префикс-матч триггера (включая склейки «напишичине»).
-    let mut found: Option<(&'static str, String)> = None;
-    for &&trig in &sorted_triggers {
-        if t.starts_with(trig) {
-            let rest = t[trig.len()..].trim_start().to_string();
-            found = Some((trig, rest));
-            break;
+    // Триггер отправки («напиши/отправь/write/…»). Детект вынесен в find_trigger,
+    // чтобы тем же кодом отличать команду-отправку от диктовки (looks_like_send_command).
+    let (used, rest) = match find_trigger(&t) {
+        Some(x) => x,
+        None => {
+            return Err(format!(
+                "команда не распознана (ожидалось «напиши» / «отправь»): «{}»",
+                text
+            ))
         }
-    }
-
-    // Шаг 1b: fuzzy-fallback если префикс-матч не сработал. Ослышка на 1 правку:
-    // «напешь маше» → DL(«напешь», «напиши»)=2 — не пройдёт. «напиши»→«напши»=1 — да.
-    // Делаем только для первого токена ≥4 символов, чтобы не путать с короткими словами.
-    if found.is_none() {
-        let first_tok = t.split_whitespace().next().unwrap_or("");
-        if first_tok.chars().count() >= 4 {
-            for &&trig in &sorted_triggers {
-                if damerau_levenshtein(first_tok, trig) <= 1 {
-                    let rest = t[first_tok.len()..].trim_start().to_string();
-                    info!("[parse] fuzzy-trigger: '{}' ≈ '{}'", first_tok, trig);
-                    found = Some((trig, rest));
-                    break;
-                }
-            }
-        }
-    }
-
-    // Шаг 1c: триггер во 2-м или 3-м токене (whisper иногда вставляет в начало
-    // слова-артефакты вида «в», «и», «а» — «в райт ту майселф» вместо «врайт…»).
-    // Если первые 1-2 токена короткие (≤2 символов) и за ними идёт триггер —
-    // принимаем как trigger.
-    if found.is_none() {
-        let toks: Vec<&str> = t.split_whitespace().collect();
-        // Сколько лидирующих коротких артефактов пропустить (max 2).
-        let mut skip = 0usize;
-        for tk in toks.iter().take(2) {
-            if tk.chars().count() <= 2 {
-                skip += 1;
-            } else {
-                break;
-            }
-        }
-        if skip > 0 && toks.len() > skip {
-            let candidate = toks[skip..].join(" ");
-            for &&trig in &sorted_triggers {
-                if candidate.starts_with(trig) {
-                    let rest = candidate[trig.len()..].trim_start().to_string();
-                    info!("[parse] skip-prefix trigger: skipped {} short tokens, '{}' matches '{}'", skip, &toks[..skip].join(" "), trig);
-                    found = Some((trig, rest));
-                    break;
-                }
-            }
-        }
-    }
-
-    let Some((used, rest)) = found else {
-        return Err(format!(
-            "команда не распознана (ожидалось «напиши» / «отправь»): «{}»",
-            text
-        ));
     };
     if rest.is_empty() {
         return Err("имя получателя не указано".into());
@@ -290,7 +232,12 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
         ));
     }
 
-    info!("[parse] text='{}' (trig='{}') → name='{}' message='{}'", text, used, name, message);
+    // Сообщение: восстанавливаем исходный регистр + пунктуацию из оригинала
+    // и приводим к грамотному виду (заглавная + точка) — как чистый вывод
+    // модели в Handy. До этого `message` был lowercase без пунктуации.
+    let message = format_message(&recover_original_message(text, &message));
+
+    debug!("[parse] text='{}' (trig='{}') → name='{}' message='{}'", text, used, name, message);
 
     // Спец-кейс: «себе/себя/сам/saved/избранное/myself/me/...» → Saved Messages.
     // Возвращаем sentinel UID = SELF_SENTINEL_UID, вызывающий код подставит
@@ -315,8 +262,8 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
             "self" | "selve" | "селф" | "сельф" | "селв"
         ) {
             let real_msg = msg_words[1..].join(" ");
-            info!("[parse] SELF match (my + self split) → SavedMessages, msg='{}'", real_msg);
-            return Ok((SELF_SENTINEL_UID, real_msg));
+            debug!("[parse] SELF match (my + self split) → SavedMessages, msg='{}'", real_msg);
+            return Ok((SELF_SENTINEL_UID, format_message(&real_msg)));
         }
     }
     // Также: «ту майселф» — «to» как соединительная частица перед получателем
@@ -328,8 +275,8 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
             "myself" | "myselve" | "self" | "майселф" | "майсельф" | "мисельф" | "себе" | "себя"
         ) {
             let real_msg = msg_words[1..].join(" ");
-            info!("[parse] SELF match (to + myself split) → SavedMessages, msg='{}'", real_msg);
-            return Ok((SELF_SENTINEL_UID, real_msg));
+            debug!("[parse] SELF match (to + myself split) → SavedMessages, msg='{}'", real_msg);
+            return Ok((SELF_SENTINEL_UID, format_message(&real_msg)));
         }
     }
 
@@ -343,10 +290,10 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
     let stem = russian_stem(&name);
     if stem != name {
         if let Some(&uid) = contacts.get(&stem) {
-            info!("[parse] STEM match: '{}' → '{}' → uid={}", name, stem, uid);
+            debug!("[parse] STEM match: '{}' → '{}' → uid={}", name, stem, uid);
             return Ok((uid, message));
         }
-        info!("[parse] stem '{}' not in contacts, → fuzzy", stem);
+        debug!("[parse] stem '{}' not in contacts, → fuzzy", stem);
     }
 
     // Топ-5 кандидатов по фаззи-скору — пишем в лог чтобы видеть почему выбран не тот
@@ -360,7 +307,7 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
         .take(5)
         .map(|(s, uid, a)| format!("{}={:.2}({})", a, s, uid))
         .collect();
-    info!("[parse] fuzzy top5: {}", top.join(", "));
+    debug!("[parse] fuzzy top5: {}", top.join(", "));
 
     let best = scored.first().copied();
     // С DL-based fuzzy threshold можно вернуть на 0.55:
@@ -369,15 +316,154 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
     let threshold = if name.chars().count() >= 3 { 0.55 } else { 0.85 };
     if let Some((s, uid, alias)) = best {
         if s >= threshold {
-            warn!("[parse] fuzzy «{}» → «{}» (score {:.2})", name, alias, s);
+            debug!("[parse] fuzzy «{}» → «{}» (score {:.2})", name, alias, s);
             return Ok((uid, message));
         }
     }
-    Err(format!(
-        "контакт «{}» не найден (есть: {})",
-        name,
-        contacts.keys().cloned().collect::<Vec<_>>().join(", ")
-    ))
+    Err(format!("контакт «{}» не найден", name))
+}
+
+/// Найти trigger отправки («напиши/отправь/write/…») в нормализованном `t`.
+/// Возвращает (trigger, rest), где rest — текст после триггера. Покрывает
+/// префикс-матч (вкл. склейки), fuzzy на 1 правку и пропуск 1-2 коротких
+/// ASR-артефактов в начале. Один источник правды и для parse_command, и для
+/// looks_like_send_command (диктовка vs отправка).
+fn find_trigger(t: &str) -> Option<(&'static str, String)> {
+    // Длинные триггеры раньше коротких: «напишите» до «напиши».
+    let mut sorted_triggers: Vec<&&str> = TRIGGERS.iter().collect();
+    sorted_triggers.sort_by_key(|s| std::cmp::Reverse(s.len()));
+
+    // Шаг 1: префикс-матч (включая склейки «напишичине»).
+    for &&trig in &sorted_triggers {
+        if t.starts_with(trig) {
+            return Some((trig, t[trig.len()..].trim_start().to_string()));
+        }
+    }
+    // Шаг 1b: fuzzy на 1 правку для первого токена ≥4 символов («напши»→«напиши»).
+    let first_tok = t.split_whitespace().next().unwrap_or("");
+    if first_tok.chars().count() >= 4 {
+        for &&trig in &sorted_triggers {
+            if damerau_levenshtein(first_tok, trig) <= 1 {
+                debug!("[parse] fuzzy-trigger: '{}' ≈ '{}'", first_tok, trig);
+                return Some((trig, t[first_tok.len()..].trim_start().to_string()));
+            }
+        }
+    }
+    // Шаг 1c: триггер после 1-2 коротких артефактов («в райт ту майселф»).
+    let toks: Vec<&str> = t.split_whitespace().collect();
+    let mut skip = 0usize;
+    for tk in toks.iter().take(2) {
+        if tk.chars().count() <= 2 { skip += 1; } else { break; }
+    }
+    if skip > 0 && toks.len() > skip {
+        let candidate = toks[skip..].join(" ");
+        for &&trig in &sorted_triggers {
+            if candidate.starts_with(trig) {
+                debug!("[parse] skip-prefix trigger: skipped {} short tokens, '{}' matches '{}'", skip, &toks[..skip].join(" "), trig);
+                return Some((trig, candidate[trig.len()..].trim_start().to_string()));
+            }
+        }
+    }
+    None
+}
+
+/// Похоже ли это на команду отправки (есть trigger)? Если нет — текст трактуется
+/// как диктовка (печатается в активное окно), а не как Telegram-команда.
+pub fn looks_like_send_command(text: &str) -> bool {
+    let t = normalize_for_match(text);
+    !t.is_empty() && find_trigger(&t).is_some()
+}
+
+/// Что делать с распознанной фразой. Единая точка маршрутизации для обоих
+/// конвейеров (GUI-listener и `voicy run`), чтобы «диктовка vs отправка» не
+/// разъезжалась между ними.
+pub enum Utterance {
+    /// Нет send-триггера → диктовка: печатать текст в активное окно.
+    Dictation(String),
+    /// Команда отправки. `uid` может быть SELF_SENTINEL_UID (→ Saved Messages) —
+    /// вызывающий код подставит реальный uid через get_me().
+    Telegram { uid: i64, message: String },
+    /// Триггер есть, но сообщение пустое.
+    Empty,
+    /// Триггер есть, но контакт/команда не распознаны (текст ошибки для UI).
+    Unrecognized(String),
+}
+
+/// Классифицировать фразу: диктовка (нет триггера) или Telegram-команда.
+pub fn classify(text: &str, contacts: &Contacts) -> Utterance {
+    if !looks_like_send_command(text) {
+        let d = text.trim();
+        return if d.is_empty() {
+            Utterance::Empty
+        } else {
+            Utterance::Dictation(d.to_string())
+        };
+    }
+    match parse_command(text, contacts) {
+        Ok((_, message)) if message.is_empty() => Utterance::Empty,
+        Ok((uid, message)) => Utterance::Telegram { uid, message },
+        Err(e) => Utterance::Unrecognized(e),
+    }
+}
+
+/// Нормализация для МАТЧИНГА (не для вывода): lowercase + пунктуация→пробел +
+/// схлопывание пробелов. «Напиши, Чине, привет.» → «напиши чине привет».
+fn normalize_for_match(s: &str) -> String {
+    let lowered: String = s
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '\t' { c } else { ' ' })
+        .collect();
+    lowered.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Восстановить исходный (с регистром и пунктуацией) текст сообщения.
+/// `norm_msg` — нормализованное сообщение из parse_command (lowercase, без
+/// пунктуации). Берём последние N слов ОРИГИНАЛА (N = число слов в norm_msg) и,
+/// если их нормализация == norm_msg (сообщение — чистый суффикс реплики, имя не
+/// склеено с текстом), возвращаем оригинальный вариант. Иначе fallback на
+/// norm_msg — лучше потерять регистр, чем отправить мусор.
+fn recover_original_message(text: &str, norm_msg: &str) -> String {
+    let n = norm_msg.split_whitespace().count();
+    if n == 0 {
+        return String::new();
+    }
+    let orig_words: Vec<&str> = text.split_whitespace().collect();
+    if orig_words.len() < n {
+        return norm_msg.to_string();
+    }
+    let tail = orig_words[orig_words.len() - n..].join(" ");
+    if normalize_for_match(&tail) == norm_msg {
+        tail
+    } else {
+        norm_msg.to_string()
+    }
+}
+
+/// Привести сообщение к грамотному виду (как чистый вывод ASR в Handy): схлопнуть
+/// пробелы, сделать первую букву заглавной, добавить точку в конце если нет
+/// завершающей пунктуации. Регистр и пунктуацию ВНУТРИ сообщения сохраняем —
+/// их корректно расставляет сама модель (Parakeet/Whisper).
+fn format_message(msg: &str) -> String {
+    let collapsed = msg.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return String::new();
+    }
+    let mut chars = collapsed.chars();
+    let mut out = String::with_capacity(collapsed.len() + 1);
+    if let Some(first) = chars.next() {
+        out.extend(first.to_uppercase());
+        out.push_str(chars.as_str());
+    }
+    let ends_clean = out
+        .chars()
+        .last()
+        .map(|c| matches!(c, '.' | '!' | '?' | '…'))
+        .unwrap_or(false);
+    if !ends_clean {
+        out.push('.');
+    }
+    out
 }
 
 /// Из строки `rest` (всё после триггера) вытащить (name, message).
@@ -571,7 +657,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("Напиши Чине привет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -579,7 +665,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("Напиши, Чине, привет.", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -588,7 +674,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напишичине привет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -597,7 +683,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши чинепривет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -606,7 +692,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напишичинепривет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -615,7 +701,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напишичинепривет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -623,7 +709,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напишичине как дела", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "как дела");
+        assert_eq!(msg, "Как дела.");
     }
 
     #[test]
@@ -633,7 +719,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши чинепривет от меня", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет от меня");
+        assert_eq!(msg, "Привет от меня.");
     }
 
     #[test]
@@ -642,7 +728,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напши чине привет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -664,7 +750,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напишите маше привет", &c).unwrap();
         assert_eq!(uid, 2002);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -674,7 +760,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши чи не привет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -684,7 +770,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши ти м а привет", &c).unwrap();
         assert_eq!(uid, 3003);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -695,7 +781,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши чи непривет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -704,7 +790,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("запиши чине привет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -713,7 +799,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напишу чине привет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -722,7 +808,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("пиши маше как дела", &c).unwrap();
         assert_eq!(uid, 2002);
-        assert_eq!(msg, "как дела");
+        assert_eq!(msg, "Как дела.");
     }
 
     #[test]
@@ -732,7 +818,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши ти ме привет", &c).unwrap();
         assert_eq!(uid, 3003);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -743,7 +829,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши тимке мол как дела", &c).unwrap();
         assert_eq!(uid, 3003);  // = тима через fuzzy
-        assert_eq!(msg, "мол как дела");  // НЕ «ке мол как дела»
+        assert_eq!(msg, "Мол как дела.");  // НЕ «ке мол как дела»
     }
 
     #[test]
@@ -753,7 +839,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши чинкой привет", &c).unwrap();
         assert_eq!(uid, 1001);  // = чине/чина через fuzzy
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -763,7 +849,7 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши чинепривет", &c).unwrap();
         assert_eq!(uid, 1001);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
     }
 
     #[test]
@@ -772,7 +858,7 @@ mod tests {
         c.insert("dan".into(), 4004);
         let (uid, msg) = parse_command("write dan hello there", &c).unwrap();
         assert_eq!(uid, 4004);
-        assert_eq!(msg, "hello there");
+        assert_eq!(msg, "Hello there.");
     }
 
     #[test]
@@ -781,7 +867,7 @@ mod tests {
         c.insert("alice".into(), 5005);
         let (uid, msg) = parse_command("send alice how are you", &c).unwrap();
         assert_eq!(uid, 5005);
-        assert_eq!(msg, "how are you");
+        assert_eq!(msg, "How are you.");
     }
 
     #[test]
@@ -790,7 +876,7 @@ mod tests {
         c.insert("bob".into(), 6006);
         let (uid, msg) = parse_command("text bob meeting at 5", &c).unwrap();
         assert_eq!(uid, 6006);
-        assert_eq!(msg, "meeting at 5");
+        assert_eq!(msg, "Meeting at 5.");
     }
 
     #[test]
@@ -799,7 +885,7 @@ mod tests {
         c.insert("carol".into(), 7007);
         let (uid, msg) = parse_command("message carol see you soon", &c).unwrap();
         assert_eq!(uid, 7007);
-        assert_eq!(msg, "see you soon");
+        assert_eq!(msg, "See you soon.");
     }
 
     #[test]
@@ -809,7 +895,7 @@ mod tests {
         c.insert("dan".into(), 4004);
         let (uid, msg) = parse_command("wrote dan hello", &c).unwrap();
         assert_eq!(uid, 4004);
-        assert_eq!(msg, "hello");
+        assert_eq!(msg, "Hello.");
     }
 
     #[test]
@@ -819,7 +905,7 @@ mod tests {
         c.insert("dan".into(), 4004);
         let (uid, msg) = parse_command("write to dan hello there", &c).unwrap();
         assert_eq!(uid, 4004);
-        assert_eq!(msg, "hello there");
+        assert_eq!(msg, "Hello there.");
     }
 
     #[test]
@@ -828,7 +914,100 @@ mod tests {
         let c = sample_contacts();
         let (uid, msg) = parse_command("напиши к тиме привет", &c).unwrap();
         assert_eq!(uid, 3003);
-        assert_eq!(msg, "привет");
+        assert_eq!(msg, "Привет.");
+    }
+
+    // ── Грамотное оформление сообщения (как чистый вывод модели в Handy) ──
+
+    #[test]
+    fn message_capitalized() {
+        let c = sample_contacts();
+        let (_, msg) = parse_command("напиши чине ну привет", &c).unwrap();
+        assert_eq!(msg, "Ну привет.");
+    }
+
+    #[test]
+    fn preserves_question_mark() {
+        // Модель ставит «?» — мы НЕ затираем его и НЕ добавляем точку.
+        let c = sample_contacts();
+        let (_, msg) = parse_command("Напиши Маше как дела?", &c).unwrap();
+        assert_eq!(msg, "Как дела?");
+    }
+
+    #[test]
+    fn preserves_comma_and_question() {
+        let c = sample_contacts();
+        let (_, msg) = parse_command("Напиши Чине привет, как дела?", &c).unwrap();
+        assert_eq!(msg, "Привет, как дела?");
+    }
+
+    #[test]
+    fn preserves_exclamation() {
+        let c = sample_contacts();
+        let (_, msg) = parse_command("Напиши Чине ура!", &c).unwrap();
+        assert_eq!(msg, "Ура!");
+    }
+
+    #[test]
+    fn preserves_internal_capitalization() {
+        // Имена собственные/регистр из вывода модели сохраняются.
+        let c = sample_contacts();
+        let (_, msg) = parse_command("Напиши Маше встретимся в Москве", &c).unwrap();
+        assert_eq!(msg, "Встретимся в Москве.");
+    }
+
+    #[test]
+    fn self_message_formatted() {
+        let c = sample_contacts();
+        let (uid, msg) = parse_command("напиши себе купить хлеб", &c).unwrap();
+        assert_eq!(uid, SELF_SENTINEL_UID);
+        assert_eq!(msg, "Купить хлеб.");
+    }
+
+    #[test]
+    fn format_message_unit() {
+        assert_eq!(format_message("привет"), "Привет.");
+        assert_eq!(format_message("привет."), "Привет.");
+        assert_eq!(format_message("как дела?"), "Как дела?");
+        assert_eq!(format_message("ура!"), "Ура!");
+        assert_eq!(format_message("  hello   world  "), "Hello world.");
+        assert_eq!(format_message(""), "");
+        assert_eq!(format_message("   "), "");
+    }
+
+    #[test]
+    fn recover_keeps_punctuation_and_case() {
+        // Сообщение — чистый суффикс реплики → возвращаем оригинал с пунктуацией.
+        assert_eq!(
+            recover_original_message("Напиши Чине привет, как дела?", "привет как дела"),
+            "привет, как дела?"
+        );
+        assert_eq!(
+            recover_original_message("Напиши Маше встретимся в Москве", "встретимся в москве"),
+            "встретимся в Москве"
+        );
+    }
+
+    #[test]
+    fn recover_fallback_on_glue() {
+        // Имя склеено с сообщением → суффикс по словам не совпадёт → fallback.
+        assert_eq!(recover_original_message("напиши чинепривет", "привет"), "привет");
+        assert_eq!(recover_original_message("", "привет"), "привет");
+    }
+
+    #[test]
+    fn detects_send_command_vs_dictation() {
+        // С триггером — это команда отправки.
+        assert!(looks_like_send_command("напиши маше привет"));
+        assert!(looks_like_send_command("отправь тиме как дела"));
+        assert!(looks_like_send_command("write dan hi"));
+        assert!(looks_like_send_command("напши чине привет")); // fuzzy-триггер
+        assert!(looks_like_send_command("напиши себе купить хлеб"));
+        // Без триггера — это диктовка (печать в активное окно), НЕ отправка.
+        assert!(!looks_like_send_command("какая сегодня погода"));
+        assert!(!looks_like_send_command("привет как дела"));
+        assert!(!looks_like_send_command("заметка купить молоко и хлеб"));
+        assert!(!looks_like_send_command(""));
     }
 }
 

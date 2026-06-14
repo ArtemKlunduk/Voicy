@@ -6,7 +6,7 @@
 //!
 //! Mel-спектрограмма зашита в `nemo128.onnx` — мы просто кормим f32 PCM 16kHz.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use parking_lot::Mutex;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -97,7 +97,9 @@ pub fn transcribe_samples(model_name: &str, model_dir: &Path, samples_i16: &[i16
     } else {
         info!("[parakeet] model already cached");
     }
-    let cached = slot.as_mut().unwrap();
+    let Some(cached) = slot.as_mut() else {
+        return Err(anyhow!("[parakeet] кэш модели неожиданно пуст"));
+    };
 
     info!("[parakeet] transcribe START ({} f32 samples)", samples.len());
     let t0 = std::time::Instant::now();
@@ -111,16 +113,34 @@ pub fn transcribe_samples(model_name: &str, model_dir: &Path, samples_i16: &[i16
         "[parakeet] transcribe OK: {:.2}s audio in {:.2}s ({:.1}× realtime) → «{}»",
         secs, dt, if dt > 0.0 { secs / dt } else { 0.0 }, result.text
     );
-    Ok(result.text.trim().to_string())
+    Ok(restore_yo(result.text.trim()))
 }
 
-/// Сбросить кэш модели (например после удаления весов / смены пути).
-pub fn drop_cache() {
-    if let Some(lock) = MODEL_CACHE.get() {
-        let mut slot = lock.lock();
-        if slot.is_some() {
-            warn!("[parakeet] dropping cached model");
-        }
-        *slot = None;
+/// Словарь parakeet-v3 НЕ содержит буквы «ё» (и byte-fallback токенов для неё),
+/// поэтому на звук «ё» модель эмитит unknown-токен id 0 → `vocab[0]` = "<unk>",
+/// и transcribe-rs не фильтрует спец-токены — в тексте остаётся литеральный
+/// "<unk>" («ещ<unk>», «вс<unk>»). В русской речи этот словарный `<unk>` почти
+/// всегда именно «ё», а «ё» стандартно коллапсирует в «е» — но возвращаем «ё»,
+/// чтобы восстановить ровно ту букву («ещё», «всё»). Делаем 1:1 замену.
+fn restore_yo(text: &str) -> String {
+    text.replace("<unk>", "ё")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restore_yo_replaces_unk() {
+        assert_eq!(restore_yo("ещ<unk>"), "ещё");
+        assert_eq!(restore_yo("вс<unk>"), "всё");
+        assert_eq!(restore_yo("<unk>лка"), "ёлка");
+        // несколько вхождений
+        assert_eq!(restore_yo("вс<unk> ещ<unk>"), "всё ещё");
+        // нет unk — текст без изменений
+        assert_eq!(restore_yo("привет, как дела?"), "привет, как дела?");
+        // не путаем с легитимным словарным токеном "unk" без скобок
+        assert_eq!(restore_yo("funk"), "funk");
     }
 }
+

@@ -1,0 +1,21 @@
+# Voicy configuration.
+# Rename this file to "voicy.toml" (in the same folder as voicy.exe) and fill
+# in the [telegram] section with your own API credentials.
+#
+# Get free credentials at https://my.telegram.org
+#   → API development tools → Create application → copy api_id and api_hash.
+
+model = "parakeet-v3"          # ASR engine: parakeet-v3 / parakeet-v2 / tiny / base / small / medium / large-v3
+recognition_language = "ru"    # "ru" / "en" / "auto"
+ui_theme = "dark"              # "light" / "dark"
+language = "en"                # UI language: "en" / "ru"
+dictation_enabled = true       # phrase without "напиши/write …" → typed into the active window
+
+[hotkey]
+modifiers = ["alt"]
+key = "x"
+
+[telegram]
+api_id = 0                     # ← REPLACE with your api_id from my.telegram.org
+api_hash = ""                  # ← REPLACE with your api_hash
+session = "voicy_session"

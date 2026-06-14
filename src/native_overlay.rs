@@ -49,6 +49,10 @@ const CENTER: f32 = (WIN_W as f32) / 2.0;
 const RING_DURATION_MS: u32 = 2200;
 const RING_DELAYS_MS: [u32; 3] = [0, 700, 1400];
 
+/// Через сколько мс терминальные состояния (Success/Error) сами скрываются.
+/// Recording НЕ авто-скрывается — анимация держится пока длится запись.
+const AUTO_HIDE_MS: u32 = 1800;
+
 // Палитра design system
 fn sage_soft() -> Color { Color::from_rgba8(0xD6, 0xE6, 0xCF, 0xFF) }
 fn sage() -> Color { Color::from_rgba8(0xA8, 0xC8, 0xA0, 0xFF) }
@@ -63,8 +67,6 @@ pub enum State {
     Recording,
     Success,
     Error,
-    AiListening,
-    AiThinking,
 }
 
 static SENDER: OnceLock<Sender<State>> = OnceLock::new();
@@ -131,6 +133,19 @@ fn overlay_thread(rx: Receiver<State>) {
                 }
             }
             last_rendered = Instant::now() - std::time::Duration::from_secs(1); // force redraw
+        }
+
+        // Авто-скрытие терминальных состояний (Success/Error) через AUTO_HIDE_MS.
+        // Recording никогда не авто-скрывается — держим анимацию пока идёт запись.
+        // Любое новое состояние сбрасывает state_started, поэтому новый Recording
+        // сам отменяет отложенное скрытие. Скрытие делается ЗДЕСЬ, а не внешним
+        // таймером — иначе устаревший таймер от прошлого сообщения скрывал бы
+        // оверлей прямо во время следующей записи.
+        if matches!(state, State::Success | State::Error)
+            && state_started.elapsed().as_millis() as u32 >= AUTO_HIDE_MS
+        {
+            state = State::Hidden;
+            unsafe { ShowWindow(hwnd, SW_HIDE); }
         }
 
         // Прокачиваем win32-сообщения (нужно для корректного поведения окна).
@@ -254,20 +269,6 @@ unsafe fn render_and_push(hwnd: HWND, state: State, elapsed_ms: u32) {
             draw_glow(&mut pixmap, CENTER, CENTER, danger(), ORB_R + 10.0, 0.18);
             draw_orb(&mut pixmap, danger());
             draw_x_icon(&mut pixmap, white());
-        }
-        State::AiListening => {
-            let orb_c = Color::from_rgba8(0xB8, 0xD4, 0xE8, 0xFF);
-            draw_glow(&mut pixmap, CENTER, CENTER, orb_c, ORB_R + 10.0, 0.18);
-            draw_halo_rings(&mut pixmap, elapsed_ms, Color::from_rgba8(0x7B, 0x9E, 0xC9, 0xFF));
-            draw_orb(&mut pixmap, orb_c);
-            draw_mic_icon(&mut pixmap, Color::from_rgba8(0x2E, 0x4A, 0x6E, 0xFF));
-        }
-        State::AiThinking => {
-            let orb_c = Color::from_rgba8(0xF0, 0xD4, 0xA8, 0xFF);
-            draw_glow(&mut pixmap, CENTER, CENTER, orb_c, ORB_R + 10.0, 0.18);
-            draw_halo_rings(&mut pixmap, elapsed_ms, Color::from_rgba8(0xD4, 0xA5, 0x6A, 0xFF));
-            draw_orb(&mut pixmap, orb_c);
-            draw_spinner_icon(&mut pixmap, elapsed_ms, Color::from_rgba8(0x6B, 0x4A, 0x2A, 0xFF));
         }
         State::Hidden => return,
     }
@@ -461,45 +462,6 @@ fn draw_x_icon(pixmap: &mut Pixmap, color: Color) {
     pb.line_to(ox + 6.0 * scale, oy + 18.0 * scale);
     pb.move_to(ox + 6.0 * scale, oy + 6.0 * scale);
     pb.line_to(ox + 18.0 * scale, oy + 18.0 * scale);
-    if let Some(path) = pb.finish() {
-        pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-    }
-}
-
-fn draw_spinner_icon(pixmap: &mut Pixmap, elapsed_ms: u32, color: Color) {
-    // Вращающаяся дуга — индикатор "думаю"
-    let icon_size = 32.0;
-    let scale = icon_size / 24.0;
-    let cx = CENTER;
-    let cy = CENTER;
-    let r = 10.0 * scale;
-
-    let angle = (elapsed_ms as f32 / 800.0) % (2.0 * std::f32::consts::PI);
-    let arc_len = 1.5; // длина дуги в радианах
-
-    let start_angle = angle;
-    let end_angle = angle + arc_len;
-
-    let mut paint = Paint::default();
-    paint.set_color(color);
-    paint.anti_alias = true;
-    let mut stroke = Stroke::default();
-    stroke.width = 2.5 * scale;
-    stroke.line_cap = tiny_skia::LineCap::Round;
-
-    let mut pb = PathBuilder::new();
-    // Рисуем дугу от start_angle до end_angle
-    let steps = 20;
-    for i in 0..=steps {
-        let a = start_angle + (end_angle - start_angle) * (i as f32 / steps as f32);
-        let x = cx + r * a.cos();
-        let y = cy + r * a.sin();
-        if i == 0 {
-            pb.move_to(x, y);
-        } else {
-            pb.line_to(x, y);
-        }
-    }
     if let Some(path) = pb.finish() {
         pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
     }

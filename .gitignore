@@ -26,3 +26,10 @@ contacts.txt
 *.swp
 Thumbs.db
 .DS_Store
+
+# Installer build artifacts (бинари + готовые setup'ы — пересобираются упаковкой).
+# voicy.toml в payload уже покрыт правилом «voicy.toml» выше (креды не коммитим).
+/installer/Output/
+/installer/payload/*.exe
+/installer/payload/*.dll
+/installer/payload/*.ico
