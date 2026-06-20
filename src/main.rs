@@ -16,6 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+#[cfg(windows)]
+mod active_url;
 mod asr;
 mod audio;
 mod config;
@@ -197,9 +199,41 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        "download" => {
+            let url = args.get(2).ok_or_else(|| {
+                anyhow::anyhow!("usage: voicy download <url> [mp3|wav]")
+            })?;
+            let format = args.get(3).map(|s| s.as_str()).unwrap_or(&cfg.download_format);
+            cmd_download(&cfg, url, format)
+        }
+        "url" => {
+            // Диагностика захвата ссылки активной вкладки: UIA адресной строки
+            // с fallback на буфер. Foreground-окно читается в момент захвата,
+            // поэтому даём паузу переключиться на браузер (как у `voicy type`).
+            // Аргумент: число секунд задержки (по умолчанию 3, 0 = сразу).
+            #[cfg(windows)]
+            {
+                let arg = args.get(2).map(|s| s.as_str()).unwrap_or("");
+                if arg == "debug" {
+                    let hwnd = args.get(3).and_then(|s| s.parse::<isize>().ok());
+                    print!("{}", active_url::dump_foreground(hwnd));
+                } else {
+                    let delay: u64 = arg.parse().unwrap_or(3);
+                    if delay > 0 {
+                        println!("захват через {}s: переключись на вкладку браузера…", delay);
+                        std::thread::sleep(std::time::Duration::from_secs(delay));
+                    }
+                    match active_url::active_url() {
+                        Some(u) => println!("URL: {}", u),
+                        None => println!("(ссылка не найдена: открой вкладку в браузере или скопируй URL в буфер)"),
+                    }
+                }
+            }
+            Ok(())
+        }
         other => {
             eprintln!("unknown command: {}", other);
-            eprintln!("usage: voicy [info|record <s>|run|model download <name>|transcribe <wav>]");
+            eprintln!("usage: voicy [info|record <s>|run|model download <name>|transcribe <wav>|type <text>|url|download <url> [mp3|wav]]");
             std::process::exit(2);
         }
     }
@@ -433,6 +467,45 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                     return;
                 }
                 contacts::Utterance::Telegram { uid, message } => (uid, message),
+                contacts::Utterance::Download { format, dest } => {
+                    // «Скачай это [и скинь <контакт>]»: URL активной вкладки → бот →
+                    // пересылка файла. Этот код уже в spawned-треде, поэтому долгое
+                    // ожидание бота (до 120 c) не блокирует hotkey-листенер.
+                    #[cfg(windows)]
+                    {
+                        let url = match active_url::active_url() {
+                            Some(u) => u,
+                            None => {
+                                warn!("[hotkey] download: не нашёл URL активной вкладки");
+                                show_error();
+                                schedule_hide();
+                                return;
+                            }
+                        };
+                        let fmt = format.unwrap_or_else(|| cfg.download_format.clone());
+                        info!("[hotkey] download «{}» fmt={} dest={:?}", url, fmt, dest);
+                        let res = rt.block_on(telegram::download_via_bot(
+                            &client, &url, &fmt, &cfg.cloudpull_bot, &cfg.music_dest, dest,
+                        ));
+                        match res {
+                            Ok(()) => {
+                                info!("[hotkey] ✅ музыка отправлена");
+                                show_success();
+                            }
+                            Err(e) => {
+                                warn!("[hotkey] download: {}", e);
+                                show_error();
+                            }
+                        }
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        let _ = (format, dest);
+                        show_error();
+                    }
+                    schedule_hide();
+                    return;
+                }
                 _ => {
                     warn!("[hotkey] не распознано как команда отправки");
                     show_error();
@@ -538,9 +611,34 @@ fn cmd_send_tg(cfg: &config::Config, uid: i64, text: &str) -> Result<()> {
     })
 }
 
+/// Диагностика музыкального флоу: прогнать URL через бота напрямую, без голоса и
+/// браузера. `voicy download <url> [mp3|wav]`. Шлёт боту `/<формат> <url>`, ждёт
+/// файл и пересылает в music_dest (как продакшн-путь download_via_bot).
+fn cmd_download(cfg: &config::Config, url: &str, format: &str) -> Result<()> {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async {
+        let client = telegram::connect(cfg).await?;
+        if !telegram::is_signed_in(&client).await? {
+            anyhow::bail!("не залогинен. Запусти `voicy setup`");
+        }
+        println!(
+            "→ бот @{}: /{} {}  (жду файл, пересылка в {})",
+            cfg.cloudpull_bot.trim_start_matches('@'),
+            format,
+            url,
+            if cfg.music_dest.trim().is_empty() { "Saved Messages" } else { &cfg.music_dest }
+        );
+        telegram::download_via_bot(&client, url, format, &cfg.cloudpull_bot, &cfg.music_dest, None).await?;
+        println!("✅ готово");
+        Result::<()>::Ok(())
+    })
+}
+
 /// Диагностика: прогнать текст через contacts::parse_command (продакшн-путь
 /// голосового конвейера) и напечатать (uid, грамотно оформленное сообщение).
-/// Без отправки — безопасно для прогона множества тестовых фраз.
+/// Без отправки, безопасно для прогона множества тестовых фраз.
 fn cmd_parse(text: &str) -> Result<()> {
     let contacts = contacts::load(&contacts::default_path());
     match contacts::parse_command(text, &contacts) {

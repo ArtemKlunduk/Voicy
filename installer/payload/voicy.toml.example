@@ -11,6 +11,13 @@ ui_theme = "dark"              # "light" / "dark"
 language = "en"                # UI language: "en" / "ru"
 dictation_enabled = true       # phrase without "напиши/write …" → typed into the active window
 
+# Music download: say «скачай это» with a track open in the browser. Voicy grabs
+# the active tab URL, sends "/<format> <url>" to your downloader bot, and forwards
+# the file the bot replies with.
+cloudpull_bot = "cloudpullbot" # downloader bot username (no @)
+music_dest = ""                # where to forward the file: empty = Saved Messages, or "@chat" / numeric uid
+download_format = "mp3"        # default format when not spoken: "mp3" / "wav"
+
 [hotkey]
 modifiers = ["alt"]
 key = "x"

@@ -165,6 +165,142 @@ const TRIGGERS: &[&str] = &[
     "месседж", "месэдж",
 ];
 
+/// Фразы-команды «скачать музыку через бота». Расширяемый пул (как TRIGGERS):
+/// дозаполняем по мере появления новых формулировок и ASR-ослышек. Матчатся
+/// как ПРЕФИКС нормализованной реплики, поэтому многословные формы («сохрани
+/// музыку») точнее, чем голое «сохрани», и не ловят обычную диктовку.
+const DOWNLOAD_TRIGGERS: &[&str] = &[
+    "скачай это", "скачай трек", "скачай песню", "скачай музыку",
+    "скачай аудио", "скачай", "скачайте", "скачать",
+    "загрузи трек", "загрузи музыку", "загрузи песню", "загрузи", "загрузить",
+    "сохрани музыку", "сохрани трек", "сохрани песню", "сохрани аудио",
+    "download", "pull",
+    // Кириллический фонетический английский (Parakeet/Whisper).
+    "даунлоуд", "даунлоад", "пулл",
+];
+
+/// Это команда «скачать музыку»? Префикс-матч нормализованной реплики по пулу
+/// DOWNLOAD_TRIGGERS. Имени тут нет (бот один), только опциональный формат,
+/// поэтому возвращаем bool, а не (trigger, rest) как find_trigger.
+fn find_download_trigger(t: &str) -> bool {
+    DOWNLOAD_TRIGGERS.iter().any(|trig| t.starts_with(trig))
+}
+
+/// Достать аудиоформат из реплики: «...в wav/вав» даёт Some("wav"), явное «mp3»
+/// даёт Some("mp3"), иначе None (вызывающий подставит дефолт из конфига).
+/// Сканируем токены, чтобы поймать формат в любом месте («скачай это в вав»).
+fn parse_download_format(t: &str) -> Option<String> {
+    for tok in t.split_whitespace() {
+        match tok {
+            "wav" | "вав" | "вэйв" | "вейв" | "уэйв" => return Some("wav".to_string()),
+            "mp3" | "эмпэтри" | "мпэтри" | "эмпитри" => return Some("mp3".to_string()),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Ключевые слова «переслать получателю» внутри download-команды: «...и СКИНЬ Маше».
+const FORWARD_KEYWORDS: &[&str] = &[
+    "скинь", "скиньте", "кинь", "киньте",
+    "отправь", "отправьте", "перешли", "перешлите", "пришли", "пришлите",
+    "send", "forward",
+];
+
+/// Командные/форматные/служебные слова download-реплики. В fallback-скане
+/// получателя их пропускаем, чтобы случайно не принять за имя контакта. Сюда же
+/// «кей»: частый осколок ASR от «скинь» («с кей» вместо «скинь»).
+const DEST_STOPWORDS: &[&str] = &[
+    "скачай", "скачайте", "скачать", "загрузи", "загрузить", "сохрани",
+    "это", "эту", "этот", "трек", "песню", "песня", "музыку", "музыка", "аудио",
+    "и", "а", "в", "на", "к", "для", "с", "со", "же", "бы", "ну", "вот",
+    "download", "pull", "send", "forward",
+    "скинь", "скиньте", "кинь", "киньте", "отправь", "отправьте",
+    "перешли", "перешлите", "пришли", "пришлите", "кей",
+    "wav", "вав", "вэйв", "вейв", "уэйв", "mp3", "эмпэтри", "мпэтри", "эмпитри",
+];
+
+/// Если в реплике назван получатель («...и скинь Маше»), достать его uid.
+/// Два прохода:
+///   1) точный: текст сразу после forward-ключевого слова («скинь/отправь/...»);
+///   2) fallback: ASR часто рвёт «скинь» на «с кей» и ключевое слово теряется,
+///      поэтому сканируем токены справа налево, пропускаем команды/формат/предлоги
+///      и берём первый, что резолвится в контакт. Так «скачай это с кей Максим»
+///      всё равно уйдёт Максиму.
+/// None если получатель не назван/не распознан (шлём в music_dest из конфига).
+fn parse_download_dest(norm: &str, contacts: &Contacts) -> Option<i64> {
+    let toks: Vec<&str> = norm.split_whitespace().collect();
+
+    // 1) Точный путь: имя сразу после forward-ключевого слова.
+    if let Some(kw_pos) = toks.iter().rposition(|t| FORWARD_KEYWORDS.contains(t)) {
+        const PREPS: &[&str] = &["к", "в", "на", "для", "to", "for"];
+        let mut tail: Vec<&str> = toks[kw_pos + 1..].to_vec();
+        while !tail.is_empty() && PREPS.contains(&tail[0]) {
+            tail.remove(0);
+        }
+        if !tail.is_empty() {
+            let (name, _msg) = extract_name_and_message(&tail.join(" "), contacts);
+            // Ключевое слово названо явно → высокая уверенность, разрешаем fuzzy.
+            if let Some(uid) = resolve_contact_name(name.trim(), contacts, true) {
+                return Some(uid);
+            }
+        }
+    }
+
+    // 2) Fallback: первый справа осмысленный токен, который резолвится в контакт.
+    // Здесь ключевого слова НЕ было, поэтому только точное/стем-совпадение (без
+    // fuzzy): иначе случайное слово-филлер могло бы улететь чужому контакту.
+    for &tok in toks.iter().rev() {
+        if tok.chars().count() < 2 || DEST_STOPWORDS.contains(&tok) {
+            continue;
+        }
+        if let Some(uid) = resolve_contact_name(tok, contacts, false) {
+            return Some(uid);
+        }
+    }
+    None
+}
+
+/// Резолв имени контакта в uid (без сообщения): SELF-слова → SELF_SENTINEL_UID,
+/// иначе точное совпадение / русский стем, и (если `fuzzy`) fuzzy. Та же логика
+/// что в parse_command, вынесена для переиспользования в download-получателе.
+fn resolve_contact_name(name: &str, contacts: &Contacts, fuzzy: bool) -> Option<i64> {
+    let name = name.trim();
+    if name.chars().count() < 2 {
+        return None;
+    }
+    if matches!(name,
+        "себе" | "себя" | "сам" | "мне" |
+        "saved" | "избранное" | "избранные" | "favorites" |
+        "self" | "myself" | "myselve" | "me" |
+        "майселф" | "майсельф" | "майселв" | "мисельф" | "мисельв"
+    ) {
+        return Some(SELF_SENTINEL_UID);
+    }
+    if let Some(&uid) = contacts.get(name) {
+        return Some(uid);
+    }
+    let stem = russian_stem(name);
+    if stem != name {
+        if let Some(&uid) = contacts.get(&stem) {
+            return Some(uid);
+        }
+    }
+    if !fuzzy {
+        return None;
+    }
+    let mut scored: Vec<(f32, i64)> = contacts
+        .iter()
+        .map(|(alias, &uid)| (fuzzy_score(name, alias), uid))
+        .collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let threshold = if name.chars().count() >= 3 { 0.55 } else { 0.85 };
+    match scored.first() {
+        Some(&(s, uid)) if s >= threshold => Some(uid),
+        _ => None,
+    }
+}
+
 /// Распарсить распознанный текст: «<триггер> имя текст» → (uid, message) или ошибка.
 ///
 /// ASR часто склеивает или разделяет слова не так:
@@ -387,10 +523,27 @@ pub enum Utterance {
     Empty,
     /// Триггер есть, но контакт/команда не распознаны (текст ошибки для UI).
     Unrecognized(String),
+    /// Команда «скачать музыку»: взять URL активной вкладки и прогнать через бота.
+    /// `format` = None означает «формат не назван голосом» (берём дефолт конфига).
+    /// `dest` = Some(uid) если голосом назван получатель («...и скинь Маше»),
+    /// иначе None (пересылаем в music_dest из конфига). SELF_SENTINEL_UID = себе.
+    Download {
+        format: Option<String>,
+        dest: Option<i64>,
+    },
 }
 
 /// Классифицировать фразу: диктовка (нет триггера) или Telegram-команда.
 pub fn classify(text: &str, contacts: &Contacts) -> Utterance {
+    // Скачивание музыки проверяем ПЕРВЫМ: «скачай» не содержит send-триггера и
+    // иначе ушло бы в диктовку (печать в активное окно).
+    let norm = normalize_for_match(text);
+    if find_download_trigger(&norm) {
+        return Utterance::Download {
+            format: parse_download_format(&norm),
+            dest: parse_download_dest(&norm, contacts),
+        };
+    }
     if !looks_like_send_command(text) {
         let d = text.trim();
         return if d.is_empty() {
@@ -1003,11 +1156,112 @@ mod tests {
         assert!(looks_like_send_command("write dan hi"));
         assert!(looks_like_send_command("напши чине привет")); // fuzzy-триггер
         assert!(looks_like_send_command("напиши себе купить хлеб"));
-        // Без триггера — это диктовка (печать в активное окно), НЕ отправка.
+        // Без триггера это диктовка (печать в активное окно), НЕ отправка.
         assert!(!looks_like_send_command("какая сегодня погода"));
         assert!(!looks_like_send_command("привет как дела"));
         assert!(!looks_like_send_command("заметка купить молоко и хлеб"));
         assert!(!looks_like_send_command(""));
+    }
+
+    #[test]
+    fn detects_download_command() {
+        let c = sample_contacts();
+        // «скачай ...»: Download, формат не назван, None (дефолт конфига).
+        assert!(matches!(
+            classify("скачай это", &c),
+            Utterance::Download { format: None, .. }
+        ));
+        assert!(matches!(
+            classify("Скачай трек.", &c),
+            Utterance::Download { format: None, .. }
+        ));
+        assert!(matches!(
+            classify("сохрани музыку", &c),
+            Utterance::Download { format: None, .. }
+        ));
+        assert!(matches!(
+            classify("download this", &c),
+            Utterance::Download { format: None, .. }
+        ));
+    }
+
+    #[test]
+    fn download_format_parsed() {
+        let c = sample_contacts();
+        // «в wav» / «в вав»: Some("wav").
+        assert!(matches!(
+            classify("скачай это в wav", &c),
+            Utterance::Download { format: Some(f), .. } if f == "wav"
+        ));
+        assert!(matches!(
+            classify("скачай трек в вав", &c),
+            Utterance::Download { format: Some(f), .. } if f == "wav"
+        ));
+        // Явный mp3 в реплике: Some("mp3").
+        assert!(matches!(
+            classify("скачай это mp3", &c),
+            Utterance::Download { format: Some(f), .. } if f == "mp3"
+        ));
+    }
+
+    #[test]
+    fn download_with_forward_dest() {
+        let c = sample_contacts();
+        // «...и скинь Маше» → dest = uid Маши.
+        assert!(matches!(
+            classify("скачай это и скинь маше", &c),
+            Utterance::Download { dest: Some(2002), .. }
+        ));
+        // другой forward-глагол + формат вместе.
+        assert!(matches!(
+            classify("скачай это в wav отправь тиме", &c),
+            Utterance::Download { format: Some(f), dest: Some(3003) } if f == "wav"
+        ));
+        // «скинь себе» → SELF.
+        assert!(matches!(
+            classify("скачай это скинь себе", &c),
+            Utterance::Download { dest: Some(SELF_SENTINEL_UID), .. }
+        ));
+        // без получателя → dest None (пойдёт в music_dest).
+        assert!(matches!(
+            classify("скачай это", &c),
+            Utterance::Download { dest: None, .. }
+        ));
+        // ASR переврал «скинь» в «с кей» → fallback всё равно ловит имя.
+        assert!(matches!(
+            classify("скачай это с кей маше", &c),
+            Utterance::Download { dest: Some(2002), .. }
+        ));
+        // имя вообще без forward-глагола → тоже ловим (fallback-скан).
+        assert!(matches!(
+            classify("скачай это тиме", &c),
+            Utterance::Download { dest: Some(3003), .. }
+        ));
+        // «скинь мне» → SELF.
+        assert!(matches!(
+            classify("скачай это и скинь мне", &c),
+            Utterance::Download { dest: Some(SELF_SENTINEL_UID), .. }
+        ));
+        // чистая команда без имени не должна ложно зацепить контакт.
+        assert!(matches!(
+            classify("скачай этот трек в wav", &c),
+            Utterance::Download { dest: None, .. }
+        ));
+    }
+
+    #[test]
+    fn download_does_not_swallow_send_or_dictation() {
+        let c = sample_contacts();
+        // Команда отправки НЕ должна попасть в Download.
+        assert!(matches!(
+            classify("напиши маше привет", &c),
+            Utterance::Telegram { .. }
+        ));
+        // Обычная диктовка без download-триггера, это Dictation.
+        assert!(matches!(
+            classify("какая сегодня погода", &c),
+            Utterance::Dictation(_)
+        ));
     }
 }
 

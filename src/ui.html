@@ -1483,6 +1483,41 @@ dialog label {
             <button class="link" id="onboarding-replay-btn" data-i18n="onboarding_replay_btn">показать</button>
           </div>
         </div>
+
+        <div class="section-label"><span data-i18n="sec_music">Музыка</span></div>
+
+        <div class="item">
+          <div class="k" data-i18n="music_bot">Бот загрузки
+            <span class="d" data-i18n="music_bot_desc">Скажи «скачай это» с открытым треком в браузере: бот качает и отвечает файлом.</span>
+          </div>
+          <div class="v">
+            <input type="text" id="music-bot-input" class="contact-name-inp" style="width:190px;text-align:right;" placeholder="cloudpullbot" />
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="music_format">Формат
+            <span class="d" data-i18n="music_format_desc">По умолчанию, если формат не назван голосом.</span>
+          </div>
+          <div class="v">
+            <div class="vy-select" id="music-format-select" data-vy-select="music-format">
+              <button type="button" class="vy-select__trigger" aria-expanded="false">
+                <span class="label">…</span>
+                <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="vy-select__menu" hidden></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="music_dest">Куда слать
+            <span class="d" data-i18n="music_dest_desc">Пусто = Избранное. Или @username / числовой id чата.</span>
+          </div>
+          <div class="v">
+            <input type="text" id="music-dest-input" class="contact-name-inp" style="width:190px;text-align:right;" placeholder="Избранное" />
+          </div>
+        </div>
       </div>
     </section>
 
@@ -1898,6 +1933,10 @@ var locales = {
     fr_onb3_hint:         'нажми клавиши или клацни на них',
     fr_onb3_listening:    'слушаю…',
     recog_lang: 'Язык распознавания', recog_lang_desc: 'Язык для whisper. Авто-определение пока не поддерживается.',
+    sec_music: 'Музыка',
+    music_bot: 'Бот загрузки', music_bot_desc: 'Скажи «скачай это» с открытым треком в браузере: бот качает и отвечает файлом.',
+    music_format: 'Формат', music_format_desc: 'По умолчанию, если формат не назван голосом.',
+    music_dest: 'Куда слать', music_dest_desc: 'Пусто = Избранное. Или @username / числовой id чата.',
     models_title: 'Модели',
     model_active_now: 'Используется сейчас',
     contacts: 'Контакты',
@@ -2032,6 +2071,10 @@ var locales = {
     fr_onb3_hint:         'press the keys or tap them',
     fr_onb3_listening:    'listening…',
     recog_lang: 'Recognition language', recog_lang_desc: 'Whisper recognition language. Auto-detection is not yet supported.',
+    sec_music: 'Music',
+    music_bot: 'Downloader bot', music_bot_desc: 'Say «скачай это» / "download" with a track open in the browser: the bot downloads it and replies with a file.',
+    music_format: 'Format', music_format_desc: 'Default when the format is not spoken.',
+    music_dest: 'Forward to', music_dest_desc: 'Empty = Saved Messages. Or @username / numeric chat id.',
     models_title: 'Models',
     model_active_now: 'Active now',
     contacts: 'Contacts',
@@ -2427,6 +2470,20 @@ async function refresh() {
     startupToggle.classList.toggle("off", !startupRes.startup);
   }
 
+  // Music section: bot username, dest, format
+  var musicRes = await callIpc("music_config_get");
+  if (musicRes.ok) {
+    var mb = document.getElementById("music-bot-input");
+    var md = document.getElementById("music-dest-input");
+    if (mb && document.activeElement !== mb) mb.value = musicRes.bot || "";
+    if (md && document.activeElement !== md) md.value = musicRes.dest || "";
+    mountVySelect("music-format-select",
+      [{value:"mp3", label:"MP3"}, {value:"wav", label:"WAV"}],
+      musicRes.format || "mp3",
+      async function(v){ await callIpc("music_config_set", { format: v }); }
+    );
+  }
+
   document.getElementById("hotkey-display").innerHTML = renderHotkey(info.hotkey);
   document.getElementById("appdir").textContent = (info.contacts_path || "").replace(/[\\\/]contacts\.txt$/, "");
 
@@ -2651,6 +2708,7 @@ window.addEventListener("beforeunload", function () {
     if (window.ipc && window.ipc.postMessage) window.ipc.postMessage(msg);
   } catch (e) {}
 });
+var _musicSaveTimer = null;
 document.addEventListener("input", function (e) {
   var t = e.target;
   if (!t || !t.classList) return;
@@ -2659,6 +2717,14 @@ document.addEventListener("input", function (e) {
     if (_contacts[i]) { _contacts[i].name = t.value; scheduleSave(); }
   }
   if (t.id === "dlg-import-search") renderDialogList(t.value);
+  if (t.id === "music-bot-input" || t.id === "music-dest-input") {
+    clearTimeout(_musicSaveTimer);
+    _musicSaveTimer = setTimeout(function () {
+      var bot = (document.getElementById("music-bot-input") || {}).value || "";
+      var dest = (document.getElementById("music-dest-input") || {}).value || "";
+      callIpc("music_config_set", { bot: bot.trim(), dest: dest.trim() });
+    }, 600);
+  }
 });
 document.addEventListener("keydown", function (e) {
   var t = e.target;

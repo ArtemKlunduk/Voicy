@@ -23,7 +23,7 @@ parking_lot = "0.12"
 rdev = "0.5"
 ureq = { version = "2.10", features = ["tls"] }
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "fs", "time"] }
 grammers-client = "0.7"
 grammers-session = "0.7"
 tao = "0.30"
@@ -60,6 +60,9 @@ windows-sys = { version = "0.52", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# Чтение URL активной вкладки браузера через UI Automation (режим «скачай»).
+# Тянет windows-rs (уже в дереве через tao/wry), но с фичей UI_Automation.
+uiautomation = "0.13"
 
 
 # Подключим следующим стейджем:

@@ -542,6 +542,8 @@ fn dispatch(
         "feedback_config_get" => cmd_feedback_config_get(cfg),
         "feedback_config_set" => cmd_feedback_config_set(cfg, cfg_path, &msg.payload),
         "feedback_send" => cmd_feedback_send(rt, client, cfg, &msg.payload),
+        "music_config_get" => cmd_music_config_get(cfg),
+        "music_config_set" => cmd_music_config_set(cfg, cfg_path, &msg.payload),
         "_window_close" => {
             let _ = proxy.send_event(UiLoopEvent::WindowClose);
             serde_json::json!({ "ok": true })
@@ -812,6 +814,46 @@ fn cmd_language_set(
     }
     info!("[ui] language updated: {}", val);
     serde_json::json!({ "ok": true, "language": val })
+}
+
+/// Настройки раздела «Музыка»: бот-загрузчик, формат, куда пересылать файл.
+/// Читается голосовым конвейером из общего cfg (Arc<Mutex>), так что сохранение
+/// тут же подхватывается следующей командой «скачай это».
+fn cmd_music_config_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({
+        "ok": true,
+        "bot": c.cloudpull_bot,
+        "dest": c.music_dest,
+        "format": c.download_format,
+    })
+}
+
+fn cmd_music_config_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let mut c = cfg.lock();
+    if let Some(bot) = payload.get("bot").and_then(|v| v.as_str()) {
+        let cleaned = bot.trim().trim_start_matches('@').trim().to_string();
+        // Пустой бот сломал бы скачивание, поэтому возвращаем дефолт.
+        c.cloudpull_bot = if cleaned.is_empty() { "cloudpullbot".to_string() } else { cleaned };
+    }
+    if let Some(dest) = payload.get("dest").and_then(|v| v.as_str()) {
+        // Пусто = Saved Messages, это валидно.
+        c.music_dest = dest.trim().to_string();
+    }
+    if let Some(fmt) = payload.get("format").and_then(|v| v.as_str()) {
+        if fmt == "mp3" || fmt == "wav" {
+            c.download_format = fmt.to_string();
+        }
+    }
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    info!("[ui] music updated: bot={} dest={} fmt={}", c.cloudpull_bot, c.music_dest, c.download_format);
+    serde_json::json!({ "ok": true })
 }
 
 fn cmd_telegram_dialogs(
@@ -1387,6 +1429,59 @@ fn cmd_listener_start(
                     return;
                 }
                 cts::Utterance::Telegram { uid, message } => (uid, message),
+                cts::Utterance::Download { format, dest } => {
+                    // «Скачай это [и скинь <контакт>]»: URL активной вкладки → бот →
+                    // пересылка файла. Долгий бот-цикл (до 120 c) уносим в отдельный
+                    // тред, чтобы listener-pipeline освободился сразу (новые Alt+X).
+                    #[cfg(windows)]
+                    if let Some(url) = crate::active_url::active_url() {
+                        if let Some(client) = client_slot.lock().as_ref().cloned() {
+                            let fmt = format.clone().unwrap_or_else(|| cfg.download_format.clone());
+                            let bot = cfg.cloudpull_bot.clone();
+                            let music_dest = cfg.music_dest.clone();
+                            let dest_override = dest;
+                            let rt2 = rt.clone();
+                            let proxy2 = proxy.clone();
+                            push_event(&proxy, "log", &format!("⬇ скачиваю «{}» ({})…", url, fmt));
+                            push_event(&proxy, "activity", &format!("⬇ скачиваю ({})…", fmt));
+                            std::thread::spawn(move || {
+                                let res = rt2.block_on(telegram::download_via_bot(
+                                    &client, &url, &fmt, &bot, &music_dest, dest_override,
+                                ));
+                                match res {
+                                    Ok(()) => {
+                                        info!("[listener] ✅ музыка отправлена");
+                                        push_event(&proxy2, "log", "✅ музыка отправлена");
+                                        push_event(&proxy2, "activity", "✅ музыка отправлена");
+                                        flash_overlay(&proxy2, UiLoopEvent::OverlaySuccess);
+                                    }
+                                    Err(e) => {
+                                        warn!("[listener] download: {}", e);
+                                        push_event(&proxy2, "log", &format!("✗ download: {}", e));
+                                        push_event(&proxy2, "activity", "");
+                                        flash_overlay(&proxy2, UiLoopEvent::OverlayError);
+                                    }
+                                }
+                            });
+                        } else {
+                            warn!("[listener] download: нет Telegram-клиента");
+                            push_event(&proxy, "log", "✗ не залогинен в Telegram, жми Login");
+                            push_event(&proxy, "activity", "");
+                            flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                        }
+                    } else {
+                        warn!("[listener] download: нет URL активной вкладки");
+                        push_event(&proxy, "log", "✗ не нашёл ссылку (открой трек в браузере)");
+                        push_event(&proxy, "activity", "");
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        let _ = (format, dest);
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    }
+                    return;
+                }
                 cts::Utterance::Empty => {
                     warn!("[listener] пустое сообщение");
                     push_event(&proxy, "log", "✗ пустое сообщение");

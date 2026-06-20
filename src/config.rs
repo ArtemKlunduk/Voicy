@@ -72,6 +72,17 @@ pub struct Config {
     /// Telegram User ID разработчика для прямой отправки feedback.
     #[serde(default = "default_feedback_dev_uid")]
     pub feedback_dev_uid: i64,
+    /// Бот-загрузчик музыки (username без @). Голос «скачай это» шлёт ему
+    /// `/<формат> <url>`, бот отвечает аудиофайлом. См. download_via_bot.
+    #[serde(default = "default_cloudpull_bot")]
+    pub cloudpull_bot: String,
+    /// Куда пересылать скачанный файл: пусто = Saved Messages (себе), либо
+    /// «@username» / числовой uid музыкального чата.
+    #[serde(default)]
+    pub music_dest: String,
+    /// Формат по умолчанию, если он не назван голосом: "mp3" | "wav".
+    #[serde(default = "default_download_format")]
+    pub download_format: String,
 }
 
 fn default_theme() -> String { "light".into() }
@@ -80,6 +91,8 @@ fn default_dictation() -> bool { true }
 fn default_startup_launch() -> bool { false }
 fn default_language() -> String { "en".into() }
 fn default_feedback_dev_uid() -> i64 { 882983468 }
+fn default_cloudpull_bot() -> String { "cloudpullbot".into() }
+fn default_download_format() -> String { "mp3".into() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -111,6 +124,9 @@ impl Default for Config {
             language: "en".into(),
             feedback_dev_username: String::new(),
             feedback_dev_uid: default_feedback_dev_uid(),
+            cloudpull_bot: default_cloudpull_bot(),
+            music_dest: String::new(),
+            download_format: default_download_format(),
         }
     }
 }

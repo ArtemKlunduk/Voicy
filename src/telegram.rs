@@ -3,6 +3,7 @@
 
 use crate::config::Config;
 use anyhow::{anyhow, Context, Result};
+use grammers_client::types::Media;
 use grammers_client::{Client, Config as TgConfig, FixedReconnect, InitParams, SignInError};
 use grammers_session::{PackedChat, Session};
 use parking_lot::Mutex;
@@ -148,9 +149,9 @@ fn log_session_state(label: &str, session: &Session, path: &std::path::Path) {
     );
 }
 
-/// Подключиться к Telegram. Если сессия валидна — возвращаем готового Client.
-/// Если нет — Err (вызывай `interactive_login` отдельно).
-pub async fn connect(cfg: &Config) -> Result<Client> {
+/// Низкоуровневый коннект: загрузить сессию с диска и поднять Client. Лечение
+/// self-user тут НЕ делается (это делает `connect`).
+async fn build_client(cfg: &Config) -> Result<Client> {
     let sp = session_path(cfg);
     let session = Session::load_file_or_create(&sp).context("Session::load")?;
     log_session_state("connect(load)", &session, &sp);
@@ -159,18 +160,58 @@ pub async fn connect(cfg: &Config) -> Result<Client> {
         reconnection_policy: &RECONN,
         ..Default::default()
     };
-    let client = match Client::connect(TgConfig {
+    match Client::connect(TgConfig {
         session,
         api_id: cfg.telegram.api_id,
         api_hash: cfg.telegram.api_hash.clone(),
         params,
     }).await {
-        Ok(c) => c,
+        Ok(c) => Ok(c),
         Err(e) => {
             warn!("[tg-connect] Client::connect FAILED: {:?}", e);
-            return Err(anyhow!("Client::connect: {:?}", e));
+            Err(anyhow!("Client::connect: {:?}", e))
         }
-    };
+    }
+}
+
+/// Домашний DC: тот, для которого в сессии есть auth-key. Нужен только чтобы
+/// записать self-user в сессию (см. `connect`); ChatHashCache сам dc игнорирует.
+fn home_dc(client: &Client) -> i32 {
+    let sess = client.session();
+    for dc in sess.get_dcs() {
+        if sess.dc_auth_key(dc.id).is_some() {
+            return dc.id;
+        }
+    }
+    2 // дефолт: DC2 (самый частый home), если auth-key не нашёлся
+}
+
+/// Подключиться к Telegram. Если сессия валидна, возвращаем готового Client,
+/// иначе Err (вызывай `interactive_login` отдельно).
+///
+/// ЛЕЧЕНИЕ self-user: старые/кривые сессии бывают авторизованы по сети
+/// (`is_authorized()` = true), но без сохранённого self-user
+/// (`session.get_user()` = None). Тогда grammers строит ChatHashCache с
+/// self_id = None и ПАДАЕТ паникой `tried to query self_id before it's known`
+/// при первом же `updateShortMessage` (например мгновенный ответ бота в режиме
+/// «скачай»). Лечим до любых операций: тянем get_me, пишем self-user в сессию,
+/// сохраняем и реконнектимся, чтобы свежий ChatHashCache получил self_id.
+pub async fn connect(cfg: &Config) -> Result<Client> {
+    let client = build_client(cfg).await?;
+    if client.session().get_user().is_none() {
+        // get_me падает с 401 если реально не залогинены: тогда лечить нечего.
+        if let Ok(me) = client.get_me().await {
+            let dc = home_dc(&client);
+            client.session().set_user(me.id(), dc, me.is_bot());
+            match save_session(&client, cfg).await {
+                Ok(()) => {
+                    info!("[tg] self-user восстановлен id={} dc={}, реконнект", me.id(), dc);
+                    return build_client(cfg).await;
+                }
+                Err(e) => warn!("[tg] heal save_session: {} (продолжаем без реконнекта)", e),
+            }
+        }
+    }
     Ok(client)
 }
 
@@ -425,4 +466,165 @@ fn is_auth_expired(err: &str) -> bool {
         || err.contains("SESSION_REVOKED")
         || err.contains("AUTH_KEY_INVALID")
         || err.contains("USER_DEACTIVATED")
+}
+
+// ── Скачивание музыки через бота (@cloudpullbot) ────────────────────────────
+// Voicy остаётся тонким: резолвит бота, шлёт ему «/<формат> <url>», поллингом
+// ждёт ВХОДЯЩИЙ файл-документ и пересылает его в музыкальный чат. Всё тяжёлое
+// (само скачивание) на стороне бота. Без персистентного update-цикла: читаем
+// историю чата опросом, это проще и не конфликтует с остальным приложением.
+
+/// Резолв @username в PackedChat (+ кэш). Принимает «name» или «@name».
+async fn resolve_username_packed(client: &Client, username: &str) -> Result<PackedChat> {
+    let uname = username.trim().trim_start_matches('@');
+    let chat = client
+        .resolve_username(uname)
+        .await
+        .map_err(|e| anyhow!("resolve_username(@{}): {}", uname, e))?
+        .ok_or_else(|| anyhow!("@{} не найден в Telegram", uname))?;
+    let packed = chat.pack();
+    cache().lock().insert(chat.id(), packed);
+    Ok(packed)
+}
+
+/// PackedChat по числовому uid: из кэша, иначе листаем диалоги (как send_message).
+async fn resolve_uid_packed(client: &Client, uid: i64) -> Result<PackedChat> {
+    if let Some(p) = cache().lock().get(&uid).copied() {
+        return Ok(p);
+    }
+    let mut dialogs = client.iter_dialogs();
+    while let Some(d) = dialogs
+        .next()
+        .await
+        .map_err(|e| anyhow!("iter_dialogs: {}", e))?
+    {
+        let chat = d.chat();
+        let packed = chat.pack();
+        cache().lock().insert(chat.id(), packed);
+        if chat.id() == uid {
+            return Ok(packed);
+        }
+    }
+    Err(anyhow!("uid {} не найден в диалогах", uid))
+}
+
+/// Куда пересылать результат: пусто = Saved Messages (чат с собой), «@name» =
+/// username, число = uid.
+async fn resolve_music_dest(client: &Client, dest: &str) -> Result<PackedChat> {
+    let d = dest.trim();
+    if d.is_empty() {
+        let me = client.get_me().await.map_err(|e| anyhow!("get_me: {}", e))?;
+        return resolve_uid_packed(client, me.id()).await;
+    }
+    let digits = d.trim_start_matches('@');
+    if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit() || c == '-') {
+        if let Ok(uid) = digits.parse::<i64>() {
+            return resolve_uid_packed(client, uid).await;
+        }
+    }
+    resolve_username_packed(client, d).await
+}
+
+/// id последнего сообщения в чате (0 если пусто). База для «дождаться нового».
+async fn latest_msg_id(client: &Client, chat: PackedChat) -> Result<i32> {
+    let mut it = client.iter_messages(chat);
+    match it.next().await.map_err(|e| anyhow!("iter_messages: {}", e))? {
+        Some(m) => Ok(m.id()),
+        None => Ok(0),
+    }
+}
+
+/// Опросом дождаться первого ВХОДЯЩЕГО сообщения с документом и id > after_id.
+/// Бот отвечает аудиофайлом (Document). Таймаут защищает от зависания, если бот
+/// молчит. Опрашиваем верхушку истории раз в 2 секунды.
+async fn wait_for_file(
+    client: &Client,
+    chat: PackedChat,
+    after_id: i32,
+    timeout: Duration,
+) -> Result<i32> {
+    let start = std::time::Instant::now();
+    loop {
+        let mut it = client.iter_messages(chat);
+        // Верхушка истории (новейшие первыми); глубже after_id смотреть незачем.
+        for _ in 0..10 {
+            match it.next().await.map_err(|e| anyhow!("iter_messages: {}", e))? {
+                Some(m) => {
+                    if m.id() <= after_id {
+                        break;
+                    }
+                    if !m.outgoing() && matches!(m.media(), Some(Media::Document(_))) {
+                        return Ok(m.id());
+                    }
+                }
+                None => break,
+            }
+        }
+        if start.elapsed() >= timeout {
+            return Err(anyhow!("бот не прислал файл за {} c", timeout.as_secs()));
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// Переслать сообщение `msg_id` из `source` в `dest`.
+async fn forward_msg(
+    client: &Client,
+    dest: PackedChat,
+    msg_id: i32,
+    source: PackedChat,
+) -> Result<()> {
+    let res = client
+        .forward_messages(dest, &[msg_id], source)
+        .await
+        .map_err(|e| anyhow!("forward_messages: {}", e))?;
+    if res.iter().all(|m| m.is_none()) {
+        return Err(anyhow!("пересылка не удалась (пустой ответ сервера)"));
+    }
+    Ok(())
+}
+
+/// Полный цикл «скачать музыку через бота»:
+///   1. резолв бота,
+///   2. baseline = id последнего сообщения чата с ботом,
+///   3. отправка боту команды `/<format> <url>` (как есть, без грам-форматтера),
+///   4. ожидание входящего файла-документа,
+///   5. пересылка файла в `music_dest`.
+/// Сериализовано по своей природе (одно скачивание за вызов): корреляция ответа
+/// идёт по «первый новый входящий документ после baseline».
+pub async fn download_via_bot(
+    client: &Client,
+    url: &str,
+    format: &str,
+    bot_username: &str,
+    music_dest: &str,
+    dest_override: Option<i64>,
+) -> Result<()> {
+    let bot = resolve_username_packed(client, bot_username).await?;
+    let baseline = latest_msg_id(client, bot).await.unwrap_or(0);
+    // Команда боту: слеш-формат строго как есть, грамматический форматтер
+    // (заглавная/точка) сюда НЕ применяем, иначе бот не распознает команду.
+    let command = format!("/{} {}", format, url);
+    client
+        .send_message(bot, command.as_str())
+        .await
+        .map_err(|e| anyhow!("отправка боту: {}", e))?;
+    info!("[tg] → бот: {}", command);
+    let file_id = wait_for_file(client, bot, baseline, Duration::from_secs(120)).await?;
+    // Получатель: явный (назван голосом «...и скинь Маше», SELF → себе) перебивает
+    // music_dest из конфига.
+    let dest = match dest_override {
+        Some(uid) => {
+            let real = if uid == crate::contacts::SELF_SENTINEL_UID {
+                client.get_me().await.map_err(|e| anyhow!("get_me: {}", e))?.id()
+            } else {
+                uid
+            };
+            resolve_uid_packed(client, real).await?
+        }
+        None => resolve_music_dest(client, music_dest).await?,
+    };
+    forward_msg(client, dest, file_id, bot).await?;
+    info!("[tg] ✅ файл от бота переслан получателю");
+    Ok(())
 }
