@@ -508,8 +508,30 @@ async fn resolve_uid_packed(client: &Client, uid: i64) -> Result<PackedChat> {
     Err(anyhow!("uid {} не найден в диалогах", uid))
 }
 
-/// Куда пересылать результат: пусто = Saved Messages (чат с собой), «@name» =
-/// username, число = uid.
+/// Найти чат по НАЗВАНИЮ среди диалогов (case-insensitive). Нужно потому, что
+/// пользователь вписывает в «Куда слать» отображаемое имя чата (например
+/// «музыка» кириллицей), а username у такого чата нет.
+async fn resolve_by_title(client: &Client, title: &str) -> Result<PackedChat> {
+    let want = title.trim().to_lowercase();
+    let mut dialogs = client.iter_dialogs();
+    while let Some(d) = dialogs
+        .next()
+        .await
+        .map_err(|e| anyhow!("iter_dialogs: {}", e))?
+    {
+        let chat = d.chat();
+        if chat.name().trim().to_lowercase() == want {
+            let packed = chat.pack();
+            cache().lock().insert(chat.id(), packed);
+            return Ok(packed);
+        }
+    }
+    Err(anyhow!("чат «{}» не найден среди диалогов", title))
+}
+
+/// Куда пересылать результат: пусто = Saved Messages (чат с собой); число = uid;
+/// «@name» = username; иначе трактуем как НАЗВАНИЕ чата (ищем по диалогам, в т.ч.
+/// кириллица), а если не нашли по названию, пробуем как username.
 async fn resolve_music_dest(client: &Client, dest: &str) -> Result<PackedChat> {
     let d = dest.trim();
     if d.is_empty() {
@@ -522,7 +544,16 @@ async fn resolve_music_dest(client: &Client, dest: &str) -> Result<PackedChat> {
             return resolve_uid_packed(client, uid).await;
         }
     }
-    resolve_username_packed(client, d).await
+    if let Some(uname) = d.strip_prefix('@') {
+        return resolve_username_packed(client, uname).await;
+    }
+    // Без @: сначала по названию чата, потом как username (на случай ascii-ника).
+    match resolve_by_title(client, d).await {
+        Ok(p) => Ok(p),
+        Err(title_err) => resolve_username_packed(client, d)
+            .await
+            .map_err(|_| title_err),
+    }
 }
 
 /// id последнего сообщения в чате (0 если пусто). База для «дождаться нового».
@@ -614,14 +645,12 @@ pub async fn download_via_bot(
     // Получатель: явный (назван голосом «...и скинь Маше», SELF → себе) перебивает
     // music_dest из конфига.
     let dest = match dest_override {
-        Some(uid) => {
-            let real = if uid == crate::contacts::SELF_SENTINEL_UID {
-                client.get_me().await.map_err(|e| anyhow!("get_me: {}", e))?.id()
-            } else {
-                uid
-            };
-            resolve_uid_packed(client, real).await?
+        // «скинь мне/себе» при скачивании = дефолтный чат (music_dest), а НЕ
+        // Saved Messages: пользователь считает дефолтный чат «своим».
+        Some(uid) if uid == crate::contacts::SELF_SENTINEL_UID => {
+            resolve_music_dest(client, music_dest).await?
         }
+        Some(uid) => resolve_uid_packed(client, uid).await?,
         None => resolve_music_dest(client, music_dest).await?,
     };
     forward_msg(client, dest, file_id, bot).await?;
