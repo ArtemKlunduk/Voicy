@@ -19,10 +19,10 @@ feat/<name> ← short-lived feature branches → PR to main
 |---|---|---|
 | ASR + parser | `src/asr.rs`, `src/parakeet.rs`, `src/audio.rs`, `src/contacts.rs` | @tuwulalo |
 | Telegram | `src/telegram.rs` | @ArtemKlunduk |
-| UI | `src/ui.rs`, `src/ui.html` | @ArtemKlunduk |
-| Native overlay | `src/native_overlay.rs` | @tuwulalo |
-| Build / packaging | `Cargo.toml`, `build.rs`, `scripts/` | @tuwulalo |
-| AI / TTS | `src/ai_assistant.rs`, `src/gemini.rs`, `src/tts.rs` | @ArtemKlunduk |
+| Music download | `src/active_url.rs`, `download_via_bot` in `src/telegram.rs` | shared |
+| UI | `src/ui.rs`, `src/ui.html`, `src/config.rs` | @ArtemKlunduk |
+| Overlay + input | `src/native_overlay.rs`, `src/typing.rs`, `src/hotkey.rs` | @tuwulalo |
+| Build / packaging | `Cargo.toml`, `build.rs`, `scripts/`, `installer/` | @tuwulalo |
 
 "Owner" = first reviewer for PRs touching this area, not "only one allowed to edit."
 

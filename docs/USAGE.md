@@ -1,8 +1,8 @@
 # Voice commands
 
-Press and hold `Alt+X`, speak, release. Voicy will recognize what you said and dispatch the right action.
+Press and hold `Alt+X`, speak, release. Voicy recognizes what you said and acts on it through your Telegram.
 
-You can re-bind the hotkey in Settings → Input → Hotkey.
+Re-bind the hotkey in Settings → Input → Hotkey.
 
 ## Send a Telegram message
 
@@ -10,76 +10,53 @@ Format: **`<trigger> <contact> <message>`**
 
 | Triggers | Examples |
 |---|---|
-| `write` / `send` | `write tim on my way` |
-| `tell` | `tell mom I'll call later` |
 | Russian: `напиши` / `отправь` / `запиши` / `пиши` | `напиши тиме где ты` |
+| English: `write` / `send` / `text` | `write tim on my way` |
 
-**Smart parsing handles:**
-
-- **Slurred speech** — `writechinehi` → `write` `Chine` `hi`
-- **Split names** — `write chi ne hi` → `write` `Chine` `hi`
-- **Multiple aliases** — set up "tim", "tima", "timka" for the same person in Settings → Telegram
-- **Russian morphology** — `тиме` / `тимы` / `тимой` all match contact "Тима"
-
-If no recognized name found, Voicy shows a red `✗` overlay and logs the parse failure.
-
-## Browser control
-
-Voicy sends keyboard shortcuts to whatever browser tab is currently focused. Works on YouTube, Twitch, most video sites.
-
-| Command | What it does |
-|---|---|
-| `open YouTube <query>` | Open YouTube search page |
-| `play first video` / `play second` / ... | Open the Nth search result with autoplay |
-| `volume up [N percent]` | YouTube ↑ × ceil(N/5), default ~10% |
-| `volume down [N percent]` | YouTube ↓ |
-| `fullscreen` / `full screen` | Toggle F |
-| `pause` / `play` / `stop` | Space |
-| `skip forward [N seconds]` | YouTube → × ceil(N/5) |
-| `skip back [N seconds]` | YouTube ← |
-| `mute` / `unmute` | M |
-
-The YouTube tab needs to be focused for shortcuts to register. Voicy doesn't auto-switch tabs.
-
-## AI assistant
-
-Trigger: `give answer <question>` (or just `give answer` followed by your question after a pause).
+Send to yourself (Saved Messages) by naming the recipient «себе» / «мне» / `myself`:
 
 ```
-"Give answer — what is the capital of Mongolia"
-→ Voicy: "Ulaanbaatar."
+напиши себе купить хлеб
 ```
 
-**Backend priority:**
-1. **Gemini API** (~1-2 sec) if you set `gemini_api_key` in `voicy.toml` (free 1500 requests/day at https://aistudio.google.com/app/apikey)
-2. **Local LLM** (Qwen 0.5B / Llama 3.2 1B / Gemma 2 2B) — slower (~30s) but works offline. Configured in Settings → AI Assistant.
+Recognition is forgiving: glued words («напишичинепривет»), split names («напиши чи не привет») and Russian morphology («тиме» / «тимой» both match the contact «Тима») are handled. Add extra aliases per contact in Settings → Telegram. If no contact is recognized, Voicy shows a red `✗` overlay and copies the text to the clipboard so nothing is lost.
 
-Voicy speaks the answer back via Windows TTS (the system voice for your `ai_language` setting).
+## Dictation
 
-## Open URLs / search
+A phrase **without** a send-trigger is typed straight into whatever window is focused, like a dictation pad:
 
-| Command | Result |
+```
+(focus any text field) → «поехали в пятницу в шесть» → typed into the field
+```
+
+Toggle it in Settings → General.
+
+## Download music
+
+With a track open in your browser, say:
+
+| Say | Result |
 |---|---|
-| `open Google <query>` | Google search |
-| `open YouTube <query>` | YouTube search |
-| `open TikTok <query>` | TikTok search |
-| `open Twitch <query>` | Twitch search |
+| «скачай это» | Grab the active tab URL, hand it to your downloader bot, forward the audio to Saved Messages |
+| «скачай это в wav» | Same, but force WAV instead of MP3 |
+| «скачай это и скинь `<имя>`» | Forward the downloaded file to a contact instead |
 
-URL opens in your default browser.
+Configure the bot, default format and destination in Settings → Music. Keep the track's tab as the active window (Voicy reads its address bar); if it is not focused, Voicy scans your open browser windows as a fallback.
 
 ## Hotkey doesn't trigger?
 
-1. Check that the Listener badge shows **🟢 listening** in Settings → Telegram tab
-2. If your Telegram session expired, sign in again — Voicy keeps listening either way
-3. Some games/apps that grab raw keyboard input may prevent low-level hooks. Switch to a different hotkey via Settings → Input → change (try `Ctrl+Space` or `F8`)
-4. Antivirus / Windows Defender sometimes blocks WH_KEYBOARD_LL hooks. Whitelist `voicy.exe` in your security software.
+1. Check the Listener badge shows listening on the Settings → Telegram tab.
+2. If your Telegram session expired, sign in again; Voicy keeps listening either way.
+3. Some games/apps that grab raw keyboard input can block low-level hooks. Change the hotkey in Settings → Input.
+4. Antivirus / Windows Defender sometimes blocks `WH_KEYBOARD_LL` hooks. Whitelist `voicy.exe`.
 
-## Logs
+## Diagnostics & logs
 
-Voicy writes to stderr. To see logs:
+Voicy logs to `%APPDATA%\voicy\voicy.log` (rotated at 5 MB; content-bearing lines stay at debug level). Handy CLI commands when something misbehaves:
 
 ```powershell
-voicy.exe ui 2> voicy.log
+voicy.exe parse "напиши тиме привет"   # dry-run the parser, prints (uid, message), no send
+voicy.exe url                          # print the browser URL it would capture
+voicy.exe download <url> [mp3|wav]     # run the whole music flow for a URL
+voicy.exe type "текст"                 # test dictation typing into the active window
 ```
-
-Or just run from a terminal — output is live. Useful when debugging parser misses or Telegram errors.
