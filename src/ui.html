@@ -546,6 +546,8 @@ main { padding:0; height:100vh; display:flex; }
   user-select:text;
 }
 .contact-name-inp:focus { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-ring); }
+.cmd-item { align-items:flex-start; }
+.cmd-tags { width:300px; }
 .contact-uid {
   font-family:var(--mono); font-size:10.5px; color:var(--ink-3); padding:0 6px;
 }
@@ -578,7 +580,7 @@ main { padding:0; height:100vh; display:flex; }
   padding:4px 4px 4px 10px; border-radius:999px;
   font:600 12px/1.2 'Onest', system-ui, sans-serif;
 }
-.tag-x {
+.tag-x, .cmd-tag-x {
   width:16px; height:16px; min-width:16px;
   border-radius:999px; border:0; background:transparent;
   color:inherit; opacity:.55; cursor:pointer;
@@ -587,8 +589,8 @@ main { padding:0; height:100vh; display:flex; }
   transition: opacity 120ms cubic-bezier(.2,.6,.2,1),
               background 120ms cubic-bezier(.2,.6,.2,1);
 }
-.tag-x:hover { opacity:1; background:rgba(14,22,20,.12); }
-.tag-bare {
+.tag-x:hover, .cmd-tag-x:hover { opacity:1; background:rgba(14,22,20,.12); }
+.tag-bare, .cmd-bare {
   flex:1; min-width:80px;
   border:0; outline:0; background:transparent;
   font-family:var(--mono); font-size:11.5px; padding:2px 3px;
@@ -1527,6 +1529,43 @@ dialog label {
             <input type="text" id="music-dest-input" class="contact-name-inp" style="width:190px;text-align:right;" placeholder="Избранное" />
           </div>
         </div>
+
+        <div class="section-label"><span data-i18n="sec_commands">Команды</span></div>
+
+        <div class="item cmd-item">
+          <div class="k" data-i18n="cmd_send">Отправить сообщение
+            <span class="d" data-i18n="cmd_send_desc">«слово имя текст». Enter добавляет слово.</span>
+          </div>
+          <div class="v"><div class="tag-input cmd-tags" id="cmd-send-tags" data-cmd="send"></div></div>
+        </div>
+
+        <div class="item cmd-item">
+          <div class="k" data-i18n="cmd_download">Скачать музыку
+            <span class="d" data-i18n="cmd_download_desc">«слово …» берёт ссылку из активной вкладки.</span>
+          </div>
+          <div class="v"><div class="tag-input cmd-tags" id="cmd-download-tags" data-cmd="download"></div></div>
+        </div>
+
+        <div class="item cmd-item">
+          <div class="k" data-i18n="cmd_play">Включить трек
+            <span class="d" data-i18n="cmd_play_desc">«слово название» из канала с музыкой.</span>
+          </div>
+          <div class="v"><div class="tag-input cmd-tags" id="cmd-play-tags" data-cmd="play"></div></div>
+        </div>
+
+        <div class="item cmd-item">
+          <div class="k" data-i18n="cmd_forward">Переслать контакту
+            <span class="d" data-i18n="cmd_forward_desc">«…и слово Маше» при скачивании.</span>
+          </div>
+          <div class="v"><div class="tag-input cmd-tags" id="cmd-forward-tags" data-cmd="forward"></div></div>
+        </div>
+
+        <div class="item">
+          <div class="k" data-i18n="cmd_reset">Сбросить команды
+            <span class="d" data-i18n="cmd_reset_desc">Вернуть все списки к значениям по умолчанию.</span>
+          </div>
+          <div class="v"><button class="link" id="cmd-reset-btn" data-i18n="cmd_reset_btn">по умолчанию</button></div>
+        </div>
       </div>
     </section>
 
@@ -1942,6 +1981,12 @@ var locales = {
     fr_onb3_hint:         'нажми клавиши или клацни на них',
     fr_onb3_listening:    'слушаю…',
     recog_lang: 'Язык распознавания', recog_lang_desc: 'Язык для whisper. Авто-определение пока не поддерживается.',
+    sec_commands: 'Команды',
+    cmd_send: 'Отправить сообщение', cmd_send_desc: 'Слова-триггеры через запятую («напиши имя текст»).',
+    cmd_download: 'Скачать музыку', cmd_download_desc: 'Берёт ссылку из активной вкладки браузера.',
+    cmd_play: 'Включить трек', cmd_play_desc: 'Ищет трек в канале с музыкой по названию.',
+    cmd_forward: 'Переслать контакту', cmd_forward_desc: 'Слово перед именем при скачивании («…и скинь Маше»).',
+    cmd_reset: 'Сбросить команды', cmd_reset_desc: 'Вернуть все списки к значениям по умолчанию.', cmd_reset_btn: 'по умолчанию', cmd_add_ph: 'слово',
     sec_music: 'Музыка',
     music_source: 'Канал с музыкой', music_source_desc: 'Источник для «включи песня»: @канал или id. Voicy индексирует его аудио.',
     music_bot: 'Бот загрузки', music_bot_desc: 'Скажи «скачай это» с открытым треком в браузере: бот качает и отвечает файлом.',
@@ -2081,6 +2126,12 @@ var locales = {
     fr_onb3_hint:         'press the keys or tap them',
     fr_onb3_listening:    'listening…',
     recog_lang: 'Recognition language', recog_lang_desc: 'Whisper recognition language. Auto-detection is not yet supported.',
+    sec_commands: 'Commands',
+    cmd_send: 'Send a message', cmd_send_desc: 'Trigger words, comma-separated («напиши name text» / «write name text»).',
+    cmd_download: 'Download music', cmd_download_desc: 'Grabs the URL from the active browser tab.',
+    cmd_play: 'Play a track', cmd_play_desc: 'Finds a track in the music channel by title.',
+    cmd_forward: 'Forward to a contact', cmd_forward_desc: 'Word before a name when downloading («…и скинь Маше»).',
+    cmd_reset: 'Reset commands', cmd_reset_desc: 'Restore all lists to their defaults.', cmd_reset_btn: 'defaults', cmd_add_ph: 'word',
     sec_music: 'Music',
     music_source: 'Music channel', music_source_desc: 'Source for «включи песня» (play a song): @channel or id. Voicy indexes its audio.',
     music_bot: 'Downloader bot', music_bot_desc: 'Say «скачай это» / "download" with a track open in the browser: the bot downloads it and replies with a file.',
@@ -2497,6 +2548,10 @@ async function refresh() {
     );
   }
 
+  // Commands editor: trigger word lists per command
+  var cmdRes = await callIpc("commands_get");
+  if (cmdRes.ok) { fillCommands(cmdRes); }
+
   document.getElementById("hotkey-display").innerHTML = renderHotkey(info.hotkey);
   document.getElementById("appdir").textContent = (info.contacts_path || "").replace(/[\\\/]contacts\.txt$/, "");
 
@@ -2722,6 +2777,78 @@ window.addEventListener("beforeunload", function () {
   } catch (e) {}
 });
 var _musicSaveTimer = null;
+// ── Commands editor: chips like contact aliases ──
+var _commands = { send: [], download: [], play: [], forward: [] };
+var CMD_KEYS = ["send", "download", "play", "forward"];
+function renderCmdTags() {
+  for (var ci = 0; ci < CMD_KEYS.length; ci++) {
+    var key = CMD_KEYS[ci];
+    var box = document.getElementById("cmd-" + key + "-tags");
+    if (!box) continue;
+    var arr = _commands[key] || [];
+    var html = "";
+    for (var k = 0; k < arr.length; k++) {
+      html += '<span class="tag" data-cmd="' + key + '" data-pos="' + k + '">' +
+        '<span>' + escapeAttr(arr[k]) + '</span>' +
+        '<button class="cmd-tag-x" data-cmd="' + key + '" data-pos="' + k + '">×</button></span>';
+    }
+    html += '<input class="cmd-bare" data-cmd="' + key + '" placeholder="+ ' + t('cmd_add_ph') + '" />';
+    box.innerHTML = html;
+  }
+}
+function fillCommands(res) {
+  _commands = {
+    send: (res.send || []).slice(),
+    download: (res.download || []).slice(),
+    play: (res.play || []).slice(),
+    forward: (res.forward || []).slice()
+  };
+  renderCmdTags();
+}
+function saveCommands() { callIpc("commands_set", _commands); }
+// reset all command lists to defaults
+document.addEventListener("click", function (e) {
+  if (e.target && e.target.id === "cmd-reset-btn") {
+    callIpc("commands_reset").then(function (res) { if (res && res.ok) fillCommands(res); });
+  }
+});
+// remove a trigger chip
+document.addEventListener("click", function (e) {
+  var t = e.target;
+  if (!t || !t.classList || !t.classList.contains("cmd-tag-x")) return;
+  var key = t.getAttribute("data-cmd");
+  var pos = +t.getAttribute("data-pos");
+  if (_commands[key] && pos >= 0 && pos < _commands[key].length) {
+    _commands[key].splice(pos, 1);
+    renderCmdTags();
+    saveCommands();
+  }
+});
+// add a trigger (Enter / comma); Backspace on empty removes the last chip
+document.addEventListener("keydown", function (e) {
+  var t = e.target;
+  if (!t || !t.classList || !t.classList.contains("cmd-bare")) return;
+  var key = t.getAttribute("data-cmd");
+  if (!_commands[key]) return;
+  if (e.key === "Enter" || e.key === ",") {
+    e.preventDefault();
+    var v = t.value.trim().replace(/,+$/, "").toLowerCase();
+    if (!v) return;
+    if (_commands[key].indexOf(v) < 0) _commands[key].push(v);
+    renderCmdTags();
+    var inp = document.querySelector('.cmd-bare[data-cmd="' + key + '"]');
+    if (inp) inp.focus();
+    saveCommands();
+  } else if (e.key === "Backspace" && t.value === "") {
+    if (_commands[key].length) {
+      _commands[key].pop();
+      renderCmdTags();
+      var inp2 = document.querySelector('.cmd-bare[data-cmd="' + key + '"]');
+      if (inp2) inp2.focus();
+      saveCommands();
+    }
+  }
+});
 document.addEventListener("input", function (e) {
   var t = e.target;
   if (!t || !t.classList) return;

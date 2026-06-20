@@ -88,6 +88,10 @@ pub struct Config {
     /// функция выключена. Найденный трек пересылается в music_dest.
     #[serde(default)]
     pub music_source: String,
+    /// Редактируемые списки команд-триггеров (Настройки → Команды). Парсер
+    /// читает их через contacts::set_commands на старте и после правок в UI.
+    #[serde(default)]
+    pub commands: crate::contacts::Commands,
 }
 
 fn default_theme() -> String { "light".into() }
@@ -133,6 +137,7 @@ impl Default for Config {
             music_dest: String::new(),
             download_format: default_download_format(),
             music_source: String::new(),
+            commands: crate::contacts::Commands::default(),
         }
     }
 }

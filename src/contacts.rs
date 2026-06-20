@@ -1,9 +1,11 @@
 //! contacts.txt парсер: `123456 - имя1, имя2, имя3` → {alias.lower(): uid}
 //! + парсер голосовой команды «напиши/отправь имя текст» с fuzzy match.
 
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use tracing::{debug, info};
 
 pub type Contacts = HashMap<String, i64>;
@@ -148,7 +150,7 @@ pub fn save_structured(path: &Path, contacts: &[Contact]) -> std::io::Result<()>
 /// - «напишет/напиши-ка» — 3л и частица «-ка»
 ///
 /// Сортируем по длине DESC при использовании, чтобы «напишите» не съело «напиши».
-const TRIGGERS: &[&str] = &[
+const DEFAULT_SEND: &[&str] = &[
     "напиши", "напишите", "напиши-ка", "напишу",
     "запиши", "запишите",
     "пиши", "пишите",
@@ -169,7 +171,7 @@ const TRIGGERS: &[&str] = &[
 /// дозаполняем по мере появления новых формулировок и ASR-ослышек. Матчатся
 /// как ПРЕФИКС нормализованной реплики, поэтому многословные формы («сохрани
 /// музыку») точнее, чем голое «сохрани», и не ловят обычную диктовку.
-const DOWNLOAD_TRIGGERS: &[&str] = &[
+const DEFAULT_DOWNLOAD: &[&str] = &[
     "скачай это", "скачай трек", "скачай песню", "скачай музыку",
     "скачай аудио", "скачай", "скачайте", "скачать",
     "загрузи трек", "загрузи музыку", "загрузи песню", "загрузи", "загрузить",
@@ -179,15 +181,18 @@ const DOWNLOAD_TRIGGERS: &[&str] = &[
     "даунлоуд", "даунлоад", "пулл",
 ];
 
-/// Это команда «скачать музыку»? Префикс-матч нормализованной реплики по пулу
-/// DOWNLOAD_TRIGGERS. Имени тут нет (бот один), только опциональный формат,
-/// поэтому возвращаем bool, а не (trigger, rest) как find_trigger.
+/// Это команда «скачать музыку»? Префикс-матч нормализованной реплики по
+/// активному пулу download-триггеров (редактируется в настройках).
 fn find_download_trigger(t: &str) -> bool {
-    DOWNLOAD_TRIGGERS.iter().any(|trig| t.starts_with(trig))
+    active_commands()
+        .read()
+        .download
+        .iter()
+        .any(|trig| t.starts_with(trig.as_str()))
 }
 
 /// Глаголы команды воспроизведения «включи <название>». Расширяемый пул.
-const PLAY_TRIGGERS: &[&str] = &[
+const DEFAULT_PLAY: &[&str] = &[
     "включи", "включай", "врубай", "врубани", "врубни",
     "поставь", "поставьте", "запусти", "запускай",
     "play", "плей", "плэй",
@@ -197,10 +202,11 @@ const PLAY_TRIGGERS: &[&str] = &[
 /// Возвращает запрос (текст после триггера) или None. Требуем пробел после
 /// триггера, чтобы «включить эту штуку» (диктовка) не сматчилось как «включи».
 fn find_play_trigger(t: &str) -> Option<String> {
-    let mut sorted: Vec<&&str> = PLAY_TRIGGERS.iter().collect();
+    let play = active_commands().read().play.clone();
+    let mut sorted: Vec<&String> = play.iter().collect();
     sorted.sort_by_key(|s| std::cmp::Reverse(s.len()));
-    for &&trig in &sorted {
-        if let Some(rest) = t.strip_prefix(trig) {
+    for trig in sorted {
+        if let Some(rest) = t.strip_prefix(trig.as_str()) {
             if rest.starts_with(char::is_whitespace) {
                 let q = rest.trim();
                 if !q.is_empty() {
@@ -227,11 +233,56 @@ fn parse_download_format(t: &str) -> Option<String> {
 }
 
 /// Ключевые слова «переслать получателю» внутри download-команды: «...и СКИНЬ Маше».
-const FORWARD_KEYWORDS: &[&str] = &[
+const DEFAULT_FORWARD: &[&str] = &[
     "скинь", "скиньте", "кинь", "киньте",
     "отправь", "отправьте", "перешли", "перешлите", "пришли", "пришлите",
     "send", "forward",
 ];
+
+/// Редактируемые пользователем списки команд-триггеров. Дефолты берутся из
+/// DEFAULT_* выше. Пользователь меняет их в настройках (Команды), парсер читает
+/// активную версию через `active_commands()`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Commands {
+    /// Отправка сообщения: «<триггер> имя текст».
+    pub send: Vec<String>,
+    /// Скачать музыку через бота: «<триггер> ...».
+    pub download: Vec<String>,
+    /// Включить трек из музыкального канала: «<триггер> название».
+    pub play: Vec<String>,
+    /// Переслать результат получателю внутри download: «...и <слово> Маше».
+    pub forward: Vec<String>,
+}
+
+fn to_vecs(a: &[&str]) -> Vec<String> {
+    a.iter().map(|s| s.to_string()).collect()
+}
+
+impl Default for Commands {
+    fn default() -> Self {
+        Self {
+            send: to_vecs(DEFAULT_SEND),
+            download: to_vecs(DEFAULT_DOWNLOAD),
+            play: to_vecs(DEFAULT_PLAY),
+            forward: to_vecs(DEFAULT_FORWARD),
+        }
+    }
+}
+
+/// Активные (возможно отредактированные) списки команд: единый источник для
+/// парсера. Инициализируется дефолтами; приложение зовёт `set_commands` на
+/// старте (из конфига) и после правок в UI. В тестах не трогается → дефолты.
+static ACTIVE_COMMANDS: OnceLock<RwLock<Commands>> = OnceLock::new();
+
+fn active_commands() -> &'static RwLock<Commands> {
+    ACTIVE_COMMANDS.get_or_init(|| RwLock::new(Commands::default()))
+}
+
+/// Заменить активные списки команд (из конфига / после правки в настройках).
+pub fn set_commands(c: Commands) {
+    *active_commands().write() = c;
+}
 
 /// Командные/форматные/служебные слова download-реплики. В fallback-скане
 /// получателя их пропускаем, чтобы случайно не принять за имя контакта. Сюда же
@@ -258,7 +309,8 @@ fn parse_download_dest(norm: &str, contacts: &Contacts) -> Option<i64> {
     let toks: Vec<&str> = norm.split_whitespace().collect();
 
     // 1) Точный путь: имя сразу после forward-ключевого слова.
-    if let Some(kw_pos) = toks.iter().rposition(|t| FORWARD_KEYWORDS.contains(t)) {
+    let forward = active_commands().read().forward.clone();
+    if let Some(kw_pos) = toks.iter().rposition(|t| forward.iter().any(|f| f == t)) {
         const PREPS: &[&str] = &["к", "в", "на", "для", "to", "for"];
         let mut tail: Vec<&str> = toks[kw_pos + 1..].to_vec();
         while !tail.is_empty() && PREPS.contains(&tail[0]) {
@@ -490,24 +542,27 @@ pub fn parse_command(text: &str, contacts: &Contacts) -> Result<(i64, String), S
 /// префикс-матч (вкл. склейки), fuzzy на 1 правку и пропуск 1-2 коротких
 /// ASR-артефактов в начале. Один источник правды и для parse_command, и для
 /// looks_like_send_command (диктовка vs отправка).
-fn find_trigger(t: &str) -> Option<(&'static str, String)> {
+fn find_trigger(t: &str) -> Option<(String, String)> {
     // Длинные триггеры раньше коротких: «напишите» до «напиши».
-    let mut sorted_triggers: Vec<&&str> = TRIGGERS.iter().collect();
-    sorted_triggers.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    let send = active_commands().read().send.clone();
+    let mut sorted: Vec<&String> = send.iter().collect();
+    sorted.sort_by_key(|s| std::cmp::Reverse(s.len()));
 
     // Шаг 1: префикс-матч (включая склейки «напишичине»).
-    for &&trig in &sorted_triggers {
-        if t.starts_with(trig) {
-            return Some((trig, t[trig.len()..].trim_start().to_string()));
+    for trig in &sorted {
+        let tr = trig.as_str();
+        if t.starts_with(tr) {
+            return Some((tr.to_string(), t[tr.len()..].trim_start().to_string()));
         }
     }
     // Шаг 1b: fuzzy на 1 правку для первого токена ≥4 символов («напши»→«напиши»).
     let first_tok = t.split_whitespace().next().unwrap_or("");
     if first_tok.chars().count() >= 4 {
-        for &&trig in &sorted_triggers {
-            if damerau_levenshtein(first_tok, trig) <= 1 {
-                debug!("[parse] fuzzy-trigger: '{}' ≈ '{}'", first_tok, trig);
-                return Some((trig, t[first_tok.len()..].trim_start().to_string()));
+        for trig in &sorted {
+            let tr = trig.as_str();
+            if damerau_levenshtein(first_tok, tr) <= 1 {
+                debug!("[parse] fuzzy-trigger: '{}' ≈ '{}'", first_tok, tr);
+                return Some((tr.to_string(), t[first_tok.len()..].trim_start().to_string()));
             }
         }
     }
@@ -519,10 +574,11 @@ fn find_trigger(t: &str) -> Option<(&'static str, String)> {
     }
     if skip > 0 && toks.len() > skip {
         let candidate = toks[skip..].join(" ");
-        for &&trig in &sorted_triggers {
-            if candidate.starts_with(trig) {
-                debug!("[parse] skip-prefix trigger: skipped {} short tokens, '{}' matches '{}'", skip, &toks[..skip].join(" "), trig);
-                return Some((trig, candidate[trig.len()..].trim_start().to_string()));
+        for trig in &sorted {
+            let tr = trig.as_str();
+            if candidate.starts_with(tr) {
+                debug!("[parse] skip-prefix trigger: skipped {} short tokens, '{}' matches '{}'", skip, &toks[..skip].join(" "), tr);
+                return Some((tr.to_string(), candidate[tr.len()..].trim_start().to_string()));
             }
         }
     }

@@ -153,6 +153,9 @@ fn main() -> Result<()> {
         warn!("⚠ {}", config::Config::credentials_setup_hint());
     }
 
+    // Активируем (возможно отредактированные) списки команд-триггеров для парсера.
+    contacts::set_commands(cfg.commands.clone());
+
     #[cfg(windows)]
     startup::sync_with_config(cfg.startup_launch);
 

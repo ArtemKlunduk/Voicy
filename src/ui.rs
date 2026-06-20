@@ -544,6 +544,9 @@ fn dispatch(
         "feedback_send" => cmd_feedback_send(rt, client, cfg, &msg.payload),
         "music_config_get" => cmd_music_config_get(cfg),
         "music_config_set" => cmd_music_config_set(cfg, cfg_path, &msg.payload),
+        "commands_get" => cmd_commands_get(cfg),
+        "commands_set" => cmd_commands_set(cfg, cfg_path, &msg.payload),
+        "commands_reset" => cmd_commands_reset(cfg, cfg_path),
         "_window_close" => {
             let _ = proxy.send_event(UiLoopEvent::WindowClose);
             serde_json::json!({ "ok": true })
@@ -859,6 +862,84 @@ fn cmd_music_config_set(
     }
     info!("[ui] music updated: bot={} dest={} fmt={} source={}", c.cloudpull_bot, c.music_dest, c.download_format, c.music_source);
     serde_json::json!({ "ok": true })
+}
+
+/// Списки команд-триггеров (Настройки → Команды): чтение/правка/сброс. После
+/// записи синхронизируем активные списки парсера через contacts::set_commands.
+fn cmd_commands_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
+    let c = cfg.lock();
+    serde_json::json!({
+        "ok": true,
+        "send": c.commands.send,
+        "download": c.commands.download,
+        "play": c.commands.play,
+        "forward": c.commands.forward,
+    })
+}
+
+/// Распарсить JSON-массив строк в список триггеров: trim + lowercase + дедуп.
+fn parse_cmd_list(v: &serde_json::Value) -> Option<Vec<String>> {
+    let arr = v.as_array()?;
+    let mut out: Vec<String> = Vec::new();
+    for item in arr {
+        if let Some(s) = item.as_str() {
+            let s = s.trim().to_lowercase();
+            if !s.is_empty() && !out.contains(&s) {
+                out.push(s);
+            }
+        }
+    }
+    Some(out)
+}
+
+fn cmd_commands_set(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+    payload: &serde_json::Value,
+) -> serde_json::Value {
+    let mut c = cfg.lock();
+    if let Some(l) = payload.get("send").and_then(parse_cmd_list) {
+        c.commands.send = l;
+    }
+    if let Some(l) = payload.get("download").and_then(parse_cmd_list) {
+        c.commands.download = l;
+    }
+    if let Some(l) = payload.get("play").and_then(parse_cmd_list) {
+        c.commands.play = l;
+    }
+    if let Some(l) = payload.get("forward").and_then(parse_cmd_list) {
+        c.commands.forward = l;
+    }
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    let cmds = c.commands.clone();
+    drop(c);
+    crate::contacts::set_commands(cmds);
+    info!("[ui] commands updated");
+    serde_json::json!({ "ok": true })
+}
+
+fn cmd_commands_reset(
+    cfg: &Arc<Mutex<config::Config>>,
+    cfg_path: &PathBuf,
+) -> serde_json::Value {
+    let mut c = cfg.lock();
+    c.commands = crate::contacts::Commands::default();
+    if let Err(e) = c.save(cfg_path) {
+        return err(format!("save: {}", e));
+    }
+    let cmds = c.commands.clone();
+    drop(c);
+    crate::contacts::set_commands(cmds.clone());
+    info!("[ui] commands reset to defaults");
+    serde_json::json!({
+        "ok": true,
+        "send": cmds.send,
+        "download": cmds.download,
+        "play": cmds.play,
+        "forward": cmds.forward,
+    })
 }
 
 fn cmd_telegram_dialogs(
