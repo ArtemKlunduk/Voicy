@@ -14,16 +14,6 @@ Voice-to-action for Windows. No typing, no opening apps — just a hotkey and yo
 
 ---
 
-## What it does
-
-- 🎙️ **Push-to-talk** — hold `Alt+X`, speak, release
-- 🚀 **Auto-send** — message lands in Telegram in 3 seconds
-- 🧠 **Smart parser** — handles slurred speech, split words, wrong triggers
-- 🤖 **AI assistant** — say "give answer" + question → Voicy responds aloud
-- 📺 **Browser control** — voice volume/fullscreen/play/pause for YouTube
-- 👤 **Real contacts** — pulled from your Telegram with avatars
-- 🪶 **3 MB binary** — pure Rust, no Electron, runs offline
-
 ## Quick install
 
 1. **Download** the latest release: [Releases page](https://github.com/ArtemKlunduk/Voicy/releases)
