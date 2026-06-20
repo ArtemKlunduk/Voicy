@@ -186,6 +186,32 @@ fn find_download_trigger(t: &str) -> bool {
     DOWNLOAD_TRIGGERS.iter().any(|trig| t.starts_with(trig))
 }
 
+/// Глаголы команды воспроизведения «включи <название>». Расширяемый пул.
+const PLAY_TRIGGERS: &[&str] = &[
+    "включи", "включай", "врубай", "врубани", "врубни",
+    "поставь", "поставьте", "запусти", "запускай",
+    "play", "плей", "плэй",
+];
+
+/// Команда «включи <название>»? Префикс-матч (длинные триггеры раньше коротких).
+/// Возвращает запрос (текст после триггера) или None. Требуем пробел после
+/// триггера, чтобы «включить эту штуку» (диктовка) не сматчилось как «включи».
+fn find_play_trigger(t: &str) -> Option<String> {
+    let mut sorted: Vec<&&str> = PLAY_TRIGGERS.iter().collect();
+    sorted.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    for &&trig in &sorted {
+        if let Some(rest) = t.strip_prefix(trig) {
+            if rest.starts_with(char::is_whitespace) {
+                let q = rest.trim();
+                if !q.is_empty() {
+                    return Some(q.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Достать аудиоформат из реплики: «...в wav/вав» даёт Some("wav"), явное «mp3»
 /// даёт Some("mp3"), иначе None (вызывающий подставит дефолт из конфига).
 /// Сканируем токены, чтобы поймать формат в любом месте («скачай это в вав»).
@@ -531,6 +557,9 @@ pub enum Utterance {
         format: Option<String>,
         dest: Option<i64>,
     },
+    /// Команда «включи <название>»: найти трек в музыкальной библиотеке (канал
+    /// music_source) по вектор-индексу и переслать его в music_dest.
+    Play { query: String },
 }
 
 /// Классифицировать фразу: диктовка (нет триггера) или Telegram-команда.
@@ -543,6 +572,9 @@ pub fn classify(text: &str, contacts: &Contacts) -> Utterance {
             format: parse_download_format(&norm),
             dest: parse_download_dest(&norm, contacts),
         };
+    }
+    if let Some(query) = find_play_trigger(&norm) {
+        return Utterance::Play { query };
     }
     if !looks_like_send_command(text) {
         let d = text.trim();
@@ -1247,6 +1279,27 @@ mod tests {
             classify("скачай этот трек в wav", &c),
             Utterance::Download { dest: None, .. }
         ));
+    }
+
+    #[test]
+    fn detects_play_command() {
+        let c = sample_contacts();
+        assert!(matches!(
+            classify("включи кукушка", &c),
+            Utterance::Play { query } if query == "кукушка"
+        ));
+        assert!(matches!(
+            classify("поставь believer", &c),
+            Utterance::Play { query } if query == "believer"
+        ));
+        assert!(matches!(
+            classify("Врубай Imagine Dragons.", &c),
+            Utterance::Play { query } if query == "imagine dragons"
+        ));
+        // «включи» без названия → не play (уходит в диктовку).
+        assert!(!matches!(classify("включи", &c), Utterance::Play { .. }));
+        // «включить ...» (инфинитив, нет пробела после «включи») → не play.
+        assert!(!matches!(classify("включить свет", &c), Utterance::Play { .. }));
     }
 
     #[test]

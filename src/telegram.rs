@@ -628,3 +628,153 @@ pub async fn download_via_bot(
     info!("[tg] ✅ файл от бота переслан получателю");
     Ok(())
 }
+
+// ── «Включи <песня>»: вектор-индекс музыкального канала ─────────────────────
+// Из канала-источника собираем (msg_id, название) аудио, кэшируем на диск,
+// строим локальный вектор-индекс (music_index) и пересылаем самый похожий трек.
+
+use crate::music_index::{MusicIndex, Track};
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MusicCache {
+    source: String,
+    tracks: Vec<Track>,
+}
+
+fn music_cache_path() -> PathBuf {
+    app_data_dir().join("music_index.json")
+}
+
+fn load_music_cache(source: &str) -> Option<Vec<Track>> {
+    let txt = std::fs::read_to_string(music_cache_path()).ok()?;
+    let cache: MusicCache = serde_json::from_str(&txt).ok()?;
+    if cache.source == source && !cache.tracks.is_empty() {
+        Some(cache.tracks)
+    } else {
+        None
+    }
+}
+
+fn save_music_cache(source: &str, tracks: &[Track]) {
+    let cache = MusicCache {
+        source: source.to_string(),
+        tracks: tracks.to_vec(),
+    };
+    match serde_json::to_string(&cache) {
+        Ok(txt) => {
+            if let Err(e) = std::fs::write(music_cache_path(), txt) {
+                warn!("[tg] save music cache: {}", e);
+            }
+        }
+        Err(e) => warn!("[tg] serialize music cache: {}", e),
+    }
+}
+
+/// Документ похож на музыкальный трек (а не голосовуху/прочее)?
+fn is_music_doc(doc: &grammers_client::types::media::Document) -> bool {
+    let has_meta = doc.performer().is_some() || doc.audio_title().is_some();
+    let name = doc.name().to_lowercase();
+    let music_ext = [".mp3", ".flac", ".wav", ".m4a", ".ogg", ".opus", ".aac"]
+        .iter()
+        .any(|e| name.ends_with(e));
+    has_meta || music_ext
+}
+
+/// Человекочитаемое название трека: «исполнитель - название», иначе имя файла.
+fn doc_track_title(doc: &grammers_client::types::media::Document) -> Option<String> {
+    match (doc.performer(), doc.audio_title()) {
+        (Some(p), Some(t)) => Some(format!("{} - {}", p.trim(), t.trim())),
+        (Some(p), None) => Some(p.trim().to_string()),
+        (None, Some(t)) => Some(t.trim().to_string()),
+        (None, None) => {
+            let n = doc.name().trim();
+            let base = n.rsplit_once('.').map(|(b, _)| b).unwrap_or(n).trim();
+            if base.is_empty() {
+                None
+            } else {
+                Some(base.to_string())
+            }
+        }
+    }
+}
+
+/// Пройти историю канала и собрать аудио-треки (новейшие первыми). Ограничено
+/// сверху, чтобы не зависнуть на огромном канале.
+async fn fetch_music_tracks(client: &Client, chat: PackedChat) -> Result<Vec<Track>> {
+    const MAX_TRACKS: usize = 2000;
+    let mut it = client.iter_messages(chat);
+    let mut tracks = Vec::new();
+    while let Some(m) = it
+        .next()
+        .await
+        .map_err(|e| anyhow!("iter_messages: {}", e))?
+    {
+        if tracks.len() >= MAX_TRACKS {
+            break;
+        }
+        if let Some(grammers_client::types::Media::Document(doc)) = m.media() {
+            if is_music_doc(&doc) {
+                if let Some(title) = doc_track_title(&doc) {
+                    tracks.push(Track { msg_id: m.id(), title });
+                }
+            }
+        }
+    }
+    info!("[tg] музыкальный индекс: собрано {} треков", tracks.len());
+    Ok(tracks)
+}
+
+/// Полный цикл «включи <запрос>»: загрузить треки (кэш или дотянуть из канала),
+/// построить индекс, найти лучший матч и переслать его в music_dest. Возвращает
+/// название включённого трека. `force_reindex` игнорирует кэш и перечитывает канал.
+pub async fn play_track(
+    client: &Client,
+    source: &str,
+    query: &str,
+    music_dest: &str,
+    force_reindex: bool,
+) -> Result<String> {
+    if source.trim().is_empty() {
+        return Err(anyhow!(
+            "музыкальный канал не задан (Настройки → Музыка → Источник)"
+        ));
+    }
+    let src_chat = resolve_music_dest(client, source).await?;
+    let tracks = match (force_reindex, load_music_cache(source)) {
+        (false, Some(cached)) => cached,
+        _ => {
+            let t = fetch_music_tracks(client, src_chat).await?;
+            save_music_cache(source, &t);
+            t
+        }
+    };
+    if tracks.is_empty() {
+        return Err(anyhow!("в канале не нашлось аудио для индексации"));
+    }
+    let idx = MusicIndex::build(tracks);
+    let (msg_id, title, score) = idx
+        .best_match(query)
+        .ok_or_else(|| anyhow!("не нашёл трек по запросу «{}»", query))?;
+    info!(
+        "[tg] play «{}» → «{}» (score {:.2}, из {} треков)",
+        query,
+        title,
+        score,
+        idx.len()
+    );
+    let dest = resolve_music_dest(client, music_dest).await?;
+    forward_msg(client, dest, msg_id, src_chat).await?;
+    Ok(title)
+}
+
+/// Перечитать канал-источник и пересобрать кэш индекса. Возвращает число треков.
+pub async fn reindex_music(client: &Client, source: &str) -> Result<usize> {
+    if source.trim().is_empty() {
+        return Err(anyhow!("музыкальный канал не задан"));
+    }
+    let src_chat = resolve_music_dest(client, source).await?;
+    let tracks = fetch_music_tracks(client, src_chat).await?;
+    let n = tracks.len();
+    save_music_cache(source, &tracks);
+    Ok(n)
+}

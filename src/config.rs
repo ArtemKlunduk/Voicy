@@ -83,6 +83,11 @@ pub struct Config {
     /// Формат по умолчанию, если он не назван голосом: "mp3" | "wav".
     #[serde(default = "default_download_format")]
     pub download_format: String,
+    /// Музыкальная библиотека для команды «включи <песня>»: канал/чат
+    /// («@username» или числовой id), аудио которого индексируется. Пусто =
+    /// функция выключена. Найденный трек пересылается в music_dest.
+    #[serde(default)]
+    pub music_source: String,
 }
 
 fn default_theme() -> String { "light".into() }
@@ -127,6 +132,7 @@ impl Default for Config {
             cloudpull_bot: default_cloudpull_bot(),
             music_dest: String::new(),
             download_format: default_download_format(),
+            music_source: String::new(),
         }
     }
 }

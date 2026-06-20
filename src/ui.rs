@@ -826,6 +826,7 @@ fn cmd_music_config_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
         "bot": c.cloudpull_bot,
         "dest": c.music_dest,
         "format": c.download_format,
+        "source": c.music_source,
     })
 }
 
@@ -844,6 +845,10 @@ fn cmd_music_config_set(
         // Пусто = Saved Messages, это валидно.
         c.music_dest = dest.trim().to_string();
     }
+    if let Some(source) = payload.get("source").and_then(|v| v.as_str()) {
+        // Канал-источник для «включи». Пусто = функция выключена.
+        c.music_source = source.trim().to_string();
+    }
     if let Some(fmt) = payload.get("format").and_then(|v| v.as_str()) {
         if fmt == "mp3" || fmt == "wav" {
             c.download_format = fmt.to_string();
@@ -852,7 +857,7 @@ fn cmd_music_config_set(
     if let Err(e) = c.save(cfg_path) {
         return err(format!("save: {}", e));
     }
-    info!("[ui] music updated: bot={} dest={} fmt={}", c.cloudpull_bot, c.music_dest, c.download_format);
+    info!("[ui] music updated: bot={} dest={} fmt={} source={}", c.cloudpull_bot, c.music_dest, c.download_format, c.music_source);
     serde_json::json!({ "ok": true })
 }
 
@@ -1478,6 +1483,42 @@ fn cmd_listener_start(
                     #[cfg(not(windows))]
                     {
                         let _ = (format, dest);
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                    }
+                    return;
+                }
+                cts::Utterance::Play { query } => {
+                    // «Включи <песня>»: поиск по музыкальному каналу. Первичная
+                    // индексация может быть долгой, поэтому в отдельном треде.
+                    if let Some(client) = client_slot.lock().as_ref().cloned() {
+                        let source = cfg.music_source.clone();
+                        let music_dest = cfg.music_dest.clone();
+                        let rt2 = rt.clone();
+                        let proxy2 = proxy.clone();
+                        push_event(&proxy, "log", &format!("▶ ищу «{}»…", query));
+                        push_event(&proxy, "activity", "▶ ищу трек…");
+                        std::thread::spawn(move || {
+                            match rt2.block_on(telegram::play_track(
+                                &client, &source, &query, &music_dest, false,
+                            )) {
+                                Ok(title) => {
+                                    info!("[listener] ▶ включено: {}", title);
+                                    push_event(&proxy2, "log", &format!("▶ {}", title));
+                                    push_event(&proxy2, "activity", &format!("▶ {}", title));
+                                    flash_overlay(&proxy2, UiLoopEvent::OverlaySuccess);
+                                }
+                                Err(e) => {
+                                    warn!("[listener] play: {}", e);
+                                    push_event(&proxy2, "log", &format!("✗ {}", e));
+                                    push_event(&proxy2, "activity", "");
+                                    flash_overlay(&proxy2, UiLoopEvent::OverlayError);
+                                }
+                            }
+                        });
+                    } else {
+                        warn!("[listener] play: нет Telegram-клиента");
+                        push_event(&proxy, "log", "✗ не залогинен в Telegram, жми Login");
+                        push_event(&proxy, "activity", "");
                         flash_overlay(&proxy, UiLoopEvent::OverlayError);
                     }
                     return;

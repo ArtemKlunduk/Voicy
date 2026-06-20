@@ -1487,6 +1487,15 @@ dialog label {
         <div class="section-label"><span data-i18n="sec_music">Музыка</span></div>
 
         <div class="item">
+          <div class="k" data-i18n="music_source">Канал с музыкой
+            <span class="d" data-i18n="music_source_desc">Источник для «включи песня»: @канал или id. Voicy индексирует его аудио.</span>
+          </div>
+          <div class="v">
+            <input type="text" id="music-source-input" class="contact-name-inp" style="width:190px;text-align:right;" placeholder="@my_music" />
+          </div>
+        </div>
+
+        <div class="item">
           <div class="k" data-i18n="music_bot">Бот загрузки
             <span class="d" data-i18n="music_bot_desc">Скажи «скачай это» с открытым треком в браузере: бот качает и отвечает файлом.</span>
           </div>
@@ -1934,6 +1943,7 @@ var locales = {
     fr_onb3_listening:    'слушаю…',
     recog_lang: 'Язык распознавания', recog_lang_desc: 'Язык для whisper. Авто-определение пока не поддерживается.',
     sec_music: 'Музыка',
+    music_source: 'Канал с музыкой', music_source_desc: 'Источник для «включи песня»: @канал или id. Voicy индексирует его аудио.',
     music_bot: 'Бот загрузки', music_bot_desc: 'Скажи «скачай это» с открытым треком в браузере: бот качает и отвечает файлом.',
     music_format: 'Формат', music_format_desc: 'По умолчанию, если формат не назван голосом.',
     music_dest: 'Куда слать', music_dest_desc: 'Пусто = Избранное. Или @username / числовой id чата.',
@@ -2072,6 +2082,7 @@ var locales = {
     fr_onb3_listening:    'listening…',
     recog_lang: 'Recognition language', recog_lang_desc: 'Whisper recognition language. Auto-detection is not yet supported.',
     sec_music: 'Music',
+    music_source: 'Music channel', music_source_desc: 'Source for «включи песня» (play a song): @channel or id. Voicy indexes its audio.',
     music_bot: 'Downloader bot', music_bot_desc: 'Say «скачай это» / "download" with a track open in the browser: the bot downloads it and replies with a file.',
     music_format: 'Format', music_format_desc: 'Default when the format is not spoken.',
     music_dest: 'Forward to', music_dest_desc: 'Empty = Saved Messages. Or @username / numeric chat id.',
@@ -2475,8 +2486,10 @@ async function refresh() {
   if (musicRes.ok) {
     var mb = document.getElementById("music-bot-input");
     var md = document.getElementById("music-dest-input");
+    var ms = document.getElementById("music-source-input");
     if (mb && document.activeElement !== mb) mb.value = musicRes.bot || "";
     if (md && document.activeElement !== md) md.value = musicRes.dest || "";
+    if (ms && document.activeElement !== ms) ms.value = musicRes.source || "";
     mountVySelect("music-format-select",
       [{value:"mp3", label:"MP3"}, {value:"wav", label:"WAV"}],
       musicRes.format || "mp3",
@@ -2717,12 +2730,13 @@ document.addEventListener("input", function (e) {
     if (_contacts[i]) { _contacts[i].name = t.value; scheduleSave(); }
   }
   if (t.id === "dlg-import-search") renderDialogList(t.value);
-  if (t.id === "music-bot-input" || t.id === "music-dest-input") {
+  if (t.id === "music-bot-input" || t.id === "music-dest-input" || t.id === "music-source-input") {
     clearTimeout(_musicSaveTimer);
     _musicSaveTimer = setTimeout(function () {
       var bot = (document.getElementById("music-bot-input") || {}).value || "";
       var dest = (document.getElementById("music-dest-input") || {}).value || "";
-      callIpc("music_config_set", { bot: bot.trim(), dest: dest.trim() });
+      var source = (document.getElementById("music-source-input") || {}).value || "";
+      callIpc("music_config_set", { bot: bot.trim(), dest: dest.trim(), source: source.trim() });
     }, 600);
   }
 });
