@@ -31,6 +31,8 @@ const SYSTEM_PROMPT: &str = "Ты голосовой ассистент. Отв�
 pub enum AiModel {
     /// Qwen 2.5 0.5B Instruct (Q4_K_M, ~350 МБ).
     Qwen05B,
+    /// Qwen 3 1.7B (Q4_K_M, ~1.2 ГБ).
+    Qwen3_17B,
     /// Llama 3.2 1B Instruct (Q4_K_M, ~770 МБ).
     Llama32_1B,
     /// Gemma 2 2B IT (Q4_K_M, ~1.6 ГБ).
@@ -41,15 +43,21 @@ impl AiModel {
     pub fn from_config_str(s: &str) -> Self {
         match s.to_lowercase().replace(['_', ' '], "-").as_str() {
             "qwen-0.5b" | "qwen2.5-0.5b" | "qwen" => Self::Qwen05B,
+            "qwen-3-1.7b" | "qwen3-1.7b" | "qwen-1.7b" | "qwen3" => Self::Qwen3_17B,
             "llama-3.2-1b" | "llama-1b" | "llama3.2-1b" | "llama" => Self::Llama32_1B,
             "gemma-2-2b" | "gemma2-2b" | "gemma-2b" | "gemma" => Self::Gemma2_2B,
             _ => Self::Qwen05B, // дефолт — самая лёгкая
         }
     }
 
+    pub fn all() -> &'static [Self] {
+        &[Self::Qwen05B, Self::Qwen3_17B, Self::Llama32_1B, Self::Gemma2_2B]
+    }
+
     pub fn id(self) -> &'static str {
         match self {
             Self::Qwen05B => "qwen-0.5b",
+            Self::Qwen3_17B => "qwen-3-1.7b",
             Self::Llama32_1B => "llama-3.2-1b",
             Self::Gemma2_2B => "gemma-2-2b",
         }
@@ -58,6 +66,7 @@ impl AiModel {
     pub fn display_name(self) -> &'static str {
         match self {
             Self::Qwen05B => "Qwen 2.5 0.5B",
+            Self::Qwen3_17B => "Qwen 3 1.7B",
             Self::Llama32_1B => "Llama 3.2 1B",
             Self::Gemma2_2B => "Gemma 2 2B",
         }
@@ -67,6 +76,7 @@ impl AiModel {
     pub fn approx_ram_mb(self) -> u32 {
         match self {
             Self::Qwen05B => 400,
+            Self::Qwen3_17B => 1200,
             Self::Llama32_1B => 800,
             Self::Gemma2_2B => 1500,
         }
@@ -76,6 +86,7 @@ impl AiModel {
     fn model_repo(self) -> &'static str {
         match self {
             Self::Qwen05B => "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+            Self::Qwen3_17B => "ggml-org/Qwen3-1.7B-GGUF",
             Self::Llama32_1B => "unsloth/Llama-3.2-1B-Instruct-GGUF",
             Self::Gemma2_2B => "bartowski/gemma-2-2b-it-GGUF",
         }
@@ -85,6 +96,7 @@ impl AiModel {
     fn model_file(self) -> &'static str {
         match self {
             Self::Qwen05B => "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            Self::Qwen3_17B => "Qwen3-1.7B-Q4_K_M.gguf",
             Self::Llama32_1B => "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
             Self::Gemma2_2B => "gemma-2-2b-it-Q4_K_M.gguf",
         }
@@ -97,6 +109,7 @@ impl AiModel {
     fn tokenizer_repo(self) -> &'static str {
         match self {
             Self::Qwen05B => "Qwen/Qwen2.5-0.5B-Instruct",
+            Self::Qwen3_17B => "Qwen/Qwen3-1.7B",
             Self::Llama32_1B => "unsloth/Llama-3.2-1B-Instruct",
             Self::Gemma2_2B => "unsloth/gemma-2-2b-it",
         }
@@ -106,7 +119,7 @@ impl AiModel {
     fn build_prompt(self, system: &str, user: &str) -> String {
         match self {
             // Qwen: <|im_start|>role\n...<|im_end|>\n
-            Self::Qwen05B => format!(
+            Self::Qwen05B | Self::Qwen3_17B => format!(
                 "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
                 system, user
             ),
@@ -129,7 +142,7 @@ impl AiModel {
     /// Спецтокены, которые надо вырезать из ответа.
     fn cleanup_tokens(self) -> &'static [&'static str] {
         match self {
-            Self::Qwen05B => &[
+            Self::Qwen05B | Self::Qwen3_17B => &[
                 "<|im_end|>",
                 "<|im_start|>",
                 "<|endoftext|>",

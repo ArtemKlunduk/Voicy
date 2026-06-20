@@ -585,7 +585,9 @@ fn cmd_model(sub: &str, name: &str) -> Result<()> {
             Ok(())
         }
         "path" => {
-            println!("{}", asr::model_path(name).display());
+            let path = asr::model_storage_path(name)
+                .ok_or_else(|| anyhow::anyhow!("unknown model: {}", name))?;
+            println!("{}", path.display());
             Ok(())
         }
         "setup" => {

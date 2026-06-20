@@ -74,7 +74,7 @@ pub struct Config {
     /// Язык голосового ассистента: "ru" | "en".
     #[serde(default = "default_ai_language")]
     pub ai_language: String,
-    /// Локальная ИИ-модель: "qwen-0.5b" | "llama-3.2-1b" | "gemma-2-2b".
+    /// Локальная ИИ-модель: "qwen-0.5b" | "qwen-3-1.7b" | "llama-3.2-1b" | "gemma-2-2b".
     /// Дефолт — qwen-0.5b (минимальный RAM-overhead ~400 МБ).
     #[serde(default = "default_ai_model")]
     pub ai_model: String,

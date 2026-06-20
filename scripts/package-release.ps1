@@ -84,7 +84,7 @@ ui_theme = "dark"                # "light" / "dark"
 language = "en"                  # UI language: "en" / "ru"
 ai_language = "en"               # AI assistant reply language
 ai_assistant_enabled = true
-ai_model = "qwen-0.5b"           # "qwen-0.5b" / "llama-3.2-1b" / "gemma-2-2b"
+ai_model = "qwen-0.5b"           # "qwen-0.5b" / "qwen-3-1.7b" / "llama-3.2-1b" / "gemma-2-2b"
 gemini_api_key = ""              # optional: https://aistudio.google.com/app/apikey for fast AI
 
 [hotkey]
