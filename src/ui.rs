@@ -872,7 +872,6 @@ fn cmd_commands_get(cfg: &Arc<Mutex<config::Config>>) -> serde_json::Value {
         "ok": true,
         "send": c.commands.send,
         "download": c.commands.download,
-        "play": c.commands.play,
         "forward": c.commands.forward,
     })
 }
@@ -904,9 +903,6 @@ fn cmd_commands_set(
     if let Some(l) = payload.get("download").and_then(parse_cmd_list) {
         c.commands.download = l;
     }
-    if let Some(l) = payload.get("play").and_then(parse_cmd_list) {
-        c.commands.play = l;
-    }
     if let Some(l) = payload.get("forward").and_then(parse_cmd_list) {
         c.commands.forward = l;
     }
@@ -937,7 +933,6 @@ fn cmd_commands_reset(
         "ok": true,
         "send": cmds.send,
         "download": cmds.download,
-        "play": cmds.play,
         "forward": cmds.forward,
     })
 }
@@ -1573,42 +1568,6 @@ fn cmd_listener_start(
                     #[cfg(not(windows))]
                     {
                         let _ = (format, dest, to_channel);
-                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
-                    }
-                    return;
-                }
-                cts::Utterance::Play { query } => {
-                    // «Включи <песня>»: поиск по музыкальному каналу. Первичная
-                    // индексация может быть долгой, поэтому в отдельном треде.
-                    if let Some(client) = client_slot.lock().as_ref().cloned() {
-                        let source = cfg.music_source.clone();
-                        let music_dest = cfg.music_dest.clone();
-                        let rt2 = rt.clone();
-                        let proxy2 = proxy.clone();
-                        push_event(&proxy, "log", &format!("▶ ищу «{}»…", query));
-                        push_event(&proxy, "activity", "▶ ищу трек…");
-                        std::thread::spawn(move || {
-                            match rt2.block_on(telegram::play_track(
-                                &client, &source, &query, &music_dest, false,
-                            )) {
-                                Ok(title) => {
-                                    info!("[listener] ▶ включено: {}", title);
-                                    push_event(&proxy2, "log", &format!("▶ {}", title));
-                                    push_event(&proxy2, "activity", &format!("▶ {}", title));
-                                    flash_overlay(&proxy2, UiLoopEvent::OverlaySuccess);
-                                }
-                                Err(e) => {
-                                    warn!("[listener] play: {}", e);
-                                    push_event(&proxy2, "log", &format!("✗ {}", e));
-                                    push_event(&proxy2, "activity", "");
-                                    flash_overlay(&proxy2, UiLoopEvent::OverlayError);
-                                }
-                            }
-                        });
-                    } else {
-                        warn!("[listener] play: нет Telegram-клиента");
-                        push_event(&proxy, "log", "✗ не залогинен в Telegram, жми Login");
-                        push_event(&proxy, "activity", "");
                         flash_overlay(&proxy, UiLoopEvent::OverlayError);
                     }
                     return;

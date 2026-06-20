@@ -23,7 +23,6 @@ mod audio;
 mod config;
 mod contacts;
 mod hotkey;
-mod music_index;
 #[cfg(windows)]
 mod native_overlay;
 mod parakeet;
@@ -210,15 +209,6 @@ fn main() -> Result<()> {
             let format = args.get(3).map(|s| s.as_str()).unwrap_or(&cfg.download_format);
             cmd_download(&cfg, url, format)
         }
-        "play" => {
-            let query = args.iter().skip(2).cloned().collect::<Vec<_>>().join(" ");
-            cmd_play(&cfg, &query)
-        }
-        "match" => {
-            let query = args.iter().skip(2).cloned().collect::<Vec<_>>().join(" ");
-            cmd_match(&cfg, &query)
-        }
-        "reindex" => cmd_reindex(&cfg),
         "url" => {
             // Диагностика захвата ссылки активной вкладки: UIA адресной строки
             // с fallback на буфер. Foreground-окно читается в момент захвата,
@@ -246,7 +236,7 @@ fn main() -> Result<()> {
         }
         other => {
             eprintln!("unknown command: {}", other);
-            eprintln!("usage: voicy [info|record <s>|run|model download <name>|transcribe <wav>|type <text>|url|download <url> [mp3|wav]|play <название>|reindex]");
+            eprintln!("usage: voicy [info|record <s>|run|model download <name>|transcribe <wav>|type <text>|url|download <url> [mp3|wav]]");
             std::process::exit(2);
         }
     }
@@ -532,24 +522,6 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                     schedule_hide();
                     return;
                 }
-                contacts::Utterance::Play { query } => {
-                    // «Включи <песня>»: найти трек в музыкальном канале и переслать.
-                    info!("[hotkey] play «{}»", query);
-                    match rt.block_on(telegram::play_track(
-                        &client, &cfg.music_source, &query, &cfg.music_dest, false,
-                    )) {
-                        Ok(title) => {
-                            info!("[hotkey] ▶ включено: {}", title);
-                            show_success();
-                        }
-                        Err(e) => {
-                            warn!("[hotkey] play: {}", e);
-                            show_error();
-                        }
-                    }
-                    schedule_hide();
-                    return;
-                }
                 _ => {
                     warn!("[hotkey] не распознано как команда отправки");
                     show_error();
@@ -676,55 +648,6 @@ fn cmd_download(cfg: &config::Config, url: &str, format: &str) -> Result<()> {
         );
         telegram::download_via_bot(&client, url, format, &cfg.cloudpull_bot, &cfg.music_dest, None).await?;
         println!("✅ готово");
-        Result::<()>::Ok(())
-    })
-}
-
-/// Диагностика «включи»: найти трек по запросу в музыкальном канале и переслать
-/// в music_dest. `voicy play <название>`.
-fn cmd_play(cfg: &config::Config, query: &str) -> Result<()> {
-    if query.trim().is_empty() {
-        anyhow::bail!("usage: voicy play <название>");
-    }
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
-    rt.block_on(async {
-        let client = telegram::connect(cfg).await?;
-        if !telegram::is_signed_in(&client).await? {
-            anyhow::bail!("не залогинен. Запусти `voicy setup`");
-        }
-        let title =
-            telegram::play_track(&client, &cfg.music_source, query, &cfg.music_dest, false).await?;
-        println!("▶ {}", title);
-        Result::<()>::Ok(())
-    })
-}
-
-/// Диагностика матчинга «включи» без сети и пересылки: `voicy match <запрос>`.
-/// Показывает лучший трек из кэша и его скор (даже если ниже порога).
-fn cmd_match(cfg: &config::Config, query: &str) -> Result<()> {
-    if query.trim().is_empty() {
-        anyhow::bail!("usage: voicy match <запрос>");
-    }
-    match telegram::match_cached(&cfg.music_source, query) {
-        Some((title, score, ok)) => {
-            let mark = if ok { "✓ сыграет" } else { "✗ ниже порога" };
-            println!("{}  score={:.3}  «{}»", mark, score, title);
-        }
-        None => println!("(нет кэша индекса, запусти `voicy reindex`)"),
-    }
-    Ok(())
-}
-
-/// Принудительно пересобрать индекс музыкального канала. `voicy reindex`.
-fn cmd_reindex(cfg: &config::Config) -> Result<()> {
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
-    rt.block_on(async {
-        let client = telegram::connect(cfg).await?;
-        if !telegram::is_signed_in(&client).await? {
-            anyhow::bail!("не залогинен. Запусти `voicy setup`");
-        }
-        let n = telegram::reindex_music(&client, &cfg.music_source).await?;
-        println!("проиндексировано {} треков из «{}»", n, cfg.music_source);
         Result::<()>::Ok(())
     })
 }

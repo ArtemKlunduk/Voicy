@@ -17,7 +17,7 @@ dictation_enabled = true       # phrase without "напиши/write …" → typ
 cloudpull_bot = "cloudpullbot" # downloader bot username (no @)
 music_dest = ""                # where to forward the file: empty = Saved Messages, or "@chat" / numeric uid
 download_format = "mp3"        # default format when not spoken: "mp3" / "wav"
-music_source = ""              # «включи песня»: @channel or id of your music library to index (empty = off)
+music_source = ""              # «скачай это в канал» target: @channel, id or chat title (empty = off)
 
 [hotkey]
 modifiers = ["alt"]

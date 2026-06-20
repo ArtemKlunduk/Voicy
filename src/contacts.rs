@@ -191,33 +191,6 @@ fn find_download_trigger(t: &str) -> bool {
         .any(|trig| t.starts_with(trig.as_str()))
 }
 
-/// Глаголы команды воспроизведения «включи <название>». Расширяемый пул.
-const DEFAULT_PLAY: &[&str] = &[
-    "включи", "включай", "врубай", "врубани", "врубни",
-    "поставь", "поставьте", "запусти", "запускай",
-    "play", "плей", "плэй",
-];
-
-/// Команда «включи <название>»? Префикс-матч (длинные триггеры раньше коротких).
-/// Возвращает запрос (текст после триггера) или None. Требуем пробел после
-/// триггера, чтобы «включить эту штуку» (диктовка) не сматчилось как «включи».
-fn find_play_trigger(t: &str) -> Option<String> {
-    let play = active_commands().read().play.clone();
-    let mut sorted: Vec<&String> = play.iter().collect();
-    sorted.sort_by_key(|s| std::cmp::Reverse(s.len()));
-    for trig in sorted {
-        if let Some(rest) = t.strip_prefix(trig.as_str()) {
-            if rest.starts_with(char::is_whitespace) {
-                let q = rest.trim();
-                if !q.is_empty() {
-                    return Some(q.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
 /// Слова, означающие «в музыкальный канал» (music_source): «...в канал/плейлист».
 const CHANNEL_WORDS: &[&str] = &[
     "канал", "канале", "каналу", "плейлист", "плейлисте",
@@ -260,8 +233,6 @@ pub struct Commands {
     pub send: Vec<String>,
     /// Скачать музыку через бота: «<триггер> ...».
     pub download: Vec<String>,
-    /// Включить трек из музыкального канала: «<триггер> название».
-    pub play: Vec<String>,
     /// Переслать результат получателю внутри download: «...и <слово> Маше».
     pub forward: Vec<String>,
 }
@@ -275,7 +246,6 @@ impl Default for Commands {
         Self {
             send: to_vecs(DEFAULT_SEND),
             download: to_vecs(DEFAULT_DOWNLOAD),
-            play: to_vecs(DEFAULT_PLAY),
             forward: to_vecs(DEFAULT_FORWARD),
         }
     }
@@ -627,9 +597,6 @@ pub enum Utterance {
         /// «...в канал»: переслать сразу в music_source (а не в music_dest/контакт).
         to_channel: bool,
     },
-    /// Команда «включи <название>»: найти трек в музыкальной библиотеке (канал
-    /// music_source) по вектор-индексу и переслать его в music_dest.
-    Play { query: String },
 }
 
 /// Классифицировать фразу: диктовка (нет триггера) или Telegram-команда.
@@ -643,9 +610,6 @@ pub fn classify(text: &str, contacts: &Contacts) -> Utterance {
             dest: parse_download_dest(&norm, contacts),
             to_channel: wants_channel(&norm),
         };
-    }
-    if let Some(query) = find_play_trigger(&norm) {
-        return Utterance::Play { query };
     }
     if !looks_like_send_command(text) {
         let d = text.trim();
@@ -1369,27 +1333,6 @@ mod tests {
             classify("скачай это", &c),
             Utterance::Download { to_channel: false, .. }
         ));
-    }
-
-    #[test]
-    fn detects_play_command() {
-        let c = sample_contacts();
-        assert!(matches!(
-            classify("включи кукушка", &c),
-            Utterance::Play { query } if query == "кукушка"
-        ));
-        assert!(matches!(
-            classify("поставь believer", &c),
-            Utterance::Play { query } if query == "believer"
-        ));
-        assert!(matches!(
-            classify("Врубай Imagine Dragons.", &c),
-            Utterance::Play { query } if query == "imagine dragons"
-        ));
-        // «включи» без названия → не play (уходит в диктовку).
-        assert!(!matches!(classify("включи", &c), Utterance::Play { .. }));
-        // «включить ...» (инфинитив, нет пробела после «включи») → не play.
-        assert!(!matches!(classify("включить свет", &c), Utterance::Play { .. }));
     }
 
     #[test]

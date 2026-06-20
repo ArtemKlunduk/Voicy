@@ -1547,13 +1547,6 @@ dialog label {
         </div>
 
         <div class="item cmd-item">
-          <div class="k" data-i18n="cmd_play">Включить трек
-            <span class="d" data-i18n="cmd_play_desc">«слово название» из канала с музыкой.</span>
-          </div>
-          <div class="v"><div class="tag-input cmd-tags" id="cmd-play-tags" data-cmd="play"></div></div>
-        </div>
-
-        <div class="item cmd-item">
           <div class="k" data-i18n="cmd_forward">Переслать контакту
             <span class="d" data-i18n="cmd_forward_desc">«…и слово Маше» при скачивании.</span>
           </div>
@@ -1988,7 +1981,7 @@ var locales = {
     cmd_forward: 'Переслать контакту', cmd_forward_desc: 'Слово перед именем при скачивании («…и скинь Маше»).',
     cmd_reset: 'Сбросить команды', cmd_reset_desc: 'Вернуть все списки к значениям по умолчанию.', cmd_reset_btn: 'по умолчанию', cmd_add_ph: 'слово',
     sec_music: 'Музыка',
-    music_source: 'Канал с музыкой', music_source_desc: 'Источник для «включи песня»: @канал или id. Voicy индексирует его аудио.',
+    music_source: 'Канал с музыкой', music_source_desc: 'Куда падает «скачай это в канал»: @канал, id или название чата.',
     music_bot: 'Бот загрузки', music_bot_desc: 'Скажи «скачай это» с открытым треком в браузере: бот качает и отвечает файлом.',
     music_format: 'Формат', music_format_desc: 'По умолчанию, если формат не назван голосом.',
     music_dest: 'Куда слать', music_dest_desc: 'Пусто = Избранное. Или @username / числовой id чата.',
@@ -2133,7 +2126,7 @@ var locales = {
     cmd_forward: 'Forward to a contact', cmd_forward_desc: 'Word before a name when downloading («…и скинь Маше»).',
     cmd_reset: 'Reset commands', cmd_reset_desc: 'Restore all lists to their defaults.', cmd_reset_btn: 'defaults', cmd_add_ph: 'word',
     sec_music: 'Music',
-    music_source: 'Music channel', music_source_desc: 'Source for «включи песня» (play a song): @channel or id. Voicy indexes its audio.',
+    music_source: 'Music channel', music_source_desc: 'Where «скачай это в канал» (download to channel) lands: @channel, id or chat title.',
     music_bot: 'Downloader bot', music_bot_desc: 'Say «скачай это» / "download" with a track open in the browser: the bot downloads it and replies with a file.',
     music_format: 'Format', music_format_desc: 'Default when the format is not spoken.',
     music_dest: 'Forward to', music_dest_desc: 'Empty = Saved Messages. Or @username / numeric chat id.',
@@ -2788,8 +2781,8 @@ window.addEventListener("beforeunload", function () {
 });
 var _musicSaveTimer = null;
 // ── Commands editor: chips like contact aliases ──
-var _commands = { send: [], download: [], play: [], forward: [] };
-var CMD_KEYS = ["send", "download", "play", "forward"];
+var _commands = { send: [], download: [], forward: [] };
+var CMD_KEYS = ["send", "download", "forward"];
 function renderCmdTags() {
   for (var ci = 0; ci < CMD_KEYS.length; ci++) {
     var key = CMD_KEYS[ci];
@@ -2810,7 +2803,6 @@ function fillCommands(res) {
   _commands = {
     send: (res.send || []).slice(),
     download: (res.download || []).slice(),
-    play: (res.play || []).slice(),
     forward: (res.forward || []).slice()
   };
   renderCmdTags();
