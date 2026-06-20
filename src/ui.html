@@ -2225,10 +2225,20 @@ function applyLanguage() {
     if (el.dataset.i18nVars) {
       try { vars = JSON.parse(el.dataset.i18nVars); } catch(e) {}
     }
+    var translated = t(key, vars);
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      el.placeholder = t(key, vars);
+      el.placeholder = translated;
+    } else if (el.querySelector('[data-i18n]')) {
+      // Контейнер с вложенным переводом (например .k с дочерним .d-описанием):
+      // innerHTML снёс бы детей, поэтому меняем только ведущий текстовый узел.
+      var first = el.firstChild;
+      if (first && first.nodeType === 3) {
+        first.nodeValue = translated;
+      } else {
+        el.insertBefore(document.createTextNode(translated), el.firstChild);
+      }
     } else {
-      el.innerHTML = t(key, vars);
+      el.innerHTML = translated;
     }
   });
 }
