@@ -476,10 +476,10 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                     return;
                 }
                 contacts::Utterance::Telegram { uid, message } => (uid, message),
-                contacts::Utterance::Download { format, dest } => {
-                    // «Скачай это [и скинь <контакт>]»: URL активной вкладки → бот →
-                    // пересылка файла. Этот код уже в spawned-треде, поэтому долгое
-                    // ожидание бота (до 120 c) не блокирует hotkey-листенер.
+                contacts::Utterance::Download { format, dest, to_channel } => {
+                    // «Скачай это [в канал] [и скинь <контакт>]»: URL активной вкладки
+                    // → бот → пересылка. Код уже в spawned-треде, долгое ожидание
+                    // бота (до 120 c) не блокирует hotkey-листенер.
                     #[cfg(windows)]
                     {
                         let url = match active_url::active_url() {
@@ -491,10 +491,23 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                                 return;
                             }
                         };
+                        // «в канал» → в music_source (контакт игнорируем); иначе
+                        // контакт/music_dest как раньше.
+                        let (dest_str, dest_override) = if to_channel {
+                            if cfg.music_source.trim().is_empty() {
+                                warn!("[hotkey] download в канал: music_source не задан");
+                                show_error();
+                                schedule_hide();
+                                return;
+                            }
+                            (cfg.music_source.clone(), None)
+                        } else {
+                            (cfg.music_dest.clone(), dest)
+                        };
                         let fmt = format.unwrap_or_else(|| cfg.download_format.clone());
-                        info!("[hotkey] download «{}» fmt={} dest={:?}", url, fmt, dest);
+                        info!("[hotkey] download «{}» fmt={} channel={} dest={:?}", url, fmt, to_channel, dest_override);
                         let res = rt.block_on(telegram::download_via_bot(
-                            &client, &url, &fmt, &cfg.cloudpull_bot, &cfg.music_dest, dest,
+                            &client, &url, &fmt, &cfg.cloudpull_bot, &dest_str, dest_override,
                         ));
                         match res {
                             Ok(()) => {
@@ -509,7 +522,7 @@ fn cmd_run(cfg: config::Config) -> Result<()> {
                     }
                     #[cfg(not(windows))]
                     {
-                        let _ = (format, dest);
+                        let _ = (format, dest, to_channel);
                         show_error();
                     }
                     schedule_hide();

@@ -218,6 +218,17 @@ fn find_play_trigger(t: &str) -> Option<String> {
     None
 }
 
+/// Слова, означающие «в музыкальный канал» (music_source): «...в канал/плейлист».
+const CHANNEL_WORDS: &[&str] = &[
+    "канал", "канале", "каналу", "плейлист", "плейлисте",
+    "библиотеку", "библиотеке", "библиотека",
+];
+
+/// Указано ли «в канал» (грузить сразу в music_source, а не в music_dest)?
+fn wants_channel(norm: &str) -> bool {
+    norm.split_whitespace().any(|t| CHANNEL_WORDS.contains(&t))
+}
+
 /// Достать аудиоформат из реплики: «...в wav/вав» даёт Some("wav"), явное «mp3»
 /// даёт Some("mp3"), иначе None (вызывающий подставит дефолт из конфига).
 /// Сканируем токены, чтобы поймать формат в любом месте («скачай это в вав»).
@@ -295,6 +306,7 @@ const DEST_STOPWORDS: &[&str] = &[
     "скинь", "скиньте", "кинь", "киньте", "отправь", "отправьте",
     "перешли", "перешлите", "пришли", "пришлите", "кей",
     "wav", "вав", "вэйв", "вейв", "уэйв", "mp3", "эмпэтри", "мпэтри", "эмпитри",
+    "канал", "канале", "каналу", "плейлист", "плейлисте", "библиотеку", "библиотеке", "библиотека",
 ];
 
 /// Если в реплике назван получатель («...и скинь Маше»), достать его uid.
@@ -612,6 +624,8 @@ pub enum Utterance {
     Download {
         format: Option<String>,
         dest: Option<i64>,
+        /// «...в канал»: переслать сразу в music_source (а не в music_dest/контакт).
+        to_channel: bool,
     },
     /// Команда «включи <название>»: найти трек в музыкальной библиотеке (канал
     /// music_source) по вектор-индексу и переслать его в music_dest.
@@ -627,6 +641,7 @@ pub fn classify(text: &str, contacts: &Contacts) -> Utterance {
         return Utterance::Download {
             format: parse_download_format(&norm),
             dest: parse_download_dest(&norm, contacts),
+            to_channel: wants_channel(&norm),
         };
     }
     if let Some(query) = find_play_trigger(&norm) {
@@ -1303,7 +1318,7 @@ mod tests {
         // другой forward-глагол + формат вместе.
         assert!(matches!(
             classify("скачай это в wav отправь тиме", &c),
-            Utterance::Download { format: Some(f), dest: Some(3003) } if f == "wav"
+            Utterance::Download { format: Some(f), dest: Some(3003), .. } if f == "wav"
         ));
         // «скинь себе» → SELF.
         assert!(matches!(
@@ -1334,6 +1349,25 @@ mod tests {
         assert!(matches!(
             classify("скачай этот трек в wav", &c),
             Utterance::Download { dest: None, .. }
+        ));
+    }
+
+    #[test]
+    fn download_to_channel() {
+        let c = sample_contacts();
+        // «в канал» → to_channel, без ложного контакта из «канал».
+        assert!(matches!(
+            classify("скачай это в канал", &c),
+            Utterance::Download { to_channel: true, dest: None, .. }
+        ));
+        assert!(matches!(
+            classify("скачай это в wav в плейлист", &c),
+            Utterance::Download { to_channel: true, format: Some(f), .. } if f == "wav"
+        ));
+        // обычное «скачай это» → to_channel false.
+        assert!(matches!(
+            classify("скачай это", &c),
+            Utterance::Download { to_channel: false, .. }
         ));
     }
 

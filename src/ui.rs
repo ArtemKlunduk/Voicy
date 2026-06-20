@@ -1515,17 +1515,26 @@ fn cmd_listener_start(
                     return;
                 }
                 cts::Utterance::Telegram { uid, message } => (uid, message),
-                cts::Utterance::Download { format, dest } => {
-                    // «Скачай это [и скинь <контакт>]»: URL активной вкладки → бот →
-                    // пересылка файла. Долгий бот-цикл (до 120 c) уносим в отдельный
+                cts::Utterance::Download { format, dest, to_channel } => {
+                    // «Скачай это [в канал] [и скинь <контакт>]»: URL активной вкладки
+                    // → бот → пересылка. Долгий бот-цикл (до 120 c) уносим в отдельный
                     // тред, чтобы listener-pipeline освободился сразу (новые Alt+X).
+                    #[cfg(windows)]
+                    if to_channel && cfg.music_source.trim().is_empty() {
+                        warn!("[listener] download в канал: music_source не задан");
+                        push_event(&proxy, "log", "✗ канал с музыкой не задан (Настройки → Музыка)");
+                        push_event(&proxy, "activity", "");
+                        flash_overlay(&proxy, UiLoopEvent::OverlayError);
+                        return;
+                    }
                     #[cfg(windows)]
                     if let Some(url) = crate::active_url::active_url() {
                         if let Some(client) = client_slot.lock().as_ref().cloned() {
                             let fmt = format.clone().unwrap_or_else(|| cfg.download_format.clone());
                             let bot = cfg.cloudpull_bot.clone();
-                            let music_dest = cfg.music_dest.clone();
-                            let dest_override = dest;
+                            // «в канал» → music_source (контакт игнорируем), иначе music_dest + контакт.
+                            let music_dest = if to_channel { cfg.music_source.clone() } else { cfg.music_dest.clone() };
+                            let dest_override = if to_channel { None } else { dest };
                             let rt2 = rt.clone();
                             let proxy2 = proxy.clone();
                             push_event(&proxy, "log", &format!("⬇ скачиваю «{}» ({})…", url, fmt));
@@ -1563,7 +1572,7 @@ fn cmd_listener_start(
                     }
                     #[cfg(not(windows))]
                     {
-                        let _ = (format, dest);
+                        let _ = (format, dest, to_channel);
                         flash_overlay(&proxy, UiLoopEvent::OverlayError);
                     }
                     return;
