@@ -214,6 +214,10 @@ fn main() -> Result<()> {
             let query = args.iter().skip(2).cloned().collect::<Vec<_>>().join(" ");
             cmd_play(&cfg, &query)
         }
+        "match" => {
+            let query = args.iter().skip(2).cloned().collect::<Vec<_>>().join(" ");
+            cmd_match(&cfg, &query)
+        }
         "reindex" => cmd_reindex(&cfg),
         "url" => {
             // Диагностика захвата ссылки активной вкладки: UIA адресной строки
@@ -693,6 +697,22 @@ fn cmd_play(cfg: &config::Config, query: &str) -> Result<()> {
         println!("▶ {}", title);
         Result::<()>::Ok(())
     })
+}
+
+/// Диагностика матчинга «включи» без сети и пересылки: `voicy match <запрос>`.
+/// Показывает лучший трек из кэша и его скор (даже если ниже порога).
+fn cmd_match(cfg: &config::Config, query: &str) -> Result<()> {
+    if query.trim().is_empty() {
+        anyhow::bail!("usage: voicy match <запрос>");
+    }
+    match telegram::match_cached(&cfg.music_source, query) {
+        Some((title, score, ok)) => {
+            let mark = if ok { "✓ сыграет" } else { "✗ ниже порога" };
+            println!("{}  score={:.3}  «{}»", mark, score, title);
+        }
+        None => println!("(нет кэша индекса, запусти `voicy reindex`)"),
+    }
+    Ok(())
 }
 
 /// Принудительно пересобрать индекс музыкального канала. `voicy reindex`.

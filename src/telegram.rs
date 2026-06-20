@@ -796,6 +796,16 @@ pub async fn play_track(
     Ok(title)
 }
 
+/// Диагностика `voicy match`: показать лучший матч из КЭША (без сети и без
+/// пересылки). Возвращает (title, score, passes_threshold) или None если кэша
+/// нет / он пуст. Порог тот же, что в боевом best_match.
+pub fn match_cached(source: &str, query: &str) -> Option<(String, f32, bool)> {
+    let tracks = load_music_cache(source)?;
+    let idx = MusicIndex::build(tracks);
+    idx.top_match(query)
+        .map(|(_, title, score)| (title, score, score >= crate::music_index::MATCH_THRESHOLD))
+}
+
 /// Перечитать канал-источник и пересобрать кэш индекса. Возвращает число треков.
 pub async fn reindex_music(client: &Client, source: &str) -> Result<usize> {
     if source.trim().is_empty() {

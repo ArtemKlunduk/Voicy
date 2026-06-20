@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Минимальная косинусная близость, ниже которой считаем «не нашли».
-const MATCH_THRESHOLD: f32 = 0.30;
+pub const MATCH_THRESHOLD: f32 = 0.30;
 
 /// Один трек: id сообщения в канале + человекочитаемое название (для поиска и логов).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,9 +56,18 @@ impl MusicIndex {
         self.tracks.len()
     }
 
-    /// Найти самый похожий трек на запрос. Возвращает (msg_id, title, score) или
-    /// None, если индекс пуст или ничего не дотянуло до порога.
+    /// Найти самый похожий трек на запрос с учётом порога MATCH_THRESHOLD.
+    /// None, если индекс пуст или лучший скор ниже порога.
     pub fn best_match(&self, query: &str) -> Option<(i32, String, f32)> {
+        match self.top_match(query) {
+            Some((id, title, s)) if s >= MATCH_THRESHOLD => Some((id, title, s)),
+            _ => None,
+        }
+    }
+
+    /// Лучший трек БЕЗ порога (для диагностики `voicy match`): возвращает топ-1
+    /// и его скор, каким бы низким он ни был. None только если индекс/запрос пуст.
+    pub fn top_match(&self, query: &str) -> Option<(i32, String, f32)> {
         if self.tracks.is_empty() {
             return None;
         }
@@ -70,20 +79,25 @@ impl MusicIndex {
         if qv.is_empty() {
             return None;
         }
+        let qtotal: f32 = qv.values().sum();
         let mut best: Option<(usize, f32)> = None;
         for (i, v) in self.vectors.iter().enumerate() {
-            let score = cosine(&qv, v);
+            let cos = cosine(&qv, v);
+            // Покрытие: доля веса n-грамм запроса, присутствующих в названии. В
+            // отличие от косинуса, НЕ штрафует длинные «раздутые» названия за
+            // размазанность (например «sunburn» внутри очень длинного заголовка).
+            let covered: f32 = qv
+                .iter()
+                .filter(|(k, _)| v.contains_key(*k))
+                .map(|(_, w)| *w)
+                .sum();
+            let cov = if qtotal > 0.0 { covered / qtotal } else { 0.0 };
+            let score = cos.max(cov);
             if best.map_or(true, |(_, s)| score > s) {
                 best = Some((i, score));
             }
         }
-        best.and_then(|(i, s)| {
-            if s >= MATCH_THRESHOLD {
-                Some((self.tracks[i].msg_id, self.tracks[i].title.clone(), s))
-            } else {
-                None
-            }
-        })
+        best.map(|(i, s)| (self.tracks[i].msg_id, self.tracks[i].title.clone(), s))
     }
 }
 
@@ -251,6 +265,20 @@ mod tests {
         let idx = sample();
         assert_eq!(idx.best_match("бохемиан рапсоди").map(|m| m.0), Some(2));
         assert_eq!(idx.best_match("куин богемиан").map(|m| m.0), Some(2));
+    }
+
+    #[test]
+    fn single_word_in_long_title() {
+        // Раздутое название не должно мешать найти трек по одному слову.
+        let idx = MusicIndex::build(vec![
+            Track { msg_id: 1, title: "Imagine Dragons - Believer".into() },
+            Track {
+                msg_id: 2,
+                title: "shadow wizard money gang, Nokia Angel - Nokia Angel & Shadow Wizard Money Gang - Sunburn".into(),
+            },
+        ]);
+        assert_eq!(idx.best_match("sunburn").map(|m| m.0), Some(2));
+        assert_eq!(idx.best_match("шадоу").map(|m| m.0), Some(2));
     }
 
     #[test]
