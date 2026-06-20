@@ -77,6 +77,33 @@ For the bundled distribution layout (with all DLLs in one folder), run `scripts\
 
 ---
 
+## If Windows blocks Voicy
+
+Voicy is not code-signed yet (no paid Authenticode certificate), so Windows security can flag it. Each block is handled differently:
+
+### SmartScreen ("Windows protected your PC", unknown publisher)
+
+Click **More info → Run anyway**. One time, per file. This is the common case.
+
+### Windows Defender / antivirus (false positive, or `Alt+X` not firing)
+
+Voicy installs a low-level keyboard hook (`WH_KEYBOARD_LL`) for the global hotkey, which some antivirus tools flag or block. Add an exclusion:
+
+**Windows Security → Virus & threat protection → Manage settings → Exclusions → Add an exclusion**, then add either:
+- **Folder**: your `C:\Voicy\` folder, or
+- **Process**: `voicy.exe`
+
+### Smart App Control ("blocked an app that might be unsafe")
+
+This is a stricter Windows 11 feature than SmartScreen, and it has **no per-app exception and no "run anyway"** by design. Two options:
+
+- **Turn it off** (the only switch, system-wide): **Windows Security → App & browser control → Smart App Control settings → Off**. Heads up: re-enabling it later requires resetting Windows, so this is a one-way choice.
+- Or run a **code-signed build**. A self-signed certificate does **not** satisfy Smart App Control; it needs a reputable Authenticode signature.
+
+A properly signed release will remove all of the above. Until then, the steps here are the workaround.
+
+---
+
 ## Where Voicy stores your data
 
 `%APPDATA%\voicy\` — that's `C:\Users\<you>\AppData\Roaming\voicy\`. Open via `Win+R → %APPDATA%\voicy`.

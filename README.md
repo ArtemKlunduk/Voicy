@@ -35,6 +35,8 @@ Everything runs through your own Telegram account, by voice:
 
 > **Privacy-conscious?** Want to use your own Telegram app instead of the bundled credentials? See [TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md).
 
+> **Windows blocked it?** SmartScreen → **More info → Run anyway**. For antivirus exclusions or Smart App Control (which has no per-app override), see [If Windows blocks Voicy](docs/INSTALL.md#if-windows-blocks-voicy).
+
 Full step-by-step: [INSTALL.md](docs/INSTALL.md)
 
 ## Voice commands
