@@ -12,11 +12,15 @@ use tracing::{info, warn};
 
 const WHISPER_CPP_RELEASE_URL: &str =
     "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.4/whisper-blas-bin-x64.zip";
+const WHISPER_CPP_SHA256: &str =
+    "d85e60bdba2dcb35cf42fd07c0cd1481ef6ca631f81872c1f2204ea8cdb7d001";
 
 /// Microsoft ONNX Runtime для Win x64. Версия должна совпадать с тем что
 /// требует `ort` крейт (для ort 2.0.0-rc.12 это onnxruntime 1.20.x).
 const ONNXRUNTIME_ZIP_URL: &str =
     "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip";
+const ONNXRUNTIME_SHA256: &str =
+    "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
 
 fn app_data_dir() -> PathBuf {
     dirs::data_dir()
@@ -62,6 +66,7 @@ pub fn ensure_onnxruntime() -> Result<PathBuf> {
     let zip_bytes = http_get_bytes(ONNXRUNTIME_ZIP_URL)?;
     let zip_path = exe_dir.join("onnxruntime.zip");
     std::fs::write(&zip_path, &zip_bytes)?;
+    verify_sha256(&zip_path, ONNXRUNTIME_SHA256)?;
     info!("[asr] extracting onnxruntime ({} bytes)…", zip_bytes.len());
     let f = std::fs::File::open(&zip_path)?;
     let mut z = zip::ZipArchive::new(f)?;
@@ -200,6 +205,7 @@ pub fn ensure_whisper_cli() -> Result<PathBuf> {
     let zip_bytes = http_get_bytes(WHISPER_CPP_RELEASE_URL)?;
     let zip_path = assets_dir().join("whisper-bin-x64.zip");
     std::fs::write(&zip_path, &zip_bytes)?;
+    verify_sha256(&zip_path, WHISPER_CPP_SHA256)?;
     info!("[asr] extracting {} bytes…", zip_bytes.len());
     let f = std::fs::File::open(&zip_path)?;
     let mut z = zip::ZipArchive::new(f)?;
@@ -395,6 +401,38 @@ fn http_stream_to_file(url: &str, dst: &Path) -> Result<()> {
 }
 
 use std::io::Read;
+use sha2::{Digest, Sha256};
+use std::io::BufReader;
+
+fn sha256_of_file(path: &Path) -> Result<String> {
+    let f = std::fs::File::open(path).context("open for sha256")?;
+    let mut reader = BufReader::new(f);
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = reader.read(&mut buf).context("read for sha256")?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
+    let actual = sha256_of_file(path)?;
+    if actual.eq_ignore_ascii_case(expected.trim()) {
+        Ok(())
+    } else {
+        let _ = std::fs::remove_file(path);
+        Err(anyhow!(
+            "integrity check failed for {}: expected {}, got {}",
+            path.display(),
+            expected,
+            actual
+        ))
+    }
+}
 
 /// Транскрибировать WAV (16kHz mono). Сначала пробует Parakeet (если выбран
 /// и веса скачаны), при таймауте/ошибке тихо падает в whisper-cli.
@@ -583,4 +621,51 @@ pub fn normalize_cyrillic(text: &str) -> String {
             other => other,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ABC_SHA256: &str =
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+    #[test]
+    fn sha256_of_known_bytes() {
+        let tmp = std::env::temp_dir().join("voicy_sha256_test.bin");
+        std::fs::write(&tmp, b"abc").unwrap();
+        let h = sha256_of_file(&tmp).unwrap();
+        assert_eq!(h, ABC_SHA256);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn verify_accepts_correct_hash() {
+        let tmp = std::env::temp_dir().join("voicy_verify_ok_test.bin");
+        std::fs::write(&tmp, b"abc").unwrap();
+        assert!(verify_sha256(&tmp, ABC_SHA256).is_ok());
+        assert!(tmp.exists(), "file must remain on success");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn verify_rejects_wrong_hash_and_removes_file() {
+        let tmp = std::env::temp_dir().join("voicy_verify_bad_test.bin");
+        std::fs::write(&tmp, b"abc").unwrap();
+        let res = verify_sha256(
+            &tmp,
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        );
+        assert!(res.is_err(), "mismatched hash must error");
+        assert!(!tmp.exists(), "file must be deleted on mismatch");
+    }
+
+    #[test]
+    fn verify_is_case_insensitive() {
+        let tmp = std::env::temp_dir().join("voicy_verify_case_test.bin");
+        std::fs::write(&tmp, b"abc").unwrap();
+        let upper = ABC_SHA256.to_uppercase();
+        assert!(verify_sha256(&tmp, &upper).is_ok());
+        let _ = std::fs::remove_file(&tmp);
+    }
 }

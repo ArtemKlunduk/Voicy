@@ -4425,6 +4425,7 @@ dependencies = [
  "rdev",
  "serde",
  "serde_json",
+ "sha2",
  "tao",
  "tiny-skia",
  "tokio",
